@@ -176,6 +176,21 @@ export interface Booking {
   created_at: string
 }
 
+export type InviteStatus = "pending" | "accepted" | "expired"
+
+export interface AdminInvite {
+  id: string
+  studio_id: string
+  email: string
+  name: string
+  role: string
+  invited_by: string
+  status: InviteStatus
+  created_at: string
+  accepted_at: string | null
+  expires_at: string
+}
+
 export type PackType = "5" | "10"
 
 export interface ClassPack {

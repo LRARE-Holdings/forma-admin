@@ -29,6 +29,11 @@ export async function inviteStaffMember(
   const adminClient = createAdminClient()
   const supabase = await createClient()
 
+  // Get current user for invited_by tracking
+  const {
+    data: { user: currentUser },
+  } = await supabase.auth.getUser()
+
   // Get studio info for admin domain redirect
   const { data: studio } = await supabase
     .from("studios")
@@ -78,6 +83,17 @@ export async function inviteStaffMember(
       name,
       slug,
       bio: "",
+    })
+  }
+
+  // Track the invite so the admin can see pending/accepted status
+  if (currentUser) {
+    await adminClient.from("admin_invites").insert({
+      studio_id: studioId,
+      email,
+      name,
+      role,
+      invited_by: currentUser.id,
     })
   }
 
@@ -186,6 +202,118 @@ export async function updateStaffRole(membershipId: string, newRole: string) {
   }
 
   revalidatePath("/dashboard/team")
+}
+
+export async function resendInvite(
+  inviteId: string
+): Promise<{ error?: string }> {
+  await requireAdmin()
+  const studioId = await getStudioId()
+
+  const adminClient = createAdminClient()
+  const supabase = await createClient()
+
+  // Fetch the invite
+  const { data: invite } = await supabase
+    .from("admin_invites")
+    .select("email, name, role, status")
+    .eq("id", inviteId)
+    .eq("studio_id", studioId)
+    .single()
+
+  if (!invite) return { error: "Invite not found" }
+  if (invite.status !== "pending") return { error: "Invite is no longer pending" }
+
+  // Get studio info for redirect
+  const { data: studio } = await supabase
+    .from("studios")
+    .select("name, admin_domain")
+    .eq("id", studioId)
+    .single()
+
+  const redirectTo = studio?.admin_domain
+    ? `https://${studio.admin_domain}/auth/callback`
+    : undefined
+
+  // Re-send the invite via Supabase Auth
+  const { error: authError } =
+    await adminClient.auth.admin.inviteUserByEmail(invite.email, {
+      data: {
+        full_name: invite.name,
+        studio_id: studioId,
+        invite_role: invite.role,
+      },
+      redirectTo,
+    })
+
+  if (authError) return { error: authError.message }
+
+  // Reset the expiry
+  await adminClient
+    .from("admin_invites")
+    .update({ expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() })
+    .eq("id", inviteId)
+    .eq("studio_id", studioId)
+
+  revalidatePath("/dashboard/team")
+  return {}
+}
+
+export async function revokeInvite(
+  inviteId: string
+): Promise<{ error?: string }> {
+  await requireAdmin()
+  const studioId = await getStudioId()
+
+  const adminClient = createAdminClient()
+  const supabase = await createClient()
+
+  // Fetch the invite
+  const { data: invite } = await supabase
+    .from("admin_invites")
+    .select("email, status")
+    .eq("id", inviteId)
+    .eq("studio_id", studioId)
+    .single()
+
+  if (!invite) return { error: "Invite not found" }
+  if (invite.status !== "pending") return { error: "Invite is no longer pending" }
+
+  // Find the auth user by email to clean up
+  const { data: userList } = await adminClient.auth.admin.listUsers()
+  const authUser = userList?.users.find((u) => u.email === invite.email)
+
+  if (authUser) {
+    // Remove studio membership
+    await adminClient
+      .from("studio_memberships")
+      .delete()
+      .eq("profile_id", authUser.id)
+      .eq("studio_id", studioId)
+
+    // Remove instructor record if any
+    await adminClient
+      .from("instructors")
+      .delete()
+      .eq("profile_id", authUser.id)
+      .eq("studio_id", studioId)
+
+    // Delete the auth user if they've never signed in
+    if (!authUser.last_sign_in_at) {
+      await adminClient.auth.admin.deleteUser(authUser.id)
+      await adminClient.from("profiles").delete().eq("id", authUser.id)
+    }
+  }
+
+  // Delete the invite record
+  await adminClient
+    .from("admin_invites")
+    .delete()
+    .eq("id", inviteId)
+    .eq("studio_id", studioId)
+
+  revalidatePath("/dashboard/team")
+  return {}
 }
 
 export async function updateInstructor(instructorId: string, formData: FormData) {

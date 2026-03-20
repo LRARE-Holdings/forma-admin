@@ -4,7 +4,9 @@ import { useState } from "react"
 import { getInitial } from "@/lib/utils"
 import { InviteStaffDialog } from "./invite-staff-dialog"
 import { EditInstructorDialog } from "./edit-instructor-dialog"
-import { Plus } from "lucide-react"
+import { Plus, Clock, Send, X } from "lucide-react"
+import { resendInvite, revokeInvite } from "@/app/actions/team"
+import { toast } from "sonner"
 
 interface TeamMember {
   id: string
@@ -17,9 +19,19 @@ interface TeamMember {
   classNames: string
 }
 
+interface PendingInvite {
+  id: string
+  email: string
+  name: string
+  role: string
+  created_at: string
+  expires_at: string
+}
+
 interface TeamGridProps {
   team: TeamMember[]
   currentProfileId: string | null
+  pendingInvites: PendingInvite[]
 }
 
 const ROLE_BADGE: Record<string, { label: string; className: string }> = {
@@ -30,14 +42,62 @@ const ROLE_BADGE: Record<string, { label: string; className: string }> = {
   staff: { label: "Instructor", className: "bg-sand text-slate" },
 }
 
-export function TeamGrid({ team, currentProfileId }: TeamGridProps) {
+function timeAgo(dateStr: string): string {
+  const now = Date.now()
+  const then = new Date(dateStr).getTime()
+  const diffMs = now - then
+  const diffMins = Math.floor(diffMs / 60000)
+  if (diffMins < 1) return "just now"
+  if (diffMins < 60) return `${diffMins}m ago`
+  const diffHrs = Math.floor(diffMins / 60)
+  if (diffHrs < 24) return `${diffHrs}h ago`
+  const diffDays = Math.floor(diffHrs / 24)
+  return `${diffDays}d ago`
+}
+
+function expiresIn(dateStr: string): string {
+  const now = Date.now()
+  const expires = new Date(dateStr).getTime()
+  const diffMs = expires - now
+  if (diffMs <= 0) return "Expired"
+  const diffDays = Math.floor(diffMs / (24 * 60 * 60 * 1000))
+  if (diffDays === 0) return "Expires today"
+  if (diffDays === 1) return "Expires tomorrow"
+  return `Expires in ${diffDays} days`
+}
+
+export function TeamGrid({ team, currentProfileId, pendingInvites }: TeamGridProps) {
   const [inviteOpen, setInviteOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [editingMember, setEditingMember] = useState<TeamMember | null>(null)
+  const [loadingResend, setLoadingResend] = useState<string | null>(null)
+  const [loadingRevoke, setLoadingRevoke] = useState<string | null>(null)
 
   function openEdit(member: TeamMember) {
     setEditingMember(member)
     setEditOpen(true)
+  }
+
+  async function handleResend(inviteId: string) {
+    setLoadingResend(inviteId)
+    const result = await resendInvite(inviteId)
+    setLoadingResend(null)
+    if (result.error) {
+      toast.error(result.error)
+    } else {
+      toast.success("Invite resent")
+    }
+  }
+
+  async function handleRevoke(inviteId: string) {
+    setLoadingRevoke(inviteId)
+    const result = await revokeInvite(inviteId)
+    setLoadingRevoke(null)
+    if (result.error) {
+      toast.error(result.error)
+    } else {
+      toast.success("Invite revoked")
+    }
   }
 
   return (
@@ -106,6 +166,74 @@ export function TeamGrid({ team, currentProfileId }: TeamGridProps) {
           </span>
         </button>
       </div>
+
+      {/* Pending invites */}
+      {pendingInvites.length > 0 && (
+        <div className="mt-8">
+          <h3 className="mb-4 font-heading text-[1rem] font-semibold text-cocoa">
+            Pending invites
+          </h3>
+          <div className="space-y-3">
+            {pendingInvites.map((invite) => {
+              const badge = ROLE_BADGE[invite.role] ?? ROLE_BADGE.staff
+              const expired = new Date(invite.expires_at).getTime() <= Date.now()
+
+              return (
+                <div
+                  key={invite.id}
+                  className="flex items-center justify-between rounded-xl border border-sand bg-white px-5 py-4"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-sand/60">
+                      <Clock className="h-4 w-4 text-warm-grey" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[0.88rem] font-semibold text-cocoa">
+                          {invite.name}
+                        </span>
+                        <span className={`inline-block rounded-full px-2 py-0.5 text-[0.58rem] font-semibold uppercase tracking-[0.08em] ${badge.className}`}>
+                          {badge.label}
+                        </span>
+                        {expired ? (
+                          <span className="inline-block rounded-full bg-red-50 px-2 py-0.5 text-[0.58rem] font-semibold uppercase tracking-[0.08em] text-red-600">
+                            Expired
+                          </span>
+                        ) : (
+                          <span className="inline-block rounded-full bg-amber-50 px-2 py-0.5 text-[0.58rem] font-semibold uppercase tracking-[0.08em] text-amber-600">
+                            Pending
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-0.5 text-[0.75rem] text-warm-grey">
+                        {invite.email} &middot; Invited {timeAgo(invite.created_at)} &middot; {expiresIn(invite.expires_at)}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleResend(invite.id)}
+                      disabled={loadingResend === invite.id}
+                      className="flex items-center gap-1.5 rounded-lg border border-sand px-3 py-1.5 text-[0.72rem] font-semibold text-cocoa transition-colors hover:bg-cream disabled:opacity-50"
+                    >
+                      <Send className="h-3 w-3" />
+                      {loadingResend === invite.id ? "Sending..." : "Resend"}
+                    </button>
+                    <button
+                      onClick={() => handleRevoke(invite.id)}
+                      disabled={loadingRevoke === invite.id}
+                      className="flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-1.5 text-[0.72rem] font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
+                    >
+                      <X className="h-3 w-3" />
+                      {loadingRevoke === invite.id ? "Revoking..." : "Revoke"}
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       <InviteStaffDialog open={inviteOpen} onOpenChange={setInviteOpen} />
       <EditInstructorDialog
