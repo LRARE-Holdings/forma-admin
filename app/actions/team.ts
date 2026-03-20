@@ -37,17 +37,23 @@ export async function inviteStaffMember(formData: FormData) {
   const adminClient = createAdminClient()
   const supabase = await createClient()
 
-  // Get studio info for email branding
+  // Get studio info for email branding and admin domain
   const { data: studio } = await supabase
     .from("studios")
-    .select("name, email_from, email_domain")
+    .select("name, email_from, email_domain, admin_domain")
     .eq("id", studioId)
     .single()
+
+  // Build redirect URL so the invite link routes to the admin portal
+  const redirectTo = studio?.admin_domain
+    ? `https://${studio.admin_domain}/auth/callback`
+    : undefined
 
   // Create auth user with invite
   const { data: authUser, error: authError } =
     await adminClient.auth.admin.inviteUserByEmail(email, {
       data: { full_name: name },
+      redirectTo,
     })
 
   if (authError) throw new Error(authError.message)
