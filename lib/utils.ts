@@ -53,19 +53,38 @@ export interface CropArea {
 
 /**
  * Draw the cropped region of an image onto a canvas and return it as a JPEG blob.
- * Output is always 370×208 to match the public site's instructor photo slots.
+ *
+ * Outputs at the native cropped resolution, capped at 2× the display size
+ * (740×416) so images stay sharp on retina screens without being oversized.
  */
 export async function getCroppedImage(
   imageSrc: string,
   cropArea: CropArea
 ): Promise<Blob> {
   const image = await loadImage(imageSrc)
+
+  // Use the native crop dimensions, but cap at 2× display size (740×416)
+  const MAX_W = 740
+  const MAX_H = 416
+  let outW = Math.round(cropArea.width)
+  let outH = Math.round(cropArea.height)
+
+  if (outW > MAX_W || outH > MAX_H) {
+    const scale = Math.min(MAX_W / outW, MAX_H / outH)
+    outW = Math.round(outW * scale)
+    outH = Math.round(outH * scale)
+  }
+
   const canvas = document.createElement("canvas")
-  canvas.width = 370
-  canvas.height = 208
+  canvas.width = outW
+  canvas.height = outH
 
   const ctx = canvas.getContext("2d")
   if (!ctx) throw new Error("Canvas context not available")
+
+  // Enable high-quality downscaling
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = "high"
 
   ctx.drawImage(
     image,
@@ -75,15 +94,15 @@ export async function getCroppedImage(
     cropArea.height,
     0,
     0,
-    370,
-    208
+    outW,
+    outH
   )
 
   return new Promise((resolve, reject) => {
     canvas.toBlob(
       (blob) => (blob ? resolve(blob) : reject(new Error("Failed to create blob"))),
       "image/jpeg",
-      0.9
+      0.92
     )
   })
 }
