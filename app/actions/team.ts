@@ -5,19 +5,9 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { requireAdmin } from "@/lib/auth"
 import { getStudioId } from "@/lib/studio-context"
-import { Resend } from "resend"
-
-const resend = new Resend(process.env.RESEND_API_KEY)
 
 const VALID_INVITE_ROLES = ["staff", "reception", "manager", "admin"]
 const INSTRUCTOR_ROLES = ["staff"]
-
-const ROLE_LABELS: Record<string, string> = {
-  staff: "an instructor",
-  reception: "a reception team member",
-  manager: "a manager",
-  admin: "an admin",
-}
 
 export async function inviteStaffMember(
   formData: FormData
@@ -39,10 +29,10 @@ export async function inviteStaffMember(
   const adminClient = createAdminClient()
   const supabase = await createClient()
 
-  // Get studio info for email branding and admin domain
+  // Get studio info for admin domain redirect
   const { data: studio } = await supabase
     .from("studios")
-    .select("name, email_from, email_domain, admin_domain")
+    .select("name, admin_domain")
     .eq("id", studioId)
     .single()
 
@@ -51,10 +41,11 @@ export async function inviteStaffMember(
     ? `https://${studio.admin_domain}/auth/callback`
     : undefined
 
-  // Create auth user with invite
+  // Create auth user with invite — pass studio_id and role in metadata
+  // so the send-email edge function can brand the email and show the role
   const { data: authUser, error: authError } =
     await adminClient.auth.admin.inviteUserByEmail(email, {
-      data: { full_name: name },
+      data: { full_name: name, studio_id: studioId, invite_role: role },
       redirectTo,
     })
 
@@ -89,24 +80,8 @@ export async function inviteStaffMember(
     })
   }
 
-  // Send welcome email
-  if (studio?.email_from) {
-    const roleLabel = ROLE_LABELS[role] ?? "a team member"
-    try {
-      await resend.emails.send({
-        from: `${studio.name} <${studio.email_from}>`,
-        to: email,
-        subject: `Welcome to ${studio.name}!`,
-        html: `
-          <h2>Hi ${name},</h2>
-          <p>You've been invited as ${roleLabel} at ${studio.name}.</p>
-          <p>Check your email for a sign-in link to set up your account.</p>
-        `,
-      })
-    } catch {
-      // Email sending is best-effort
-    }
-  }
+  // The invite email is sent by the send-email edge function (Supabase Auth hook)
+  // which reads studio_id and invite_role from user_metadata for branding + role label
 
   revalidatePath("/dashboard/team")
   return {}

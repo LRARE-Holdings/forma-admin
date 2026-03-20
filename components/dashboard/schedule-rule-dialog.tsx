@@ -24,6 +24,7 @@ import { toast } from "sonner"
 interface ClassOption {
   id: string
   name: string
+  duration_mins: number
 }
 
 interface InstructorOption {
@@ -67,6 +68,29 @@ const RECURRENCE_OPTIONS = [
   { value: "monthly", label: "Monthly" },
 ]
 
+const DURATION_OPTIONS = [
+  { value: "15", label: "15 min" },
+  { value: "30", label: "30 min" },
+  { value: "45", label: "45 min" },
+  { value: "60", label: "1 hr" },
+  { value: "120", label: "2 hr" },
+]
+
+function addMinutes(time: string, minutes: number): string {
+  const [h, m] = time.split(":").map(Number)
+  const total = h * 60 + m + minutes
+  const hh = String(Math.floor(total / 60) % 24).padStart(2, "0")
+  const mm = String(total % 60).padStart(2, "0")
+  return `${hh}:${mm}`
+}
+
+function getDuration(startTime: string, endTime: string): string {
+  const [sh, sm] = startTime.split(":").map(Number)
+  const [eh, em] = endTime.split(":").map(Number)
+  const diff = (eh * 60 + em) - (sh * 60 + sm)
+  return String(diff > 0 ? diff : 60)
+}
+
 type EndMode = "forever" | "until_date" | "after_weeks"
 
 export function ScheduleRuleDialog({
@@ -83,6 +107,7 @@ export function ScheduleRuleDialog({
   const [instructorId, setInstructorId] = useState("")
   const [dayOfWeek, setDayOfWeek] = useState<number | null>(null)
   const [recurrence, setRecurrence] = useState("weekly")
+  const [duration, setDuration] = useState("60")
   const [endMode, setEndMode] = useState<EndMode>("forever")
   const [endsOn, setEndsOn] = useState("")
   const [afterWeeks, setAfterWeeks] = useState("12")
@@ -112,6 +137,7 @@ export function ScheduleRuleDialog({
       setInstructorId(editingRule.instructor_id)
       setDayOfWeek(editingRule.day_of_week)
       setRecurrence(editingRule.recurrence)
+      setDuration(getDuration(editingRule.start_time, editingRule.end_time))
       if (editingRule.ends_on) {
         setEndMode("until_date")
         setEndsOn(editingRule.ends_on)
@@ -124,6 +150,7 @@ export function ScheduleRuleDialog({
       setInstructorId("")
       setDayOfWeek(null)
       setRecurrence("weekly")
+      setDuration("60")
       setEndMode("forever")
       setEndsOn("")
       setAfterWeeks("12")
@@ -147,13 +174,21 @@ export function ScheduleRuleDialog({
       finalEndsOn = getEndDateFromWeeks(startsOn, weeks)
     }
 
+    // Compute end_time from start_time + duration
+    const startTime = formData.get("start_time") as string
+    if (!startTime) {
+      toast.error("Please set a start time")
+      return
+    }
+    const endTime = addMinutes(startTime, parseInt(duration))
+
     // Build a new FormData with computed values
     const fd = new FormData()
     fd.set("class_id", classId)
     fd.set("instructor_id", instructorId)
     fd.set("day_of_week", String(dayOfWeek))
-    fd.set("start_time", formData.get("start_time") as string)
-    fd.set("end_time", formData.get("end_time") as string)
+    fd.set("start_time", startTime)
+    fd.set("end_time", endTime)
     fd.set("recurrence", recurrence)
     fd.set("starts_on", startsOn)
     if (finalEndsOn) fd.set("ends_on", finalEndsOn)
@@ -185,7 +220,12 @@ export function ScheduleRuleDialog({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>Class</Label>
-              <Select value={classId} onValueChange={(v) => setClassId(v ?? "")}>
+              <Select value={classId} onValueChange={(v) => {
+                const id = v ?? ""
+                setClassId(id)
+                const cls = classes.find((c) => c.id === id)
+                if (cls) setDuration(String(cls.duration_mins))
+              }}>
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select a class">
                     {classId ? classes.find((c) => c.id === classId)?.name : null}
@@ -253,14 +293,19 @@ export function ScheduleRuleDialog({
               />
             </div>
             <div>
-              <Label htmlFor="end_time">End time</Label>
-              <Input
-                id="end_time"
-                name="end_time"
-                type="time"
-                required
-                defaultValue={editingRule?.end_time?.slice(0, 5) ?? ""}
-              />
+              <Label>Duration</Label>
+              <Select value={duration} onValueChange={(v) => setDuration(v ?? "60")}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {DURATION_OPTIONS.map((d) => (
+                    <SelectItem key={d.value} value={d.value}>
+                      {d.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 

@@ -24,11 +24,35 @@ import { toast } from "sonner"
 interface ClassOption {
   id: string
   name: string
+  duration_mins: number
 }
 
 interface InstructorOption {
   id: string
   name: string
+}
+
+const DURATION_OPTIONS = [
+  { value: "15", label: "15 min" },
+  { value: "30", label: "30 min" },
+  { value: "45", label: "45 min" },
+  { value: "60", label: "1 hr" },
+  { value: "120", label: "2 hr" },
+]
+
+function addMinutes(time: string, minutes: number): string {
+  const [h, m] = time.split(":").map(Number)
+  const total = h * 60 + m + minutes
+  const hh = String(Math.floor(total / 60) % 24).padStart(2, "0")
+  const mm = String(total % 60).padStart(2, "0")
+  return `${hh}:${mm}`
+}
+
+function getDuration(startTime: string, endTime: string): string {
+  const [sh, sm] = startTime.split(":").map(Number)
+  const [eh, em] = endTime.split(":").map(Number)
+  const diff = (eh * 60 + em) - (sh * 60 + sm)
+  return String(diff > 0 ? diff : 60)
 }
 
 interface SlotData {
@@ -71,16 +95,19 @@ export function ScheduleFormDialog({
   const [classId, setClassId] = useState("")
   const [instructorId, setInstructorId] = useState("")
   const [dayOfWeek, setDayOfWeek] = useState("")
+  const [duration, setDuration] = useState("60")
 
   useEffect(() => {
     if (open && editingSlot) {
       setClassId(editingSlot.class_id)
       setInstructorId(editingSlot.instructor_id)
       setDayOfWeek(String(editingSlot.day_of_week))
+      setDuration(getDuration(editingSlot.start_time, editingSlot.end_time))
     } else if (!open) {
       setClassId("")
       setInstructorId("")
       setDayOfWeek("")
+      setDuration("60")
       formRef.current?.reset()
     }
   }, [open, editingSlot])
@@ -90,6 +117,13 @@ export function ScheduleFormDialog({
       toast.error("Please fill in all fields")
       return
     }
+    const startTime = formData.get("start_time") as string
+    if (!startTime) {
+      toast.error("Please set a start time")
+      return
+    }
+    // Compute end_time from start_time + duration
+    formData.set("end_time", addMinutes(startTime, parseInt(duration)))
     try {
       if (isEditing) {
         await updateScheduleSlot(editingSlot!.id, formData)
@@ -118,7 +152,12 @@ export function ScheduleFormDialog({
 
           <div>
             <Label>Class</Label>
-            <Select value={classId} onValueChange={(v) => setClassId(v ?? "")}>
+            <Select value={classId} onValueChange={(v) => {
+                const id = v ?? ""
+                setClassId(id)
+                const cls = classes.find((c) => c.id === id)
+                if (cls) setDuration(String(cls.duration_mins))
+              }}>
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select a class">
                   {classId ? classes.find((c) => c.id === classId)?.name : null}
@@ -182,14 +221,19 @@ export function ScheduleFormDialog({
               />
             </div>
             <div>
-              <Label htmlFor="end_time">End time</Label>
-              <Input
-                id="end_time"
-                name="end_time"
-                type="time"
-                required
-                defaultValue={editingSlot?.end_time?.slice(0, 5) ?? ""}
-              />
+              <Label>Duration</Label>
+              <Select value={duration} onValueChange={(v) => setDuration(v ?? "60")}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {DURATION_OPTIONS.map((d) => (
+                    <SelectItem key={d.value} value={d.value}>
+                      {d.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 

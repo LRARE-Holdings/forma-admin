@@ -20,6 +20,7 @@ interface ClassOption {
   slug: string
   price_pence: number
   capacity: number
+  duration_mins: number
 }
 
 interface InstructorOption {
@@ -362,7 +363,7 @@ export function TimetableTable({
       <ScheduleFormDialog
         open={formOpen}
         onOpenChange={setFormOpen}
-        classes={classes.map((c) => ({ id: c.id, name: c.name }))}
+        classes={classes.map((c) => ({ id: c.id, name: c.name, duration_mins: c.duration_mins }))}
         instructors={instructors}
         editingSlot={editingSlot}
       />
@@ -371,7 +372,7 @@ export function TimetableTable({
       <ScheduleRuleDialog
         open={ruleFormOpen}
         onOpenChange={setRuleFormOpen}
-        classes={classes.map((c) => ({ id: c.id, name: c.name }))}
+        classes={classes.map((c) => ({ id: c.id, name: c.name, duration_mins: c.duration_mins }))}
         instructors={instructors}
         editingRule={editingRule}
       />

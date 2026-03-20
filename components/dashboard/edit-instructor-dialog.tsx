@@ -21,6 +21,7 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select"
+import { ImageCropDialog } from "@/components/dashboard/image-crop-dialog"
 import { updateInstructor, updateStaffRole, removeStaffMember } from "@/app/actions/team"
 import { createClient } from "@/lib/supabase/client"
 import { getInitial } from "@/lib/utils"
@@ -62,6 +63,8 @@ export function EditInstructorDialog({
   const [uploading, setUploading] = useState(false)
   const [role, setRole] = useState("")
   const [roleLoading, setRoleLoading] = useState(false)
+  const [cropSrc, setCropSrc] = useState<string | null>(null)
+  const [cropOpen, setCropOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleteLoading, setDeleteLoading] = useState(false)
 
@@ -72,6 +75,8 @@ export function EditInstructorDialog({
     } else if (!open) {
       setPhotoUrl(null)
       setRole("")
+      setCropSrc(null)
+      setCropOpen(false)
       formRef.current?.reset()
     }
   }, [open, instructor])
@@ -94,19 +99,42 @@ export function EditInstructorDialog({
     }
   }
 
-  async function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file || !instructor) return
 
+    const ALLOWED_TYPES = ["image/png", "image/jpeg"]
+    const MAX_SIZE = 3 * 1024 * 1024 // 3 MB
+
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      toast.error("Only PNG or JPG files are allowed")
+      return
+    }
+    if (file.size > MAX_SIZE) {
+      toast.error("Photo must be under 3 MB")
+      return
+    }
+
+    // Show the image in the crop dialog
+    const objectUrl = URL.createObjectURL(file)
+    setCropSrc(objectUrl)
+    setCropOpen(true)
+
+    // Reset file input so the same file can be re-selected
+    if (fileInputRef.current) fileInputRef.current.value = ""
+  }
+
+  async function handleCropComplete(blob: Blob) {
+    if (!instructor) return
+    setCropOpen(false)
     setUploading(true)
     try {
       const supabase = createClient()
-      const ext = file.name.split(".").pop()
-      const path = `instructors/${instructor.id}.${ext}`
+      const path = `instructors/${instructor.id}.jpg`
 
       const { error } = await supabase.storage
         .from("photos")
-        .upload(path, file, { upsert: true })
+        .upload(path, blob, { upsert: true, contentType: "image/jpeg" })
 
       if (error) throw error
 
@@ -120,6 +148,10 @@ export function EditInstructorDialog({
       toast.error(e instanceof Error ? e.message : "Failed to upload photo")
     } finally {
       setUploading(false)
+      if (cropSrc) {
+        URL.revokeObjectURL(cropSrc)
+        setCropSrc(null)
+      }
     }
   }
 
@@ -188,9 +220,9 @@ export function EditInstructorDialog({
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="image/*"
+                  accept="image/png,image/jpeg"
                   className="hidden"
-                  onChange={handlePhotoUpload}
+                  onChange={handleFileSelect}
                 />
               </div>
             </div>
@@ -270,6 +302,19 @@ export function EditInstructorDialog({
           </form>
         </DialogContent>
       </Dialog>
+
+      <ImageCropDialog
+        open={cropOpen}
+        onOpenChange={(v) => {
+          setCropOpen(v)
+          if (!v && cropSrc) {
+            URL.revokeObjectURL(cropSrc)
+            setCropSrc(null)
+          }
+        }}
+        imageSrc={cropSrc}
+        onCrop={handleCropComplete}
+      />
 
       <DeleteConfirmDialog
         open={deleteOpen}

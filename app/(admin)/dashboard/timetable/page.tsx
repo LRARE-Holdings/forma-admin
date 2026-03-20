@@ -17,7 +17,7 @@ export default async function TimetablePage() {
       .order("start_time"),
     supabase
       .from("classes")
-      .select("id, name, slug, price_pence, capacity")
+      .select("id, name, slug, price_pence, capacity, duration_mins")
       .eq("studio_id", studioId)
       .order("name"),
     supabase
@@ -80,6 +80,7 @@ export default async function TimetablePage() {
       slug: (slot.classes as Record<string, unknown>).slug as string,
       price_pence: (slot.classes as Record<string, unknown>).price_pence as number,
       capacity: ((slot.classes as Record<string, unknown>).capacity as number) ?? 10,
+      duration_mins: ((slot.classes as Record<string, unknown>).duration_mins as number) ?? 60,
     },
     instructors: {
       id: (slot.instructors as Record<string, unknown>).id as string,
@@ -93,6 +94,7 @@ export default async function TimetablePage() {
     slug: c.slug as string,
     price_pence: c.price_pence as number,
     capacity: (c.capacity as number) ?? 10,
+    duration_mins: (c.duration_mins as number) ?? 60,
   }))
 
   const instructors = (instructorsRes.data ?? []).map((i) => ({
