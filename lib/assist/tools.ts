@@ -964,6 +964,18 @@ export async function executeTool(
           bio: "",
         })
 
+        // Track invite status
+        const { data: { user: currentUser } } = await supabase.auth.getUser()
+        if (currentUser) {
+          await adminClient.from("admin_invites").insert({
+            studio_id: studioId,
+            email: input.email,
+            name: input.name,
+            role: "staff",
+            invited_by: currentUser.id,
+          })
+        }
+
         revalidatePath("/dashboard/team")
         return `${input.name} has been invited as staff. They'll receive a sign-in email at ${input.email}.`
       }

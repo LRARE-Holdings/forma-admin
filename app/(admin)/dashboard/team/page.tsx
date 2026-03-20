@@ -115,13 +115,25 @@ export default async function TeamPage() {
     })
   }
 
+  // Fetch pending invites
+  const { data: pendingInvites } = await supabase
+    .from("admin_invites")
+    .select("id, email, name, role, created_at, expires_at")
+    .eq("studio_id", studioId)
+    .eq("status", "pending")
+    .order("created_at", { ascending: false })
+
   return (
     <>
       <PageHeader
         title="Team"
         description="Manage your studio team and their roles."
       />
-      <TeamGrid team={team} currentProfileId={user?.id ?? null} />
+      <TeamGrid
+        team={team}
+        currentProfileId={user?.id ?? null}
+        pendingInvites={pendingInvites ?? []}
+      />
     </>
   )
 }
