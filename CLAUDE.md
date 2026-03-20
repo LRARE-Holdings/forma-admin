@@ -11,7 +11,9 @@ The admin and staff dashboard for studios on the **Forma** platform. This is whe
 - **Hosting:** Vercel (linked to GitHub)
 - **Email:** Resend (for admin notifications if needed)
 
-No Stripe integration in this app — payments are handled in `burn-public` (the public-facing studio site). This app is read-only with respect to financial data (viewing revenue, not processing payments).
+- **Payments:** Stripe (via Stripe Connect — each studio connects their own Standard account, paying their own Stripe fees)
+
+This app is the **single source of truth for all products** (class packs, drop-in classes, memberships). When an admin creates or edits a product, it is synced to the studio's connected Stripe account. The public site (`burn-public`) reads `stripe_price_id` from the database to power Stripe Elements checkout.
 
 ## What this app handles
 
@@ -24,9 +26,11 @@ Lucy logs in and sees the full dashboard:
 - **Bookings view** — see all upcoming and past bookings, filter by class/date/member
 - **Client list** — view all registered members, their booking history, pack balances
 - **Team management** — add/remove staff, assign roles
-- **Class packs** — manage pack tiers (pricing, credits, validity periods)
+- **Class packs** — manage pack tiers (pricing, credits, validity periods), synced to Stripe as one-time products
+- **Memberships** — manage recurring membership tiers (monthly/weekly/yearly), synced to Stripe as subscription products
 - **Revenue overview** — charts and summaries of income (read-only, data from Stripe via bookings)
-- **Settings** — studio profile, branding, contact details, link to Stripe Customer Portal for subscription/plan management
+- **Stripe Connect** — onboard studio's own Stripe Standard account, manage payment settings
+- **Settings** — studio profile, branding, contact details, Stripe Connect status
 
 ### Staff view (role: `staff`)
 
@@ -66,6 +70,9 @@ Same shared Supabase instance as `burn-public`. Every query scoped by `studio_id
 - `schedule` — admin has full CRUD; staff reads own assignments
 - `bookings` — admin reads all; staff reads only bookings for their assigned classes
 - `class_packs` — admin manages tiers and views balances; staff has no access
+- `pack_tiers` — admin manages; has `stripe_product_id` and `stripe_price_id` for Stripe sync
+- `membership_tiers` — admin manages recurring subscription products; synced to Stripe
+- `memberships` — tracks active member subscriptions with Stripe subscription IDs
 
 ### Auth roles (via studio_memberships)
 
@@ -85,7 +92,7 @@ Roles are per-studio, not per-user. A user's role is resolved by querying `studi
 ## Key architectural decisions
 
 1. **One app, two experiences** — role-based middleware splits the UI. No separate staff app.
-2. **Read-only financials** — revenue data is derived from bookings/payments stored by the public site's webhook handler. This app never touches Stripe directly.
+2. **Product source of truth** — this app creates and manages all Stripe Products and Prices on the studio's connected account. The public site reads `stripe_price_id` values from the DB. Revenue data is derived from bookings/payments. A webhook at `/api/stripe/webhook` handles post-payment events (pack purchases, subscription lifecycle).
 3. **Clone-ready** — same as burn-public: all studio-specific data from the DB, keyed by `STUDIO_ID`. One codebase serves every Forma studio's admin panel.
 4. **RLS is the security boundary** — even if middleware fails, RLS prevents cross-tenant data access. Defence in depth.
 5. **No member-facing features** — if you're thinking about adding something a member would see, it probably belongs in burn-public instead.
@@ -102,6 +109,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 RESEND_API_KEY=
 NEXT_PUBLIC_STUDIO_ID=
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
 ```
 
 ## Conventions
@@ -113,6 +122,7 @@ NEXT_PUBLIC_STUDIO_ID=
 - Components in `components/` with subdirectories: `components/dashboard/`, `components/staff/`, `components/shared/`
 - Shared timetable/booking components live in `components/shared/` and accept a `readOnly` prop for the staff view
 - `lib/` for shared utilities: `lib/supabase.ts`, `lib/auth.ts`
+- `lib/stripe/` for Stripe helpers: `index.ts` (client), `connect.ts` (Standard accounts), `products.ts` (product/price sync), `account.ts` (get studio's connected account)
 
 ## When working on this project
 
