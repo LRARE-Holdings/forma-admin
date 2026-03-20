@@ -1,30 +1,33 @@
 import { createClient } from "@/lib/supabase/server"
-import { STUDIO_ID } from "@/lib/constants"
+import { getUser } from "@/lib/auth"
+import { getStudioId } from "@/lib/studio-context"
 import { PageHeader } from "@/components/shared/page-header"
 import { TeamGrid } from "@/components/dashboard/team-grid"
 
 export default async function TeamPage() {
+  const user = await getUser()
   const supabase = await createClient()
+  const studioId = await getStudioId()
 
   // Fetch all non-member staff memberships (owner, admin, manager, reception, staff)
   const { data: staffMemberships } = await supabase
     .from("studio_memberships")
     .select("id, profile_id, role, profiles:profile_id(full_name, email)")
-    .eq("studio_id", STUDIO_ID)
+    .eq("studio_id", studioId)
     .neq("role", "member")
 
   // Fetch instructors
   const { data: instructors } = await supabase
     .from("instructors")
     .select("*")
-    .eq("studio_id", STUDIO_ID)
+    .eq("studio_id", studioId)
     .order("name")
 
   // Get schedule slots per instructor to show their classes
   const { data: scheduleSlots } = await supabase
     .from("schedule")
     .select("instructor_id, classes:class_id(name)")
-    .eq("studio_id", STUDIO_ID)
+    .eq("studio_id", studioId)
     .eq("is_active", true)
 
   const classesByInstructor: Record<string, Set<string>> = {}
@@ -44,8 +47,16 @@ export default async function TeamPage() {
     membershipByProfileId[sm.profile_id] = { id: sm.id, role: sm.role }
   }
 
-  // Build team list: start with instructor records, then add non-instructor memberships
-  const seenProfileIds = new Set<string>()
+  // Build a reverse lookup: profileId → instructor record
+  const instructorByProfileId: Record<string, typeof instructors extends (infer T)[] | null ? T : never> = {}
+  for (const inst of instructors ?? []) {
+    if (inst.profile_id) {
+      instructorByProfileId[inst.profile_id as string] = inst
+    }
+  }
+
+  // Build team from memberships (single source of truth for roles)
+  const seenInstructorIds = new Set<string>()
   const team: {
     id: string
     name: string
@@ -57,43 +68,50 @@ export default async function TeamPage() {
     classNames: string
   }[] = []
 
-  // Add instructors first
-  for (const instructor of instructors ?? []) {
-    const profileId = instructor.profile_id as string | null
-    if (profileId) seenProfileIds.add(profileId)
+  for (const sm of staffMemberships ?? []) {
+    const profile = sm.profiles as unknown as { full_name: string | null; email: string | null } | null
+    const inst = instructorByProfileId[sm.profile_id]
 
-    const classes = classesByInstructor[instructor.id as string]
-    const classNames = classes ? Array.from(classes).join(", ") : "No classes assigned"
-    const membership = profileId ? membershipByProfileId[profileId] : null
-
-    team.push({
-      id: instructor.id as string,
-      name: instructor.name as string,
-      bio: (instructor.bio as string) ?? "",
-      photo_url: (instructor.photo_url as string) ?? null,
-      profile_id: profileId,
-      membershipId: membership?.id ?? null,
-      role: membership?.role ?? "staff",
-      classNames,
-    })
+    if (inst) {
+      seenInstructorIds.add(inst.id as string)
+      const classes = classesByInstructor[inst.id as string]
+      team.push({
+        id: inst.id as string,
+        name: (inst.name as string) || profile?.full_name || profile?.email || "Unknown",
+        bio: (inst.bio as string) ?? "",
+        photo_url: (inst.photo_url as string) ?? null,
+        profile_id: sm.profile_id,
+        membershipId: sm.id,
+        role: sm.role,
+        classNames: classes ? Array.from(classes).join(", ") : "No classes assigned",
+      })
+    } else {
+      team.push({
+        id: sm.id,
+        name: profile?.full_name ?? profile?.email ?? "Unknown",
+        bio: "",
+        photo_url: null,
+        profile_id: sm.profile_id,
+        membershipId: sm.id,
+        role: sm.role,
+        classNames: "",
+      })
+    }
   }
 
-  // Add non-instructor staff (manager, reception, admins without instructor records)
-  for (const sm of staffMemberships ?? []) {
-    if (seenProfileIds.has(sm.profile_id)) continue
-    seenProfileIds.add(sm.profile_id)
-
-    const profile = sm.profiles as unknown as { full_name: string | null; email: string | null } | null
-
+  // Add orphaned instructor records (no linked profile/membership)
+  for (const inst of instructors ?? []) {
+    if (seenInstructorIds.has(inst.id as string)) continue
+    const classes = classesByInstructor[inst.id as string]
     team.push({
-      id: sm.id,
-      name: profile?.full_name ?? profile?.email ?? "Unknown",
-      bio: "",
-      photo_url: null,
-      profile_id: sm.profile_id,
-      membershipId: sm.id,
-      role: sm.role,
-      classNames: "",
+      id: inst.id as string,
+      name: inst.name as string,
+      bio: (inst.bio as string) ?? "",
+      photo_url: (inst.photo_url as string) ?? null,
+      profile_id: (inst.profile_id as string) ?? null,
+      membershipId: null,
+      role: "staff",
+      classNames: classes ? Array.from(classes).join(", ") : "No classes assigned",
     })
   }
 
@@ -103,7 +121,7 @@ export default async function TeamPage() {
         title="Team"
         description="Manage your studio team and their roles."
       />
-      <TeamGrid team={team} />
+      <TeamGrid team={team} currentProfileId={user?.id ?? null} />
     </>
   )
 }

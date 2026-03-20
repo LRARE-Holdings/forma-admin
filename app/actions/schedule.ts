@@ -3,10 +3,11 @@
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { requireManager } from "@/lib/auth"
-import { STUDIO_ID } from "@/lib/constants"
+import { getStudioId } from "@/lib/studio-context"
 
 export async function createScheduleSlot(formData: FormData) {
   await requireManager()
+  const studioId = await getStudioId()
   const supabase = await createClient()
 
   const class_id = formData.get("class_id") as string
@@ -16,7 +17,7 @@ export async function createScheduleSlot(formData: FormData) {
   const end_time = formData.get("end_time") as string
 
   const { error } = await supabase.from("schedule").insert({
-    studio_id: STUDIO_ID,
+    studio_id: studioId,
     class_id,
     instructor_id,
     day_of_week,
@@ -31,6 +32,7 @@ export async function createScheduleSlot(formData: FormData) {
 
 export async function updateScheduleSlot(slotId: string, formData: FormData) {
   await requireManager()
+  const studioId = await getStudioId()
   const supabase = await createClient()
 
   const class_id = formData.get("class_id") as string
@@ -43,7 +45,7 @@ export async function updateScheduleSlot(slotId: string, formData: FormData) {
     .from("schedule")
     .update({ class_id, instructor_id, day_of_week, start_time, end_time })
     .eq("id", slotId)
-    .eq("studio_id", STUDIO_ID)
+    .eq("studio_id", studioId)
 
   if (error) throw new Error(error.message)
   revalidatePath("/dashboard/timetable")
@@ -52,13 +54,14 @@ export async function updateScheduleSlot(slotId: string, formData: FormData) {
 
 export async function deleteScheduleSlot(slotId: string) {
   await requireManager()
+  const studioId = await getStudioId()
   const supabase = await createClient()
 
   const { error } = await supabase
     .from("schedule")
     .update({ is_active: false })
     .eq("id", slotId)
-    .eq("studio_id", STUDIO_ID)
+    .eq("studio_id", studioId)
 
   if (error) throw new Error(error.message)
   revalidatePath("/dashboard/timetable")

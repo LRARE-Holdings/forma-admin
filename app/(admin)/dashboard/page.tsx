@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { getUser } from "@/lib/auth"
-import { STUDIO_ID } from "@/lib/constants"
+import { getStudioId } from "@/lib/studio-context"
 import { getGreeting, formatTime, formatPence } from "@/lib/utils"
 import { StatCard } from "@/components/shared/stat-card"
 import { ClassColorBar } from "@/components/shared/class-color-bar"
@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/shared/page-header"
 
 export default async function OverviewPage() {
   const supabase = await createClient()
+  const studioId = await getStudioId()
   const user = await getUser()
 
   const { data: profile } = await supabase
@@ -33,7 +34,7 @@ export default async function OverviewPage() {
       supabase
         .from("schedule")
         .select("*, classes(*), instructors(*)")
-        .eq("studio_id", STUDIO_ID)
+        .eq("studio_id", studioId)
         .eq("day_of_week", dow)
         .eq("is_active", true)
         .order("start_time"),
@@ -41,20 +42,20 @@ export default async function OverviewPage() {
       supabase
         .from("bookings")
         .select("id")
-        .eq("studio_id", STUDIO_ID)
+        .eq("studio_id", studioId)
         .eq("date", today)
         .eq("status", "confirmed"),
       // Active members count
       supabase
         .from("studio_memberships")
         .select("id")
-        .eq("studio_id", STUDIO_ID)
+        .eq("studio_id", studioId)
         .eq("role", "member"),
       // Revenue this month (bookings with stripe payment)
       supabase
         .from("bookings")
         .select("schedule:schedule_id(classes:class_id(price_pence))")
-        .eq("studio_id", STUDIO_ID)
+        .eq("studio_id", studioId)
         .eq("status", "confirmed")
         .eq("payment_method", "stripe")
         .gte("date", `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`),
@@ -62,7 +63,7 @@ export default async function OverviewPage() {
       supabase
         .from("bookings")
         .select("*, profiles:profile_id(full_name), schedule:schedule_id(start_time, classes:class_id(name))")
-        .eq("studio_id", STUDIO_ID)
+        .eq("studio_id", studioId)
         .order("created_at", { ascending: false })
         .limit(7),
     ])
@@ -87,7 +88,7 @@ export default async function OverviewPage() {
   const { data: todayBookings } = await supabase
     .from("bookings")
     .select("schedule_id")
-    .eq("studio_id", STUDIO_ID)
+    .eq("studio_id", studioId)
     .eq("date", today)
     .eq("status", "confirmed")
 

@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server"
-import { STUDIO_ID } from "@/lib/constants"
+import { getStudioId } from "@/lib/studio-context"
 import { getAssistRateLimit } from "./constants"
 import type { UserRole } from "@/lib/types"
 
@@ -25,6 +25,7 @@ export async function checkAndIncrementUsage(
     return { allowed: false, remaining: 0, limit: 0, used: 0 }
   }
 
+  const studioId = await getStudioId()
   const supabase = await createClient()
   const today = new Date().toISOString().split("T")[0]
 
@@ -32,7 +33,7 @@ export async function checkAndIncrementUsage(
   const { data: existing } = await supabase
     .from("assist_usage")
     .select("id, request_count")
-    .eq("studio_id", STUDIO_ID)
+    .eq("studio_id", studioId)
     .eq("profile_id", profileId)
     .eq("date", today)
     .single()
@@ -64,7 +65,7 @@ export async function checkAndIncrementUsage(
 
   // First request today — insert
   await supabase.from("assist_usage").insert({
-    studio_id: STUDIO_ID,
+    studio_id: studioId,
     profile_id: profileId,
     date: today,
     request_count: 1,
@@ -84,13 +85,14 @@ export async function getUsage(
   const limit = getAssistRateLimit(planTier, role)
   if (limit === 0) return { used: 0, limit: 0, remaining: 0 }
 
+  const studioId = await getStudioId()
   const supabase = await createClient()
   const today = new Date().toISOString().split("T")[0]
 
   const { data } = await supabase
     .from("assist_usage")
     .select("request_count")
-    .eq("studio_id", STUDIO_ID)
+    .eq("studio_id", studioId)
     .eq("profile_id", profileId)
     .eq("date", today)
     .single()

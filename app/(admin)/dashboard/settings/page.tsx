@@ -1,16 +1,17 @@
 import { createClient } from "@/lib/supabase/server"
-import { STUDIO_ID } from "@/lib/constants"
+import { getStudioId } from "@/lib/studio-context"
 import { PageHeader } from "@/components/shared/page-header"
 import { SettingsForm } from "@/components/dashboard/settings-form"
 import { StripeConnectCard } from "@/components/dashboard/stripe-connect-card"
 
 export default async function SettingsPage() {
   const supabase = await createClient()
+  const studioId = await getStudioId()
 
   const { data: studio } = await supabase
     .from("studios")
     .select("*")
-    .eq("id", STUDIO_ID)
+    .eq("id", studioId)
     .single()
 
   if (!studio) {

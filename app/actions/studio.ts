@@ -3,10 +3,11 @@
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { requireAdmin } from "@/lib/auth"
-import { STUDIO_ID } from "@/lib/constants"
+import { getStudioId } from "@/lib/studio-context"
 
 export async function updateStudioSettings(formData: FormData) {
   await requireAdmin()
+  const studioId = await getStudioId()
   const supabase = await createClient()
 
   const name = formData.get("name") as string
@@ -17,7 +18,7 @@ export async function updateStudioSettings(formData: FormData) {
   const { error } = await supabase
     .from("studios")
     .update({ name, domain, email_from, email_domain })
-    .eq("id", STUDIO_ID)
+    .eq("id", studioId)
 
   if (error) throw new Error(error.message)
   revalidatePath("/dashboard/settings")

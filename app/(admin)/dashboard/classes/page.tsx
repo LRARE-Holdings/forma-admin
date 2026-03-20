@@ -1,29 +1,30 @@
 import { createClient } from "@/lib/supabase/server"
-import { STUDIO_ID } from "@/lib/constants"
+import { getStudioId } from "@/lib/studio-context"
 import { PageHeader } from "@/components/shared/page-header"
 import { ClassesTable } from "@/components/dashboard/classes-table"
 import { StripeConnectBanner } from "@/components/dashboard/stripe-connect-banner"
 
 export default async function ClassesPage() {
   const supabase = await createClient()
+  const studioId = await getStudioId()
 
   const { data: studio } = await supabase
     .from("studios")
     .select("stripe_onboarding_complete")
-    .eq("id", STUDIO_ID)
+    .eq("id", studioId)
     .single()
 
   const { data: classes } = await supabase
     .from("classes")
     .select("*")
-    .eq("studio_id", STUDIO_ID)
+    .eq("studio_id", studioId)
     .order("name")
 
   // Count schedule slots per class
   const { data: scheduleSlots } = await supabase
     .from("schedule")
     .select("class_id")
-    .eq("studio_id", STUDIO_ID)
+    .eq("studio_id", studioId)
     .eq("is_active", true)
 
   const slotsByClass: Record<string, number> = {}

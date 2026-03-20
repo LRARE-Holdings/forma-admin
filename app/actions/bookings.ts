@@ -3,10 +3,11 @@
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { requireReception, requireManager } from "@/lib/auth"
-import { STUDIO_ID } from "@/lib/constants"
+import { getStudioId } from "@/lib/studio-context"
 
 export async function createManualBooking(formData: FormData) {
   await requireReception()
+  const studioId = await getStudioId()
   const supabase = await createClient()
 
   const profile_id = formData.get("profile_id") as string
@@ -23,7 +24,7 @@ export async function createManualBooking(formData: FormData) {
     const { data: packs } = await supabase
       .from("class_packs")
       .select("id, credits_remaining")
-      .eq("studio_id", STUDIO_ID)
+      .eq("studio_id", studioId)
       .eq("profile_id", profile_id)
       .gt("credits_remaining", 0)
       .gte("expires_at", new Date().toISOString())
@@ -44,7 +45,7 @@ export async function createManualBooking(formData: FormData) {
   }
 
   const { error } = await supabase.from("bookings").insert({
-    studio_id: STUDIO_ID,
+    studio_id: studioId,
     profile_id,
     schedule_id,
     date,
@@ -59,6 +60,7 @@ export async function createManualBooking(formData: FormData) {
 
 export async function cancelBooking(bookingId: string) {
   await requireManager()
+  const studioId = await getStudioId()
   const supabase = await createClient()
 
   // Get the booking to check payment method
@@ -66,7 +68,7 @@ export async function cancelBooking(bookingId: string) {
     .from("bookings")
     .select("*")
     .eq("id", bookingId)
-    .eq("studio_id", STUDIO_ID)
+    .eq("studio_id", studioId)
     .single()
 
   if (!booking) throw new Error("Booking not found")
@@ -77,7 +79,7 @@ export async function cancelBooking(bookingId: string) {
     const { data: packs } = await supabase
       .from("class_packs")
       .select("id, credits_remaining, credits_total")
-      .eq("studio_id", STUDIO_ID)
+      .eq("studio_id", studioId)
       .eq("profile_id", booking.profile_id)
       .order("expires_at", { ascending: true })
       .limit(1)
@@ -100,7 +102,7 @@ export async function cancelBooking(bookingId: string) {
     .from("bookings")
     .update({ status: "cancelled" })
     .eq("id", bookingId)
-    .eq("studio_id", STUDIO_ID)
+    .eq("studio_id", studioId)
 
   if (error) throw new Error(error.message)
   revalidatePath("/dashboard/bookings")

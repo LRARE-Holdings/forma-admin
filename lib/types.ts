@@ -12,19 +12,45 @@ export const MANAGER_ROLES: UserRole[] = ["owner", "admin", "manager"]
 /** Roles that can view bookings/members and create manual bookings */
 export const RECEPTION_ROLES: UserRole[] = ["owner", "admin", "manager", "reception"]
 
+export interface StudioBrandingColors {
+  wheat: string
+  cocoa: string
+  gold: string
+  cream: string
+  sand: string
+  charcoal: string
+  slate: string
+  warmGrey: string
+  ember: string
+  blush: string
+  success: string
+  successBg: string
+}
+
+export interface StudioBranding {
+  colors: StudioBrandingColors
+  fonts: {
+    heading: string
+    body: string
+  }
+  borderRadius: string
+}
+
 export interface Studio {
   id: string
   name: string
   slug: string
   domain: string | null
+  admin_domain: string | null
   email_from: string | null
   email_domain: string | null
-  branding: Record<string, unknown>
+  branding: StudioBranding | null
   stripe_customer_id: string | null
   stripe_subscription_id: string | null
   stripe_account_id: string | null
   stripe_onboarding_complete: boolean
   plan_tier: string
+  timezone: string | null
   active: boolean
   created_at: string
   updated_at: string

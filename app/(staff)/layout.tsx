@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation"
 import { getUser, getUserRole } from "@/lib/auth"
 import { createClient } from "@/lib/supabase/server"
-import { STUDIO_ID } from "@/lib/constants"
+import { getStudioId } from "@/lib/studio-context"
 import { TopBar } from "@/components/staff/top-bar"
 import type { Studio, Profile } from "@/lib/types"
 
@@ -15,13 +15,14 @@ export default async function StaffLayout({
 
   const role = await getUserRole()
   if (role !== "owner" && role !== "admin" && role !== "staff") redirect("/login")
+  const studioId = await getStudioId()
 
   const supabase = await createClient()
 
   const { data: studio } = await supabase
     .from("studios")
     .select("*")
-    .eq("id", STUDIO_ID)
+    .eq("id", studioId)
     .single()
 
   const { data: profile } = await supabase

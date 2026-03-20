@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { requireAdmin } from "@/lib/auth"
-import { STUDIO_ID } from "@/lib/constants"
+import { getStudioId } from "@/lib/studio-context"
 import { getStudioStripeAccount } from "@/lib/stripe/account"
 import {
   createStripeProduct,
@@ -16,6 +16,7 @@ import type { BillingInterval } from "@/lib/types"
 
 export async function createMembershipTier(formData: FormData) {
   await requireAdmin()
+  const studioId = await getStudioId()
   const supabase = await createClient()
 
   const name = formData.get("name") as string
@@ -31,7 +32,7 @@ export async function createMembershipTier(formData: FormData) {
   const { data: tier, error } = await supabase
     .from("membership_tiers")
     .insert({
-      studio_id: STUDIO_ID,
+      studio_id: studioId,
       name,
       description,
       price_pence,
@@ -76,6 +77,7 @@ export async function createMembershipTier(formData: FormData) {
 
 export async function updateMembershipTier(tierId: string, formData: FormData) {
   await requireAdmin()
+  const studioId = await getStudioId()
   const supabase = await createClient()
 
   const name = formData.get("name") as string
@@ -89,14 +91,14 @@ export async function updateMembershipTier(tierId: string, formData: FormData) {
     .from("membership_tiers")
     .select("price_pence, interval, interval_count, stripe_product_id, stripe_price_id")
     .eq("id", tierId)
-    .eq("studio_id", STUDIO_ID)
+    .eq("studio_id", studioId)
     .single()
 
   const { error } = await supabase
     .from("membership_tiers")
     .update({ name, description, price_pence, interval, interval_count })
     .eq("id", tierId)
-    .eq("studio_id", STUDIO_ID)
+    .eq("studio_id", studioId)
 
   if (error) throw new Error(error.message)
 
@@ -141,6 +143,7 @@ export async function updateMembershipTier(tierId: string, formData: FormData) {
 
 export async function deleteMembershipTier(tierId: string) {
   await requireAdmin()
+  const studioId = await getStudioId()
   const supabase = await createClient()
 
   // Fetch Stripe IDs before archiving
@@ -148,14 +151,14 @@ export async function deleteMembershipTier(tierId: string) {
     .from("membership_tiers")
     .select("stripe_product_id, stripe_price_id")
     .eq("id", tierId)
-    .eq("studio_id", STUDIO_ID)
+    .eq("studio_id", studioId)
     .single()
 
   const { error } = await supabase
     .from("membership_tiers")
     .update({ is_active: false })
     .eq("id", tierId)
-    .eq("studio_id", STUDIO_ID)
+    .eq("studio_id", studioId)
 
   if (error) throw new Error(error.message)
 

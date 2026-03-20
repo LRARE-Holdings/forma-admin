@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server"
 import { requireAdmin } from "@/lib/auth"
-import { STUDIO_ID } from "@/lib/constants"
+import { getStudioId } from "@/lib/studio-context"
 import {
   createConnectedAccount,
   createAccountLink,
@@ -17,13 +17,14 @@ import { revalidatePath } from "next/cache"
  */
 export async function startStripeOnboarding() {
   await requireAdmin()
+  const studioId = await getStudioId()
   const supabase = await createClient()
 
   // Fetch current studio
   const { data: studio, error: studioError } = await supabase
     .from("studios")
     .select("id, name, stripe_account_id, stripe_onboarding_complete")
-    .eq("id", STUDIO_ID)
+    .eq("id", studioId)
     .single()
 
   if (studioError || !studio) throw new Error("Studio not found")
@@ -46,7 +47,7 @@ export async function startStripeOnboarding() {
     const { error: updateError } = await supabase
       .from("studios")
       .update({ stripe_account_id: accountId })
-      .eq("id", STUDIO_ID)
+      .eq("id", studioId)
 
     if (updateError) throw new Error(updateError.message)
   }
@@ -70,12 +71,13 @@ export async function startStripeOnboarding() {
  */
 export async function checkStripeStatus() {
   await requireAdmin()
+  const studioId = await getStudioId()
   const supabase = await createClient()
 
   const { data: studio } = await supabase
     .from("studios")
     .select("stripe_account_id, stripe_onboarding_complete")
-    .eq("id", STUDIO_ID)
+    .eq("id", studioId)
     .single()
 
   if (!studio?.stripe_account_id) {
@@ -89,7 +91,7 @@ export async function checkStripeStatus() {
     await supabase
       .from("studios")
       .update({ stripe_onboarding_complete: true })
-      .eq("id", STUDIO_ID)
+      .eq("id", studioId)
 
     revalidatePath("/dashboard/settings")
   }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getAccountStatus } from "@/lib/stripe/connect"
-import { STUDIO_ID } from "@/lib/constants"
+import { getStudioId } from "@/lib/studio-context"
 import {
   createStripeProduct,
   createStripePrice,
@@ -14,6 +14,7 @@ import {
  * Checks account status, updates DB, and syncs any existing products.
  */
 export async function GET(request: NextRequest) {
+  const studioId = await getStudioId()
   const accountId = request.nextUrl.searchParams.get("account_id")
 
   if (!accountId) {
@@ -29,10 +30,10 @@ export async function GET(request: NextRequest) {
       await supabase
         .from("studios")
         .update({ stripe_onboarding_complete: true })
-        .eq("id", STUDIO_ID)
+        .eq("id", studioId)
 
       // Bulk-sync any existing products that don't have Stripe IDs yet
-      await syncExistingProducts(supabase, accountId)
+      await syncExistingProducts(supabase, accountId, studioId)
     }
 
     return NextResponse.redirect(new URL("/dashboard/settings", request.url))
@@ -48,12 +49,13 @@ export async function GET(request: NextRequest) {
 async function syncExistingProducts(
   supabase: ReturnType<typeof createAdminClient>,
   stripeAccountId: string,
+  studioId: string,
 ) {
   // Sync pack tiers
   const { data: packTiers } = await supabase
     .from("pack_tiers")
     .select("*")
-    .eq("studio_id", STUDIO_ID)
+    .eq("studio_id", studioId)
     .eq("is_active", true)
     .is("stripe_product_id", null)
 
@@ -85,7 +87,7 @@ async function syncExistingProducts(
   const { data: classes } = await supabase
     .from("classes")
     .select("*")
-    .eq("studio_id", STUDIO_ID)
+    .eq("studio_id", studioId)
     .is("stripe_product_id", null)
 
   for (const cls of classes ?? []) {
@@ -116,7 +118,7 @@ async function syncExistingProducts(
   const { data: membershipTiers } = await supabase
     .from("membership_tiers")
     .select("*")
-    .eq("studio_id", STUDIO_ID)
+    .eq("studio_id", studioId)
     .eq("is_active", true)
     .is("stripe_product_id", null)
 

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { requireAdmin } from "@/lib/auth"
-import { STUDIO_ID } from "@/lib/constants"
+import { getStudioId } from "@/lib/studio-context"
 import { getStudioStripeAccount } from "@/lib/stripe/account"
 import {
   createStripeProduct,
@@ -15,6 +15,7 @@ import {
 
 export async function createClass(formData: FormData) {
   await requireAdmin()
+  const studioId = await getStudioId()
   const supabase = await createClient()
 
   const name = formData.get("name") as string
@@ -27,7 +28,7 @@ export async function createClass(formData: FormData) {
   const { data: cls, error } = await supabase
     .from("classes")
     .insert({
-      studio_id: STUDIO_ID,
+      studio_id: studioId,
       name,
       slug,
       description,
@@ -67,6 +68,7 @@ export async function createClass(formData: FormData) {
 
 export async function updateClass(classId: string, formData: FormData) {
   await requireAdmin()
+  const studioId = await getStudioId()
   const supabase = await createClient()
 
   const name = formData.get("name") as string
@@ -80,14 +82,14 @@ export async function updateClass(classId: string, formData: FormData) {
     .from("classes")
     .select("price_pence, stripe_product_id, stripe_price_id")
     .eq("id", classId)
-    .eq("studio_id", STUDIO_ID)
+    .eq("studio_id", studioId)
     .single()
 
   const { error } = await supabase
     .from("classes")
     .update({ name, description, duration_mins, price_pence, capacity })
     .eq("id", classId)
-    .eq("studio_id", STUDIO_ID)
+    .eq("studio_id", studioId)
 
   if (error) throw new Error(error.message)
 
@@ -126,6 +128,7 @@ export async function updateClass(classId: string, formData: FormData) {
 
 export async function deleteClass(classId: string) {
   await requireAdmin()
+  const studioId = await getStudioId()
   const supabase = await createClient()
 
   // Check for active schedule slots
@@ -145,14 +148,14 @@ export async function deleteClass(classId: string) {
     .from("classes")
     .select("stripe_product_id, stripe_price_id")
     .eq("id", classId)
-    .eq("studio_id", STUDIO_ID)
+    .eq("studio_id", studioId)
     .single()
 
   const { error } = await supabase
     .from("classes")
     .delete()
     .eq("id", classId)
-    .eq("studio_id", STUDIO_ID)
+    .eq("studio_id", studioId)
 
   if (error) throw new Error(error.message)
 

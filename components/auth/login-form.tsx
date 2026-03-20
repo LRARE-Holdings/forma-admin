@@ -2,13 +2,16 @@
 
 import { useState } from "react"
 import { createClient } from "@/lib/supabase/client"
-import { STUDIO_ID } from "@/lib/constants"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Mail, Loader2, CheckCircle } from "lucide-react"
 
-export function LoginForm() {
+interface LoginFormProps {
+  studioId: string
+}
+
+export function LoginForm({ studioId }: LoginFormProps) {
   const [email, setEmail] = useState("")
   const [loading, setLoading] = useState(false)
   const [sent, setSent] = useState(false)
@@ -24,7 +27,7 @@ export function LoginForm() {
       email,
       options: {
         emailRedirectTo: `${window.location.origin}/auth/callback`,
-        data: { studio_id: STUDIO_ID },
+        data: { studio_id: studioId },
       },
     })
 

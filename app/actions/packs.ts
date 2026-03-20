@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { requireAdmin } from "@/lib/auth"
-import { STUDIO_ID } from "@/lib/constants"
+import { getStudioId } from "@/lib/studio-context"
 import { getStudioStripeAccount } from "@/lib/stripe/account"
 import {
   createStripeProduct,
@@ -17,6 +17,7 @@ import {
 
 export async function createPackTier(formData: FormData) {
   await requireAdmin()
+  const studioId = await getStudioId()
   const supabase = await createClient()
 
   const name = formData.get("name") as string
@@ -32,7 +33,7 @@ export async function createPackTier(formData: FormData) {
   const { data: tier, error } = await supabase
     .from("pack_tiers")
     .insert({
-      studio_id: STUDIO_ID,
+      studio_id: studioId,
       name,
       credits,
       price_pence,
@@ -72,6 +73,7 @@ export async function createPackTier(formData: FormData) {
 
 export async function updatePackTier(tierId: string, formData: FormData) {
   await requireAdmin()
+  const studioId = await getStudioId()
   const supabase = await createClient()
 
   const name = formData.get("name") as string
@@ -84,7 +86,7 @@ export async function updatePackTier(tierId: string, formData: FormData) {
     .from("pack_tiers")
     .select("price_pence, stripe_product_id, stripe_price_id")
     .eq("id", tierId)
-    .eq("studio_id", STUDIO_ID)
+    .eq("studio_id", studioId)
     .single()
 
   // Update DB
@@ -92,7 +94,7 @@ export async function updatePackTier(tierId: string, formData: FormData) {
     .from("pack_tiers")
     .update({ name, credits, price_pence, validity_days })
     .eq("id", tierId)
-    .eq("studio_id", STUDIO_ID)
+    .eq("studio_id", studioId)
 
   if (error) throw new Error(error.message)
 
@@ -133,6 +135,7 @@ export async function updatePackTier(tierId: string, formData: FormData) {
 
 export async function deletePackTier(tierId: string) {
   await requireAdmin()
+  const studioId = await getStudioId()
   const supabase = await createClient()
 
   // Fetch Stripe IDs before archiving
@@ -140,7 +143,7 @@ export async function deletePackTier(tierId: string) {
     .from("pack_tiers")
     .select("stripe_product_id, stripe_price_id")
     .eq("id", tierId)
-    .eq("studio_id", STUDIO_ID)
+    .eq("studio_id", studioId)
     .single()
 
   // Soft-delete in DB
@@ -148,7 +151,7 @@ export async function deletePackTier(tierId: string) {
     .from("pack_tiers")
     .update({ is_active: false })
     .eq("id", tierId)
-    .eq("studio_id", STUDIO_ID)
+    .eq("studio_id", studioId)
 
   if (error) throw new Error(error.message)
 
@@ -172,6 +175,7 @@ export async function deletePackTier(tierId: string) {
 
 export async function addMemberCredits(formData: FormData) {
   await requireAdmin()
+  const studioId = await getStudioId()
   const supabase = await createClient()
 
   const profile_id = formData.get("profile_id") as string
@@ -186,7 +190,7 @@ export async function addMemberCredits(formData: FormData) {
   expires_at.setDate(expires_at.getDate() + validity_days)
 
   const { error } = await supabase.from("class_packs").insert({
-    studio_id: STUDIO_ID,
+    studio_id: studioId,
     profile_id,
     pack_type: String(credits),
     credits_total: credits,
@@ -202,6 +206,7 @@ export async function addMemberCredits(formData: FormData) {
 
 export async function adjustMemberCredits(packId: string, formData: FormData) {
   await requireAdmin()
+  const studioId = await getStudioId()
   const supabase = await createClient()
 
   const credits_remaining = parseInt(formData.get("credits_remaining") as string)
@@ -214,7 +219,7 @@ export async function adjustMemberCredits(packId: string, formData: FormData) {
     .from("class_packs")
     .update({ credits_remaining })
     .eq("id", packId)
-    .eq("studio_id", STUDIO_ID)
+    .eq("studio_id", studioId)
 
   if (error) throw new Error(error.message)
   revalidatePath("/dashboard/members")

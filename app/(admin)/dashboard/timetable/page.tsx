@@ -1,33 +1,34 @@
 import { createClient } from "@/lib/supabase/server"
-import { STUDIO_ID } from "@/lib/constants"
+import { getStudioId } from "@/lib/studio-context"
 import { PageHeader } from "@/components/shared/page-header"
 import { TimetableTable } from "@/components/dashboard/timetable-table"
 
 export default async function TimetablePage() {
   const supabase = await createClient()
+  const studioId = await getStudioId()
 
   const [scheduleRes, classesRes, instructorsRes, rulesRes] = await Promise.all([
     supabase
       .from("schedule")
       .select("*, classes(*), instructors(*)")
-      .eq("studio_id", STUDIO_ID)
+      .eq("studio_id", studioId)
       .eq("is_active", true)
       .order("day_of_week")
       .order("start_time"),
     supabase
       .from("classes")
       .select("id, name, slug, price_pence, capacity")
-      .eq("studio_id", STUDIO_ID)
+      .eq("studio_id", studioId)
       .order("name"),
     supabase
       .from("instructors")
       .select("id, name")
-      .eq("studio_id", STUDIO_ID)
+      .eq("studio_id", studioId)
       .order("name"),
     supabase
       .from("schedule_rules")
       .select("*, classes:class_id(name), instructors:instructor_id(name)")
-      .eq("studio_id", STUDIO_ID)
+      .eq("studio_id", studioId)
       .eq("is_active", true)
       .order("day_of_week")
       .order("start_time"),
@@ -48,7 +49,7 @@ export default async function TimetablePage() {
   const { data: weekBookings } = await supabase
     .from("bookings")
     .select("schedule_id, date")
-    .eq("studio_id", STUDIO_ID)
+    .eq("studio_id", studioId)
     .eq("status", "confirmed")
     .gte("date", mondayStr)
     .lte("date", sundayStr)

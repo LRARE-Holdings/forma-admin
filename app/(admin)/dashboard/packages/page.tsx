@@ -1,22 +1,23 @@
 import { createClient } from "@/lib/supabase/server"
-import { STUDIO_ID } from "@/lib/constants"
+import { getStudioId } from "@/lib/studio-context"
 import { PageHeader } from "@/components/shared/page-header"
 import { PackTiersTable } from "@/components/dashboard/pack-tiers-table"
 import { StripeConnectBanner } from "@/components/dashboard/stripe-connect-banner"
 
 export default async function PackagesPage() {
   const supabase = await createClient()
+  const studioId = await getStudioId()
 
   const { data: studio } = await supabase
     .from("studios")
     .select("stripe_onboarding_complete")
-    .eq("id", STUDIO_ID)
+    .eq("id", studioId)
     .single()
 
   const { data: tiers } = await supabase
     .from("pack_tiers")
     .select("*")
-    .eq("studio_id", STUDIO_ID)
+    .eq("studio_id", studioId)
     .order("credits", { ascending: true })
 
   const rows = (tiers ?? []).map((t) => ({

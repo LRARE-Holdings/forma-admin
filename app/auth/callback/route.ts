@@ -1,38 +1,53 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { STUDIO_ID } from "@/lib/constants"
+import { getStudioId } from "@/lib/studio-context"
 import { DASHBOARD_ROLES } from "@/lib/types"
 import type { UserRole } from "@/lib/types"
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl
   const code = searchParams.get("code")
+  const tokenHash = searchParams.get("token_hash")
+  const type = searchParams.get("type")
+
+  const studioId = await getStudioId()
+  const supabase = await createClient()
+
+  let authError: Error | null = null
 
   if (code) {
-    const supabase = await createClient()
+    // PKCE flow (standard Supabase redirect)
     const { error } = await supabase.auth.exchangeCodeForSession(code)
+    authError = error
+  } else if (tokenHash && type) {
+    // Token hash flow (magic link via send-email edge function)
+    const { error } = await supabase.auth.verifyOtp({
+      token_hash: tokenHash,
+      type: type as "magiclink" | "signup" | "recovery" | "invite" | "email",
+    })
+    authError = error
+  }
 
-    if (!error) {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
+  if (!authError) {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
-      if (user) {
-        const { data: membership } = await supabase
-          .from("studio_memberships")
-          .select("role")
-          .eq("studio_id", STUDIO_ID)
-          .eq("profile_id", user.id)
-          .single()
+    if (user) {
+      const { data: membership } = await supabase
+        .from("studio_memberships")
+        .select("role")
+        .eq("studio_id", studioId)
+        .eq("profile_id", user.id)
+        .single()
 
-        const role = membership?.role as UserRole | undefined
+      const role = membership?.role as UserRole | undefined
 
-        if (role && DASHBOARD_ROLES.includes(role)) {
-          return NextResponse.redirect(`${origin}/dashboard`)
-        }
-        if (role === "staff") {
-          return NextResponse.redirect(`${origin}/staff`)
-        }
+      if (role && DASHBOARD_ROLES.includes(role)) {
+        return NextResponse.redirect(`${origin}/dashboard`)
+      }
+      if (role === "staff") {
+        return NextResponse.redirect(`${origin}/staff`)
       }
     }
   }

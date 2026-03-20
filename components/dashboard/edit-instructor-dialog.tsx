@@ -14,10 +14,24 @@ import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { SubmitButton } from "@/components/shared/submit-button"
 import { DeleteConfirmDialog } from "@/components/shared/delete-confirm-dialog"
-import { updateInstructor, removeStaffMember } from "@/app/actions/team"
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@/components/ui/select"
+import { updateInstructor, updateStaffRole, removeStaffMember } from "@/app/actions/team"
 import { createClient } from "@/lib/supabase/client"
 import { getInitial } from "@/lib/utils"
 import { toast } from "sonner"
+
+const ROLE_OPTIONS = [
+  { value: "staff", label: "Instructor", description: "Can view own schedule and attendee lists" },
+  { value: "reception", label: "Reception", description: "Can view bookings, members, and create manual bookings" },
+  { value: "manager", label: "Manager", description: "Can manage schedule, bookings, and members" },
+  { value: "admin", label: "Admin", description: "Full access to all dashboard features" },
+]
 
 interface InstructorData {
   id: string
@@ -33,28 +47,52 @@ interface EditInstructorDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   instructor: InstructorData | null
+  isSelf?: boolean
 }
 
 export function EditInstructorDialog({
   open,
   onOpenChange,
   instructor,
+  isSelf = false,
 }: EditInstructorDialogProps) {
   const formRef = useRef<HTMLFormElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [photoUrl, setPhotoUrl] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [role, setRole] = useState("")
+  const [roleLoading, setRoleLoading] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleteLoading, setDeleteLoading] = useState(false)
 
   useEffect(() => {
     if (open && instructor) {
       setPhotoUrl(instructor.photo_url)
+      setRole(instructor.role)
     } else if (!open) {
       setPhotoUrl(null)
+      setRole("")
       formRef.current?.reset()
     }
   }, [open, instructor])
+
+  const isOwner = instructor?.role === "owner"
+  const canChangeRole = !isOwner && !isSelf && !!instructor?.membershipId
+
+  async function handleRoleChange(newRole: string | null) {
+    if (!newRole || !instructor?.membershipId || newRole === role) return
+    setRoleLoading(true)
+    try {
+      await updateStaffRole(instructor.membershipId, newRole)
+      setRole(newRole)
+      const label = ROLE_OPTIONS.find((r) => r.value === newRole)?.label ?? newRole
+      toast.success(`Role changed to ${label}`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to change role")
+    } finally {
+      setRoleLoading(false)
+    }
+  }
 
   async function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -177,9 +215,49 @@ export function EditInstructorDialog({
               />
             </div>
 
+            {/* Role selector */}
+            {instructor.membershipId && (
+              <div>
+                <Label>Role</Label>
+                {canChangeRole ? (
+                  <>
+                    <Select
+                      value={role}
+                      onValueChange={handleRoleChange}
+                      disabled={roleLoading}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue>
+                          {ROLE_OPTIONS.find((r) => r.value === role)?.label ?? role}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ROLE_OPTIONS.map((r) => (
+                          <SelectItem key={r.value} value={r.value}>
+                            {r.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="mt-1 text-[0.7rem] text-warm-grey">
+                      {ROLE_OPTIONS.find((r) => r.value === role)?.description}
+                    </p>
+                  </>
+                ) : (
+                  <p className="mt-1 text-[0.78rem] text-warm-grey">
+                    {isOwner
+                      ? "Owner — this role cannot be changed"
+                      : isSelf
+                        ? `${ROLE_OPTIONS.find((r) => r.value === role)?.label ?? role} — you cannot change your own role`
+                        : (ROLE_OPTIONS.find((r) => r.value === role)?.label ?? role)}
+                  </p>
+                )}
+              </div>
+            )}
+
             <DialogFooter>
               <SubmitButton>Save changes</SubmitButton>
-              {instructor.membershipId && instructor.role !== "admin" && (
+              {instructor.membershipId && !isOwner && !isSelf && (
                 <Button
                   type="button"
                   variant="destructive"

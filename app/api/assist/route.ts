@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk"
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { STUDIO_ID } from "@/lib/constants"
+import { getStudioId } from "@/lib/studio-context"
 import { getUserRole, getInstructorForUser } from "@/lib/auth"
 import { isPlanEligible } from "@/lib/assist/constants"
 import { checkAndIncrementUsage } from "@/lib/assist/rate-limit"
@@ -22,6 +22,7 @@ interface ChatMessage {
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient()
+    const studioId = await getStudioId()
 
     // Auth check
     const {
@@ -39,7 +40,7 @@ export async function POST(req: NextRequest) {
 
     // Get studio + profile
     const [studioRes, profileRes] = await Promise.all([
-      supabase.from("studios").select("*").eq("id", STUDIO_ID).single(),
+      supabase.from("studios").select("*").eq("id", studioId).single(),
       supabase.from("profiles").select("*").eq("id", user.id).single(),
     ])
 

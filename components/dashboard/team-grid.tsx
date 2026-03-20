@@ -19,6 +19,7 @@ interface TeamMember {
 
 interface TeamGridProps {
   team: TeamMember[]
+  currentProfileId: string | null
 }
 
 const ROLE_BADGE: Record<string, { label: string; className: string }> = {
@@ -29,7 +30,7 @@ const ROLE_BADGE: Record<string, { label: string; className: string }> = {
   staff: { label: "Instructor", className: "bg-sand text-slate" },
 }
 
-export function TeamGrid({ team }: TeamGridProps) {
+export function TeamGrid({ team, currentProfileId }: TeamGridProps) {
   const [inviteOpen, setInviteOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [editingMember, setEditingMember] = useState<TeamMember | null>(null)
@@ -111,6 +112,7 @@ export function TeamGrid({ team }: TeamGridProps) {
         open={editOpen}
         onOpenChange={setEditOpen}
         instructor={editingMember}
+        isSelf={editingMember?.profile_id === currentProfileId}
       />
     </>
   )

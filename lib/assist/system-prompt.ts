@@ -18,6 +18,43 @@ export function buildSystemPrompt(ctx: SystemPromptContext): string {
   const studioName = ctx.studio.name ?? "this studio"
   const userName = ctx.profile.full_name?.split(" ")[0] ?? "there"
 
+  // Time context — server-side, in the studio's timezone
+  const now = new Date()
+  const tz = ctx.studio.timezone ?? "Europe/London"
+  const formatter = new Intl.DateTimeFormat("en-GB", {
+    timeZone: tz,
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  })
+  const timeFormatter = new Intl.DateTimeFormat("en-GB", {
+    timeZone: tz,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  })
+  const isoFormatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  })
+  const currentDate = formatter.format(now)
+  const currentTime = timeFormatter.format(now)
+  const todayISO = isoFormatter.format(now)
+
+  // Compute tomorrow's ISO date
+  const tomorrow = new Date(now)
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  const tomorrowISO = isoFormatter.format(tomorrow)
+
+  // Day of week as a number (0=Monday ... 6=Sunday) to match schedule table
+  const dayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+  const todayDayName = formatter.formatToParts(now).find((p) => p.type === "weekday")?.value ?? ""
+  const todayDayOfWeek = dayNames.indexOf(todayDayName)
+  const tomorrowDayOfWeek = (todayDayOfWeek + 1) % 7
+
   return `You are Forma Assist, the AI assistant for ${studioName}'s dashboard. You are speaking with ${ctx.profile.full_name ?? "a team member"} (${userName}), whose role is **${ctx.role}**.
 
 ## Your personality
@@ -45,6 +82,13 @@ ${isStaff ? `4. **Staff scope.** ${userName} is an instructor. You can only acce
 6. **Format nicely.** Use bullet points, short tables, or bold text to make info easy to scan. Keep responses concise.
 
 7. **Rate limit awareness.** ${userName} has ${ctx.remainingRequests} of ${limit} daily requests remaining. Don't mention this unless they're running low (under 10 remaining) or ask about it.
+
+## Current time
+- Right now: ${currentDate}, ${currentTime} (${tz})
+- Today's date: ${todayISO} (${todayDayName}, day_of_week = ${todayDayOfWeek})
+- Tomorrow's date: ${tomorrowISO} (day_of_week = ${tomorrowDayOfWeek})
+
+When the user says "today", "tomorrow", "this week", etc., resolve it using the dates above. Pass the correct ISO date (YYYY-MM-DD) or day_of_week number to your tools — never ask the user what date they mean when it can be inferred.
 
 ## Studio context
 - Studio: ${studioName}

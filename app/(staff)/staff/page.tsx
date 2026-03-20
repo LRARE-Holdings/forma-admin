@@ -1,12 +1,13 @@
 import { createClient } from "@/lib/supabase/server"
 import { getUser, getInstructorForUser } from "@/lib/auth"
-import { STUDIO_ID } from "@/lib/constants"
+import { getStudioId } from "@/lib/studio-context"
 import { StatCard } from "@/components/shared/stat-card"
 import { StaffScheduleView } from "@/components/staff/staff-schedule-view"
 import { formatTime } from "@/lib/utils"
 
 export default async function StaffPage() {
   const supabase = await createClient()
+  const studioId = await getStudioId()
   const user = await getUser()
   const instructor = await getInstructorForUser()
 
@@ -37,7 +38,7 @@ export default async function StaffPage() {
   const { data: schedule } = await supabase
     .from("schedule")
     .select("*, classes(*)")
-    .eq("studio_id", STUDIO_ID)
+    .eq("studio_id", studioId)
     .eq("instructor_id", instructor.id)
     .eq("is_active", true)
     .order("day_of_week")
@@ -66,7 +67,7 @@ export default async function StaffPage() {
     const { data } = await supabase
       .from("bookings")
       .select("schedule_id, profile_id, date, payment_method, profiles:profile_id(full_name)")
-      .eq("studio_id", STUDIO_ID)
+      .eq("studio_id", studioId)
       .eq("status", "confirmed")
       .gte("date", mondayStr)
       .lte("date", sundayStr)

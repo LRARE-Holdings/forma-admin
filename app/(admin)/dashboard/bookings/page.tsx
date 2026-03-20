@@ -1,18 +1,19 @@
 import { createClient } from "@/lib/supabase/server"
-import { STUDIO_ID } from "@/lib/constants"
+import { getStudioId } from "@/lib/studio-context"
 import { PageHeader } from "@/components/shared/page-header"
 import { BookingsTable } from "@/components/dashboard/bookings-table"
 import { dayShort, formatTime } from "@/lib/utils"
 
 export default async function BookingsPage() {
   const supabase = await createClient()
+  const studioId = await getStudioId()
 
   const { data: bookings } = await supabase
     .from("bookings")
     .select(
       "*, profiles:profile_id(full_name, email), schedule:schedule_id(start_time, day_of_week, classes:class_id(name))"
     )
-    .eq("studio_id", STUDIO_ID)
+    .eq("studio_id", studioId)
     .order("created_at", { ascending: false })
     .limit(50)
 
@@ -20,7 +21,7 @@ export default async function BookingsPage() {
   const { data: memberMemberships } = await supabase
     .from("studio_memberships")
     .select("profile_id, profiles:profile_id(id, full_name)")
-    .eq("studio_id", STUDIO_ID)
+    .eq("studio_id", studioId)
     .eq("role", "member")
 
   // Get credits per member
@@ -36,7 +37,7 @@ export default async function BookingsPage() {
     const { data: packs } = await supabase
       .from("class_packs")
       .select("profile_id, credits_remaining")
-      .eq("studio_id", STUDIO_ID)
+      .eq("studio_id", studioId)
       .gt("credits_remaining", 0)
       .in("profile_id", memberIds)
 
@@ -59,7 +60,7 @@ export default async function BookingsPage() {
   const { data: activeSlots } = await supabase
     .from("schedule")
     .select("id, day_of_week, start_time, classes:class_id(name)")
-    .eq("studio_id", STUDIO_ID)
+    .eq("studio_id", studioId)
     .eq("is_active", true)
     .order("day_of_week")
     .order("start_time")

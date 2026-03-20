@@ -1,7 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { STUDIO_ID } from "@/lib/constants"
+import { getStudioId } from "@/lib/studio-context"
 import { formatPence, dayName, formatTime } from "@/lib/utils"
 import { revalidatePath } from "next/cache"
 import type { AssistToolName } from "./permissions"
@@ -411,6 +411,7 @@ export async function executeTool(
   input: Record<string, unknown>,
   ctx: ToolContext = {}
 ): Promise<string> {
+  const studioId = await getStudioId()
   const supabase = await createClient()
 
   try {
@@ -421,7 +422,7 @@ export async function executeTool(
         const { data } = await supabase
           .from("classes")
           .select("*")
-          .eq("studio_id", STUDIO_ID)
+          .eq("studio_id", studioId)
           .order("name")
 
         if (!data?.length) return "No classes found."
@@ -441,7 +442,7 @@ export async function executeTool(
         let query = supabase
           .from("schedule")
           .select("*, classes(*), instructors(*)")
-          .eq("studio_id", STUDIO_ID)
+          .eq("studio_id", studioId)
           .eq("is_active", true)
           .order("day_of_week")
           .order("start_time")
@@ -475,7 +476,7 @@ export async function executeTool(
           .select(
             "*, profiles(full_name, email), schedule(*, classes(name), instructors(name))"
           )
-          .eq("studio_id", STUDIO_ID)
+          .eq("studio_id", studioId)
           .order("date", { ascending: false })
           .order("created_at", { ascending: false })
           .limit(50)
@@ -510,7 +511,7 @@ export async function executeTool(
         let query = supabase
           .from("studio_memberships")
           .select("profile_id, role, profiles(id, full_name, email, created_at)")
-          .eq("studio_id", STUDIO_ID)
+          .eq("studio_id", studioId)
           .eq("role", "member")
           .order("created_at", { ascending: false })
 
@@ -544,7 +545,7 @@ export async function executeTool(
         const { data } = await supabase
           .from("class_packs")
           .select("*")
-          .eq("studio_id", STUDIO_ID)
+          .eq("studio_id", studioId)
           .eq("profile_id", input.profile_id)
           .gt("credits_remaining", 0)
           .gte("expires_at", new Date().toISOString())
@@ -566,7 +567,7 @@ export async function executeTool(
         const { data } = await supabase
           .from("pack_tiers")
           .select("*")
-          .eq("studio_id", STUDIO_ID)
+          .eq("studio_id", studioId)
           .order("credits")
 
         if (!data?.length) return "No pack tiers found."
@@ -586,7 +587,7 @@ export async function executeTool(
         const { data } = await supabase
           .from("instructors")
           .select("*")
-          .eq("studio_id", STUDIO_ID)
+          .eq("studio_id", studioId)
           .order("name")
 
         if (!data?.length) return "No instructors found."
@@ -619,25 +620,25 @@ export async function executeTool(
             supabase
               .from("bookings")
               .select("id", { count: "exact" })
-              .eq("studio_id", STUDIO_ID)
+              .eq("studio_id", studioId)
               .eq("date", today)
               .eq("status", "confirmed"),
             supabase
               .from("bookings")
               .select("id", { count: "exact" })
-              .eq("studio_id", STUDIO_ID)
+              .eq("studio_id", studioId)
               .gte("date", weekStart)
               .eq("status", "confirmed"),
             supabase
               .from("bookings")
               .select("id, schedule(classes(price_pence))")
-              .eq("studio_id", STUDIO_ID)
+              .eq("studio_id", studioId)
               .gte("date", monthStart)
               .eq("status", "confirmed"),
             supabase
               .from("studio_memberships")
               .select("id", { count: "exact" })
-              .eq("studio_id", STUDIO_ID)
+              .eq("studio_id", studioId)
               .eq("role", "member"),
           ])
 
@@ -667,7 +668,7 @@ export async function executeTool(
           .replace(/[^a-z0-9]+/g, "-")
           .replace(/^-|-$/g, "")
         const { error } = await supabase.from("classes").insert({
-          studio_id: STUDIO_ID,
+          studio_id: studioId,
           name: input.name,
           slug,
           description: input.description ?? "",
@@ -693,7 +694,7 @@ export async function executeTool(
           .from("classes")
           .update(updates)
           .eq("id", input.class_id)
-          .eq("studio_id", STUDIO_ID)
+          .eq("studio_id", studioId)
 
         if (error) return `Error: ${error.message}`
         revalidatePath("/dashboard/classes")
@@ -717,7 +718,7 @@ export async function executeTool(
           .from("classes")
           .delete()
           .eq("id", input.class_id)
-          .eq("studio_id", STUDIO_ID)
+          .eq("studio_id", studioId)
 
         if (error) return `Error: ${error.message}`
         revalidatePath("/dashboard/classes")
@@ -733,7 +734,7 @@ export async function executeTool(
           : input.end_time
 
         const { error } = await supabase.from("schedule").insert({
-          studio_id: STUDIO_ID,
+          studio_id: studioId,
           class_id: input.class_id,
           instructor_id: input.instructor_id,
           day_of_week: input.day_of_week,
@@ -765,7 +766,7 @@ export async function executeTool(
           .from("schedule")
           .update(updates)
           .eq("id", input.slot_id)
-          .eq("studio_id", STUDIO_ID)
+          .eq("studio_id", studioId)
 
         if (error) return `Error: ${error.message}`
         revalidatePath("/dashboard/timetable")
@@ -778,7 +779,7 @@ export async function executeTool(
           .from("schedule")
           .update({ is_active: false })
           .eq("id", input.slot_id)
-          .eq("studio_id", STUDIO_ID)
+          .eq("studio_id", studioId)
 
         if (error) return `Error: ${error.message}`
         revalidatePath("/dashboard/timetable")
@@ -792,7 +793,7 @@ export async function executeTool(
           const { data: packs } = await supabase
             .from("class_packs")
             .select("id, credits_remaining")
-            .eq("studio_id", STUDIO_ID)
+            .eq("studio_id", studioId)
             .eq("profile_id", input.profile_id)
             .gt("credits_remaining", 0)
             .gte("expires_at", new Date().toISOString())
@@ -811,7 +812,7 @@ export async function executeTool(
         }
 
         const { error } = await supabase.from("bookings").insert({
-          studio_id: STUDIO_ID,
+          studio_id: studioId,
           profile_id: input.profile_id,
           schedule_id: input.schedule_id,
           date: input.date,
@@ -830,7 +831,7 @@ export async function executeTool(
           .from("bookings")
           .select("*")
           .eq("id", input.booking_id)
-          .eq("studio_id", STUDIO_ID)
+          .eq("studio_id", studioId)
           .single()
 
         if (!booking) return "Booking not found."
@@ -841,7 +842,7 @@ export async function executeTool(
           const { data: packs } = await supabase
             .from("class_packs")
             .select("id, credits_remaining, credits_total")
-            .eq("studio_id", STUDIO_ID)
+            .eq("studio_id", studioId)
             .eq("profile_id", booking.profile_id)
             .order("expires_at", { ascending: true })
             .limit(1)
@@ -864,7 +865,7 @@ export async function executeTool(
           .from("bookings")
           .update({ status: "cancelled" })
           .eq("id", input.booking_id)
-          .eq("studio_id", STUDIO_ID)
+          .eq("studio_id", studioId)
 
         if (error) return `Error: ${error.message}`
         revalidatePath("/dashboard/bookings")
@@ -874,7 +875,7 @@ export async function executeTool(
 
       case "create_pack_tier": {
         const { error } = await supabase.from("pack_tiers").insert({
-          studio_id: STUDIO_ID,
+          studio_id: studioId,
           name: input.name,
           credits: input.credits,
           price_pence: Math.round((input.price_pounds as number) * 100),
@@ -899,7 +900,7 @@ export async function executeTool(
           .from("pack_tiers")
           .update(updates)
           .eq("id", input.tier_id)
-          .eq("studio_id", STUDIO_ID)
+          .eq("studio_id", studioId)
 
         if (error) return `Error: ${error.message}`
         revalidatePath("/dashboard/packages")
@@ -911,7 +912,7 @@ export async function executeTool(
           .from("pack_tiers")
           .update({ is_active: false })
           .eq("id", input.tier_id)
-          .eq("studio_id", STUDIO_ID)
+          .eq("studio_id", studioId)
 
         if (error) return `Error: ${error.message}`
         revalidatePath("/dashboard/packages")
@@ -925,7 +926,7 @@ export async function executeTool(
         const { data: studio } = await supabase
           .from("studios")
           .select("name, email_from")
-          .eq("id", STUDIO_ID)
+          .eq("id", studioId)
           .single()
 
         const { data: authUser, error: authError } =
@@ -945,7 +946,7 @@ export async function executeTool(
         })
 
         await adminClient.from("studio_memberships").insert({
-          studio_id: STUDIO_ID,
+          studio_id: studioId,
           profile_id: userId,
           role: "staff",
         })
@@ -956,7 +957,7 @@ export async function executeTool(
           .replace(/^-|-$/g, "")
 
         await adminClient.from("instructors").insert({
-          studio_id: STUDIO_ID,
+          studio_id: studioId,
           profile_id: userId,
           name: input.name,
           slug,
@@ -976,7 +977,7 @@ export async function executeTool(
         let query = supabase
           .from("schedule")
           .select("*, classes(*)")
-          .eq("studio_id", STUDIO_ID)
+          .eq("studio_id", studioId)
           .eq("instructor_id", ctx.instructorId)
           .eq("is_active", true)
           .order("day_of_week")
@@ -1010,7 +1011,7 @@ export async function executeTool(
           .from("schedule")
           .select("id, instructor_id")
           .eq("id", input.schedule_id)
-          .eq("studio_id", STUDIO_ID)
+          .eq("studio_id", studioId)
           .single()
 
         if (!slot) return "Schedule slot not found."
@@ -1020,7 +1021,7 @@ export async function executeTool(
         const { data } = await supabase
           .from("bookings")
           .select("id, status, profiles(full_name)")
-          .eq("studio_id", STUDIO_ID)
+          .eq("studio_id", studioId)
           .eq("schedule_id", input.schedule_id)
           .eq("date", input.date)
           .eq("status", "confirmed")
@@ -1052,7 +1053,7 @@ export async function executeTool(
         const { data: mySlots } = await supabase
           .from("schedule")
           .select("id, classes(capacity)")
-          .eq("studio_id", STUDIO_ID)
+          .eq("studio_id", studioId)
           .eq("instructor_id", ctx.instructorId)
           .eq("is_active", true)
 
@@ -1063,7 +1064,7 @@ export async function executeTool(
         const { data: bookings } = await supabase
           .from("bookings")
           .select("id, schedule_id")
-          .eq("studio_id", STUDIO_ID)
+          .eq("studio_id", studioId)
           .in("schedule_id", slotIds)
           .gte("date", weekStart)
           .lte("date", weekEnd)

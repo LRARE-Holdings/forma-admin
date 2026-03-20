@@ -1,16 +1,17 @@
 import { createClient } from "@/lib/supabase/server"
-import { STUDIO_ID } from "@/lib/constants"
+import { getStudioId } from "@/lib/studio-context"
 import { PageHeader } from "@/components/shared/page-header"
 import { MembersTable } from "@/components/dashboard/members-table"
 
 export default async function MembersPage() {
   const supabase = await createClient()
+  const studioId = await getStudioId()
 
   // Get all members for this studio
   const { data: memberships } = await supabase
     .from("studio_memberships")
     .select("profile_id, created_at, profiles:profile_id(id, full_name, email)")
-    .eq("studio_id", STUDIO_ID)
+    .eq("studio_id", studioId)
     .eq("role", "member")
 
   const members = memberships ?? []
@@ -39,7 +40,7 @@ export default async function MembersPage() {
     const { data: bookings } = await supabase
       .from("bookings")
       .select("profile_id")
-      .eq("studio_id", STUDIO_ID)
+      .eq("studio_id", studioId)
       .eq("status", "confirmed")
       .gte("date", monthStart)
       .in("profile_id", memberIds)
@@ -52,7 +53,7 @@ export default async function MembersPage() {
     const { data: packs } = await supabase
       .from("class_packs")
       .select("id, profile_id, pack_type, credits_total, credits_remaining, expires_at")
-      .eq("studio_id", STUDIO_ID)
+      .eq("studio_id", studioId)
       .in("profile_id", memberIds)
       .order("expires_at", { ascending: false })
 

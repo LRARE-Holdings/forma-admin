@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation"
 import { getUser, requireDashboard } from "@/lib/auth"
 import { createClient } from "@/lib/supabase/server"
-import { STUDIO_ID } from "@/lib/constants"
+import { getStudioId } from "@/lib/studio-context"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import type { Studio, Profile, UserRole } from "@/lib/types"
 
@@ -14,13 +14,14 @@ export default async function AdminLayout({
   if (!user) redirect("/login")
 
   const role = await requireDashboard()
+  const studioId = await getStudioId()
 
   const supabase = await createClient()
 
   const { data: studio } = await supabase
     .from("studios")
     .select("*")
-    .eq("id", STUDIO_ID)
+    .eq("id", studioId)
     .single()
 
   const { data: profile } = await supabase

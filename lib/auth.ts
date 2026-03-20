@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
-import { STUDIO_ID } from "@/lib/constants"
+import { getStudioId } from "@/lib/studio-context"
 import {
   DASHBOARD_ROLES,
   ADMIN_ROLES,
@@ -18,8 +18,9 @@ export async function getUser() {
 }
 
 export async function getUserRole(
-  studioId: string = STUDIO_ID
+  studioId?: string
 ): Promise<UserRole | null> {
+  const resolvedStudioId = studioId ?? (await getStudioId())
   const supabase = await createClient()
   const {
     data: { user },
@@ -30,7 +31,7 @@ export async function getUserRole(
   const { data: membership } = await supabase
     .from("studio_memberships")
     .select("role")
-    .eq("studio_id", studioId)
+    .eq("studio_id", resolvedStudioId)
     .eq("profile_id", user.id)
     .single()
 
@@ -40,7 +41,7 @@ export async function getUserRole(
 /**
  * Require owner or admin role. Used for team management, settings, classes, packs.
  */
-export async function requireAdmin(studioId: string = STUDIO_ID) {
+export async function requireAdmin(studioId?: string) {
   const role = await getUserRole(studioId)
   if (!role || !ADMIN_ROLES.includes(role)) {
     redirect("/login")
@@ -51,7 +52,7 @@ export async function requireAdmin(studioId: string = STUDIO_ID) {
 /**
  * Require at least manager role. Used for schedule CRUD, bookings CRUD, members CRUD.
  */
-export async function requireManager(studioId: string = STUDIO_ID) {
+export async function requireManager(studioId?: string) {
   const role = await getUserRole(studioId)
   if (!role || !MANAGER_ROLES.includes(role)) {
     redirect("/login")
@@ -62,7 +63,7 @@ export async function requireManager(studioId: string = STUDIO_ID) {
 /**
  * Require at least reception role. Used for viewing bookings/members and creating manual bookings.
  */
-export async function requireReception(studioId: string = STUDIO_ID) {
+export async function requireReception(studioId?: string) {
   const role = await getUserRole(studioId)
   if (!role || !RECEPTION_ROLES.includes(role)) {
     redirect("/login")
@@ -73,7 +74,7 @@ export async function requireReception(studioId: string = STUDIO_ID) {
 /**
  * Require any dashboard role (owner, admin, manager, reception).
  */
-export async function requireDashboard(studioId: string = STUDIO_ID) {
+export async function requireDashboard(studioId?: string) {
   const role = await getUserRole(studioId)
   if (!role || !DASHBOARD_ROLES.includes(role)) {
     redirect("/login")
@@ -84,7 +85,7 @@ export async function requireDashboard(studioId: string = STUDIO_ID) {
 /**
  * Require staff or higher — used for the staff (instructor) layout.
  */
-export async function requireStaff(studioId: string = STUDIO_ID) {
+export async function requireStaff(studioId?: string) {
   const role = await getUserRole(studioId)
   if (role !== "owner" && role !== "admin" && role !== "staff") {
     redirect("/login")
@@ -92,7 +93,8 @@ export async function requireStaff(studioId: string = STUDIO_ID) {
   return role
 }
 
-export async function getInstructorForUser(studioId: string = STUDIO_ID) {
+export async function getInstructorForUser(studioId?: string) {
+  const resolvedStudioId = studioId ?? (await getStudioId())
   const supabase = await createClient()
   const {
     data: { user },
@@ -103,7 +105,7 @@ export async function getInstructorForUser(studioId: string = STUDIO_ID) {
   const { data: instructor } = await supabase
     .from("instructors")
     .select("*")
-    .eq("studio_id", studioId)
+    .eq("studio_id", resolvedStudioId)
     .eq("profile_id", user.id)
     .single()
 

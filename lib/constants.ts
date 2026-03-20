@@ -1,5 +1,3 @@
-export const STUDIO_ID = process.env.NEXT_PUBLIC_STUDIO_ID!
-
 export const CLASS_COLORS: Record<string, string> = {
   "hot-pilates": "bg-ember",
   "hot-yoga": "bg-gold",

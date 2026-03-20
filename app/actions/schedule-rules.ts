@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { requireManager } from "@/lib/auth"
-import { STUDIO_ID } from "@/lib/constants"
+import { getStudioId } from "@/lib/studio-context"
 import type { Recurrence } from "@/lib/types"
 
 /**
@@ -11,6 +11,7 @@ import type { Recurrence } from "@/lib/types"
  */
 export async function createScheduleRule(formData: FormData) {
   await requireManager()
+  const studioId = await getStudioId()
   const supabase = await createClient()
 
   const class_id = formData.get("class_id") as string
@@ -29,7 +30,7 @@ export async function createScheduleRule(formData: FormData) {
   const { data: rule, error } = await supabase
     .from("schedule_rules")
     .insert({
-      studio_id: STUDIO_ID,
+      studio_id: studioId,
       class_id,
       instructor_id,
       recurrence,
@@ -56,6 +57,7 @@ export async function createScheduleRule(formData: FormData) {
  */
 export async function updateScheduleRule(ruleId: string, formData: FormData) {
   await requireManager()
+  const studioId = await getStudioId()
   const supabase = await createClient()
 
   const class_id = formData.get("class_id") as string
@@ -80,7 +82,7 @@ export async function updateScheduleRule(ruleId: string, formData: FormData) {
       ends_on,
     })
     .eq("id", ruleId)
-    .eq("studio_id", STUDIO_ID)
+    .eq("studio_id", studioId)
 
   if (error) throw new Error(error.message)
 
@@ -96,13 +98,14 @@ export async function updateScheduleRule(ruleId: string, formData: FormData) {
  */
 export async function pauseScheduleRule(ruleId: string) {
   await requireManager()
+  const studioId = await getStudioId()
   const supabase = await createClient()
 
   const { error } = await supabase
     .from("schedule_rules")
     .update({ is_active: false })
     .eq("id", ruleId)
-    .eq("studio_id", STUDIO_ID)
+    .eq("studio_id", studioId)
 
   if (error) throw new Error(error.message)
   revalidatePath("/dashboard/timetable")
@@ -113,13 +116,14 @@ export async function pauseScheduleRule(ruleId: string) {
  */
 export async function resumeScheduleRule(ruleId: string) {
   await requireManager()
+  const studioId = await getStudioId()
   const supabase = await createClient()
 
   const { error } = await supabase
     .from("schedule_rules")
     .update({ is_active: true })
     .eq("id", ruleId)
-    .eq("studio_id", STUDIO_ID)
+    .eq("studio_id", studioId)
 
   if (error) throw new Error(error.message)
 
@@ -132,13 +136,14 @@ export async function resumeScheduleRule(ruleId: string) {
  */
 export async function deleteScheduleRule(ruleId: string) {
   await requireManager()
+  const studioId = await getStudioId()
   const supabase = await createClient()
 
   const { error } = await supabase
     .from("schedule_rules")
     .delete()
     .eq("id", ruleId)
-    .eq("studio_id", STUDIO_ID)
+    .eq("studio_id", studioId)
 
   if (error) throw new Error(error.message)
   revalidatePath("/dashboard/timetable")
