@@ -130,11 +130,11 @@ export function EditInstructorDialog({
     setUploading(true)
     try {
       const supabase = createClient()
-      const path = `instructors/${instructor.id}.jpg`
+      const path = `instructors/${instructor.id}.png`
 
       const { error } = await supabase.storage
         .from("photos")
-        .upload(path, blob, { upsert: true, contentType: "image/jpeg" })
+        .upload(path, blob, { upsert: true, contentType: "image/png" })
 
       if (error) throw error
 

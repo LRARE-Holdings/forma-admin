@@ -52,7 +52,10 @@ export interface CropArea {
 }
 
 /**
- * Draw the cropped region of an image onto a canvas and return it as a JPEG blob.
+ * Draw the cropped region of an image onto a canvas and return it as a PNG blob.
+ *
+ * PNG is lossless — no quality loss from re-encoding. Next.js <Image> handles
+ * serving optimized WebP to browsers, so the source file stays pristine.
  *
  * Outputs at the native cropped resolution, capped at 2× the display size
  * (740×416) so images stay sharp on retina screens without being oversized.
@@ -101,8 +104,7 @@ export async function getCroppedImage(
   return new Promise((resolve, reject) => {
     canvas.toBlob(
       (blob) => (blob ? resolve(blob) : reject(new Error("Failed to create blob"))),
-      "image/jpeg",
-      0.92
+      "image/png"
     )
   })
 }
