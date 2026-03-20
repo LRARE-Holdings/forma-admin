@@ -19,7 +19,9 @@ const ROLE_LABELS: Record<string, string> = {
   admin: "an admin",
 }
 
-export async function inviteStaffMember(formData: FormData) {
+export async function inviteStaffMember(
+  formData: FormData
+): Promise<{ error?: string }> {
   await requireAdmin()
   const studioId = await getStudioId()
 
@@ -28,10 +30,10 @@ export async function inviteStaffMember(formData: FormData) {
   const role = (formData.get("role") as string) || "staff"
 
   if (!name || !email) {
-    throw new Error("Name and email are required")
+    return { error: "Name and email are required" }
   }
   if (!VALID_INVITE_ROLES.includes(role)) {
-    throw new Error("Invalid role")
+    return { error: "Invalid role" }
   }
 
   const adminClient = createAdminClient()
@@ -56,8 +58,8 @@ export async function inviteStaffMember(formData: FormData) {
       redirectTo,
     })
 
-  if (authError) throw new Error(authError.message)
-  if (!authUser.user) throw new Error("Failed to create user")
+  if (authError) return { error: authError.message }
+  if (!authUser.user) return { error: "Failed to create user" }
 
   const userId = authUser.user.id
 
@@ -107,6 +109,7 @@ export async function inviteStaffMember(formData: FormData) {
   }
 
   revalidatePath("/dashboard/team")
+  return {}
 }
 
 export async function removeStaffMember(membershipId: string) {

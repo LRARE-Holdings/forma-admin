@@ -46,14 +46,14 @@ export function InviteStaffDialog({ open, onOpenChange }: InviteStaffDialogProps
   }, [open])
 
   async function handleSubmit(formData: FormData) {
-    try {
-      await inviteStaffMember(formData)
-      const selectedRole = ROLE_OPTIONS.find((r) => r.value === role)
-      toast.success(`${selectedRole?.label ?? "Team member"} invited`)
-      onOpenChange(false)
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to invite team member")
+    const result = await inviteStaffMember(formData)
+    if (result.error) {
+      toast.error(result.error)
+      return
     }
+    const selectedRole = ROLE_OPTIONS.find((r) => r.value === role)
+    toast.success(`${selectedRole?.label ?? "Team member"} invited`)
+    onOpenChange(false)
   }
 
   return (
