@@ -45,7 +45,7 @@ export async function inviteStaffMember(
   // so the send-email edge function can brand the email and show the role
   const { data: authUser, error: authError } =
     await adminClient.auth.admin.inviteUserByEmail(email, {
-      data: { full_name: name, studio_id: studioId, invite_role: role },
+      data: { full_name: name, studio_id: studioId, role, invite_role: role },
       redirectTo,
     })
 
@@ -62,11 +62,12 @@ export async function inviteStaffMember(
   })
 
   // Create studio membership with selected role
-  await adminClient.from("studio_memberships").insert({
-    studio_id: studioId,
-    profile_id: userId,
-    role,
-  })
+  // Use upsert because the handle_new_user() trigger may have already
+  // inserted a row with role='member' — we need to overwrite it
+  await adminClient.from("studio_memberships").upsert(
+    { studio_id: studioId, profile_id: userId, role },
+    { onConflict: "studio_id,profile_id" }
+  )
 
   // Only create instructor record for instructor roles
   if (INSTRUCTOR_ROLES.includes(role)) {
