@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { requireAdmin } from "@/lib/auth"
 import { getStudioId } from "@/lib/studio-context"
+import { stripe } from "@/lib/stripe"
 
 export async function updateMemberEmail(profileId: string, formData: FormData) {
   await requireAdmin()
@@ -63,4 +64,85 @@ export async function updateMemberEmail(profileId: string, formData: FormData) {
   }
 
   revalidatePath("/dashboard/members")
+}
+
+/**
+ * Remove a member from this studio.
+ * Cancels active Stripe subscriptions, cancels waitlist entries,
+ * and deletes the studio_memberships row. Booking history is preserved.
+ */
+export async function deleteMember(
+  profileId: string
+): Promise<{ error?: string }> {
+  await requireAdmin()
+  const studioId = await getStudioId()
+  const supabase = await createClient()
+  const adminClient = createAdminClient()
+
+  // Verify member belongs to this studio
+  const { data: membership } = await supabase
+    .from("studio_memberships")
+    .select("id")
+    .eq("profile_id", profileId)
+    .eq("studio_id", studioId)
+    .eq("role", "member")
+    .single()
+
+  if (!membership) return { error: "Member not found in this studio" }
+
+  // Cancel any active Stripe subscriptions for this member at this studio
+  const { data: activeMemberships } = await adminClient
+    .from("memberships")
+    .select("id, stripe_subscription_id")
+    .eq("studio_id", studioId)
+    .eq("profile_id", profileId)
+    .eq("status", "active")
+
+  if (activeMemberships && activeMemberships.length > 0) {
+    // Get the studio's connected Stripe account
+    const { data: studio } = await adminClient
+      .from("studios")
+      .select("stripe_account_id")
+      .eq("id", studioId)
+      .single()
+
+    for (const sub of activeMemberships) {
+      if (sub.stripe_subscription_id && studio?.stripe_account_id) {
+        try {
+          await stripe.subscriptions.cancel(sub.stripe_subscription_id, {
+            stripeAccount: studio.stripe_account_id as string,
+          })
+        } catch (err) {
+          console.error("[deleteMember] Stripe cancel failed:", err)
+        }
+      }
+
+      await adminClient
+        .from("memberships")
+        .update({
+          status: "cancelled",
+          cancelled_at: new Date().toISOString(),
+        })
+        .eq("id", sub.id)
+    }
+  }
+
+  // Cancel any active waitlist entries
+  await adminClient
+    .from("waitlist")
+    .update({ status: "cancelled" })
+    .eq("profile_id", profileId)
+    .eq("studio_id", studioId)
+    .in("status", ["waiting", "offered"])
+
+  // Delete the studio membership (removes them from this studio)
+  const { error } = await adminClient
+    .from("studio_memberships")
+    .delete()
+    .eq("id", membership.id)
+
+  if (error) return { error: error.message }
+
+  revalidatePath("/dashboard/members")
+  return {}
 }

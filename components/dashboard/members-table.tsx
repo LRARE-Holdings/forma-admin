@@ -4,6 +4,9 @@ import { useState } from "react"
 import { EmptyState } from "@/components/shared/empty-state"
 import { MemberPacksDialog } from "./member-packs-dialog"
 import { EditMemberDialog } from "./edit-member-dialog"
+import { DeleteConfirmDialog } from "@/components/shared/delete-confirm-dialog"
+import { deleteMember } from "@/app/actions/members"
+import { toast } from "sonner"
 
 interface PackRow {
   id: string
@@ -32,6 +35,9 @@ export function MembersTable({ members }: MembersTableProps) {
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null)
   const [editOpen, setEditOpen] = useState(false)
   const [editMemberId, setEditMemberId] = useState<string | null>(null)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deletingMember, setDeletingMember] = useState<MemberRow | null>(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
 
   // Derive from current props so data is always fresh after revalidation
   const selectedMember = selectedMemberId
@@ -50,6 +56,25 @@ export function MembersTable({ members }: MembersTableProps) {
   function openEdit(memberId: string) {
     setEditMemberId(memberId)
     setEditOpen(true)
+  }
+
+  function openDelete(member: MemberRow) {
+    setDeletingMember(member)
+    setDeleteOpen(true)
+  }
+
+  async function handleDelete() {
+    if (!deletingMember) return
+    setDeleteLoading(true)
+    const result = await deleteMember(deletingMember.id)
+    setDeleteLoading(false)
+    if (result.error) {
+      toast.error(result.error)
+    } else {
+      toast.success(`${deletingMember.name} has been removed`)
+      setDeleteOpen(false)
+      setDeletingMember(null)
+    }
   }
 
   return (
@@ -121,6 +146,12 @@ export function MembersTable({ members }: MembersTableProps) {
                         >
                           Manage
                         </button>
+                        <button
+                          onClick={() => openDelete(m)}
+                          className="text-[0.75rem] font-semibold text-warm-grey hover:text-red-600"
+                        >
+                          Remove
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -142,6 +173,17 @@ export function MembersTable({ members }: MembersTableProps) {
         onOpenChange={setPacksOpen}
         member={selectedMember ? { id: selectedMember.id, name: selectedMember.name } : null}
         packs={selectedMember?.packs ?? []}
+      />
+
+      <DeleteConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        title="Remove member"
+        description={`Remove ${deletingMember?.name ?? "this member"} from your studio? Their booking history will be kept, but they will lose access and any active subscriptions will be cancelled.`}
+        onConfirm={handleDelete}
+        loading={deleteLoading}
+        actionLabel="Remove"
+        loadingLabel="Removing…"
       />
     </>
   )
