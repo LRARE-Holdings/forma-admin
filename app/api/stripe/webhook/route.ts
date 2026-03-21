@@ -67,6 +67,14 @@ export async function POST(request: NextRequest) {
         await handleSubscriptionDeleted(supabase, studioId, event.data.object as Stripe.Subscription)
         break
 
+      case "charge.refunded":
+        await handleChargeRefunded(supabase, studioId, connectedAccountId!, event.data.object as Stripe.Charge)
+        break
+
+      case "charge.dispute.created":
+        await handleDisputeCreated(supabase, studioId, connectedAccountId!, event.data.object as Stripe.Dispute)
+        break
+
       default:
         // Unhandled event type — acknowledge but ignore
         break
@@ -241,5 +249,100 @@ async function handleSubscriptionDeleted(
       cancelled_at: new Date().toISOString(),
     })
     .eq("stripe_subscription_id", subscription.id)
+    .eq("studio_id", studioId)
+}
+
+/**
+ * Handle a charge refund.
+ * Looks up the booking or class_pack by stripe_session_id from the charge's
+ * payment intent and marks it as refunded/cancelled.
+ */
+async function handleChargeRefunded(
+  supabase: ReturnType<typeof createAdminClient>,
+  studioId: string,
+  connectedAccountId: string,
+  charge: Stripe.Charge,
+) {
+  const paymentIntentId = typeof charge.payment_intent === "string"
+    ? charge.payment_intent
+    : charge.payment_intent?.id
+
+  if (!paymentIntentId) return
+
+  // Retrieve the checkout session that created this payment intent
+  const sessions = await stripe.checkout.sessions.list(
+    { payment_intent: paymentIntentId, limit: 1 },
+    { stripeAccount: connectedAccountId },
+  )
+  const session = sessions.data[0]
+  if (!session) return
+
+  const fullyRefunded = charge.refunded
+
+  // Cancel the booking if this was a drop-in or waitlist claim
+  await supabase
+    .from("bookings")
+    .update({ status: fullyRefunded ? "cancelled" : "confirmed" })
+    .eq("stripe_session_id", session.id)
+    .eq("studio_id", studioId)
+
+  // Invalidate the class pack if this was a pack purchase
+  if (fullyRefunded) {
+    await supabase
+      .from("class_packs")
+      .update({ credits_remaining: 0 })
+      .eq("stripe_session_id", session.id)
+      .eq("studio_id", studioId)
+  }
+}
+
+/**
+ * Handle a dispute (chargeback) created.
+ * Marks the associated booking as disputed.
+ */
+async function handleDisputeCreated(
+  supabase: ReturnType<typeof createAdminClient>,
+  studioId: string,
+  connectedAccountId: string,
+  dispute: Stripe.Dispute,
+) {
+  const chargeId = typeof dispute.charge === "string"
+    ? dispute.charge
+    : dispute.charge?.id
+
+  if (!chargeId) return
+
+  // Get the charge to find the payment intent
+  const charge = await stripe.charges.retrieve(
+    chargeId,
+    { expand: ["payment_intent"] },
+    { stripeAccount: connectedAccountId },
+  )
+
+  const paymentIntentId = typeof charge.payment_intent === "string"
+    ? charge.payment_intent
+    : (charge.payment_intent as Stripe.PaymentIntent)?.id
+
+  if (!paymentIntentId) return
+
+  const sessions = await stripe.checkout.sessions.list(
+    { payment_intent: paymentIntentId, limit: 1 },
+    { stripeAccount: connectedAccountId },
+  )
+  const session = sessions.data[0]
+  if (!session) return
+
+  // Mark the booking as disputed
+  await supabase
+    .from("bookings")
+    .update({ status: "cancelled" })
+    .eq("stripe_session_id", session.id)
+    .eq("studio_id", studioId)
+
+  // Zero out credits if this was a pack purchase
+  await supabase
+    .from("class_packs")
+    .update({ credits_remaining: 0 })
+    .eq("stripe_session_id", session.id)
     .eq("studio_id", studioId)
 }

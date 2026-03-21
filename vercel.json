@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/waitlist",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/stripe-sync",
+      "schedule": "*/10 * * * *"
     }
   ]
 }
