@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server"
 import { getUser } from "@/lib/auth"
 import { getStudioId } from "@/lib/studio-context"
 import { getGreeting, formatTime, formatPence } from "@/lib/utils"
+import { getMonthlyRevenue } from "@/lib/stripe/revenue"
 import { StatCard } from "@/components/shared/stat-card"
 import { ClassColorBar } from "@/components/shared/class-color-bar"
 import { EmptyState } from "@/components/shared/empty-state"
@@ -28,7 +29,7 @@ export default async function OverviewPage() {
   const today = now.toISOString().split("T")[0]
 
   // Fetch data in parallel
-  const [scheduleRes, bookingsTodayRes, membersRes, revenueRes, recentBookingsRes] =
+  const [scheduleRes, bookingsTodayRes, membersRes, revenue, recentBookingsRes] =
     await Promise.all([
       // Today's schedule
       supabase
@@ -51,14 +52,8 @@ export default async function OverviewPage() {
         .select("id")
         .eq("studio_id", studioId)
         .eq("role", "member"),
-      // Revenue this month (bookings with stripe payment)
-      supabase
-        .from("bookings")
-        .select("schedule:schedule_id(classes:class_id(price_pence))")
-        .eq("studio_id", studioId)
-        .eq("status", "confirmed")
-        .eq("payment_method", "stripe")
-        .gte("date", `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`),
+      // Revenue this month from Stripe
+      getMonthlyRevenue(),
       // Recent bookings for activity feed
       supabase
         .from("bookings")
@@ -72,17 +67,7 @@ export default async function OverviewPage() {
   const bookingsTodayCount = bookingsTodayRes.data?.length ?? 0
   const membersCount = membersRes.data?.length ?? 0
   const recentBookings = recentBookingsRes.data ?? []
-
-  // Calculate revenue
-  let revenuePence = 0
-  if (revenueRes.data) {
-    for (const b of revenueRes.data) {
-      const schedule = b.schedule as unknown as { classes: { price_pence: number } } | null
-      if (schedule?.classes?.price_pence) {
-        revenuePence += schedule.classes.price_pence
-      }
-    }
-  }
+  const { revenuePence, stripeConnected } = revenue
 
   // Get booking counts per schedule slot for today
   const { data: todayBookings } = await supabase
@@ -128,7 +113,13 @@ export default async function OverviewPage() {
         <StatCard
           label="Revenue this month"
           value={revenuePence > 0 ? `\u00A3${formatPence(revenuePence)}` : "\u00A30"}
-          subtitle={revenuePence === 0 ? "No revenue yet" : undefined}
+          subtitle={
+            !stripeConnected
+              ? "Connect Stripe to track revenue"
+              : revenuePence === 0
+                ? "No revenue yet"
+                : "Net after Stripe fees"
+          }
         />
       </div>
 

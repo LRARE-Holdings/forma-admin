@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getStudioId } from "@/lib/studio-context"
 import { formatPence, dayName, formatTime } from "@/lib/utils"
+import { getMonthlyRevenue } from "@/lib/stripe/revenue"
 import { revalidatePath } from "next/cache"
 import type { AssistToolName } from "./permissions"
 
@@ -615,7 +616,7 @@ export async function executeTool(
         // Start of month
         const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`
 
-        const [todayBookings, weekBookings, monthBookings, activeMembers] =
+        const [todayBookings, weekBookings, monthBookings, activeMembers, revenue] =
           await Promise.all([
             supabase
               .from("bookings")
@@ -631,7 +632,7 @@ export async function executeTool(
               .eq("status", "confirmed"),
             supabase
               .from("bookings")
-              .select("id, schedule(classes(price_pence))")
+              .select("id", { count: "exact" })
               .eq("studio_id", studioId)
               .gte("date", monthStart)
               .eq("status", "confirmed"),
@@ -640,23 +641,17 @@ export async function executeTool(
               .select("id", { count: "exact" })
               .eq("studio_id", studioId)
               .eq("role", "member"),
+            getMonthlyRevenue(),
           ])
-
-        // Calculate revenue from confirmed bookings this month
-        let monthRevenuePence = 0
-        if (monthBookings.data) {
-          for (const b of monthBookings.data) {
-            const schedule = b.schedule as unknown as { classes: { price_pence: number } } | null
-            monthRevenuePence += schedule?.classes?.price_pence ?? 0
-          }
-        }
 
         return JSON.stringify({
           today_bookings: todayBookings.count ?? 0,
           week_bookings: weekBookings.count ?? 0,
-          month_bookings: monthBookings.data?.length ?? 0,
+          month_bookings: monthBookings.count ?? 0,
           active_members: activeMembers.count ?? 0,
-          month_revenue: `£${formatPence(monthRevenuePence)}`,
+          month_revenue: revenue.stripeConnected
+            ? `£${formatPence(revenue.revenuePence)}`
+            : "Stripe not connected",
         })
       }
 
