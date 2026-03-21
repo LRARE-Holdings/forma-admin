@@ -136,6 +136,34 @@ async function handleCheckoutCompleted(
       stripe_session_id: session.id,
     })
   }
+
+  if (metadata.type === "waitlist_claim") {
+    // Customer claimed a waitlist spot via Stripe payment
+    const scheduleId = metadata.schedule_id
+    const date = metadata.date
+    const claimToken = metadata.waitlist_claim_token
+    if (!scheduleId || !date) return
+
+    // Create the booking (bypasses capacity check — spot was held for them)
+    await supabase.from("bookings").insert({
+      studio_id: studioId,
+      profile_id: profileId,
+      schedule_id: scheduleId,
+      date,
+      status: "confirmed",
+      payment_method: "stripe",
+      stripe_session_id: session.id,
+    })
+
+    // Mark the waitlist entry as claimed
+    if (claimToken) {
+      await supabase
+        .from("waitlist")
+        .update({ status: "claimed" })
+        .eq("claim_token", claimToken)
+        .eq("studio_id", studioId)
+    }
+  }
 }
 
 /**
