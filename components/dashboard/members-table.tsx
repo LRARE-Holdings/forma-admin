@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { EmptyState } from "@/components/shared/empty-state"
 import { MemberPacksDialog } from "./member-packs-dialog"
+import { EditMemberDialog } from "./edit-member-dialog"
 
 interface PackRow {
   id: string
@@ -29,15 +30,26 @@ interface MembersTableProps {
 export function MembersTable({ members }: MembersTableProps) {
   const [packsOpen, setPacksOpen] = useState(false)
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null)
+  const [editOpen, setEditOpen] = useState(false)
+  const [editMemberId, setEditMemberId] = useState<string | null>(null)
 
   // Derive from current props so data is always fresh after revalidation
   const selectedMember = selectedMemberId
     ? members.find((m) => m.id === selectedMemberId) ?? null
     : null
 
+  const editMember = editMemberId
+    ? members.find((m) => m.id === editMemberId) ?? null
+    : null
+
   function openPacks(memberId: string) {
     setSelectedMemberId(memberId)
     setPacksOpen(true)
+  }
+
+  function openEdit(memberId: string) {
+    setEditMemberId(memberId)
+    setEditOpen(true)
   }
 
   return (
@@ -96,12 +108,20 @@ export function MembersTable({ members }: MembersTableProps) {
                       {m.joinedAt}
                     </td>
                     <td className="px-5 py-3">
-                      <button
-                        onClick={() => openPacks(m.id)}
-                        className="text-[0.75rem] font-semibold text-gold hover:text-ember"
-                      >
-                        Manage
-                      </button>
+                      <div className="flex gap-3">
+                        <button
+                          onClick={() => openEdit(m.id)}
+                          className="text-[0.75rem] font-semibold text-gold hover:text-ember"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => openPacks(m.id)}
+                          className="text-[0.75rem] font-semibold text-gold hover:text-ember"
+                        >
+                          Manage
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -110,6 +130,12 @@ export function MembersTable({ members }: MembersTableProps) {
           </div>
         )}
       </div>
+
+      <EditMemberDialog
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        member={editMember ? { id: editMember.id, name: editMember.name, email: editMember.email } : null}
+      />
 
       <MemberPacksDialog
         open={packsOpen}
