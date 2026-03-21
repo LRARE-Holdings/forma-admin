@@ -11,7 +11,8 @@ import { DeleteConfirmDialog } from "@/components/shared/delete-confirm-dialog"
 import { deleteScheduleSlot } from "@/app/actions/schedule"
 import { deleteScheduleRule, pauseScheduleRule } from "@/app/actions/schedule-rules"
 import { Button } from "@/components/ui/button"
-import { Plus, Repeat, Pause, Trash2 } from "lucide-react"
+import { CancelClassDialog } from "./cancel-class-dialog"
+import { Plus, Repeat, Pause, Trash2, Ban } from "lucide-react"
 import { toast } from "sonner"
 
 interface ClassOption {
@@ -62,6 +63,7 @@ interface TimetableTableProps {
   instructors: InstructorOption[]
   weekLabel: string
   rules?: RuleRow[]
+  weekDates?: Record<number, string>
 }
 
 const RECURRENCE_LABELS: Record<string, string> = {
@@ -77,6 +79,7 @@ export function TimetableTable({
   instructors,
   weekLabel,
   rules = [],
+  weekDates = {},
 }: TimetableTableProps) {
   // Slot dialog state
   const [formOpen, setFormOpen] = useState(false)
@@ -84,6 +87,10 @@ export function TimetableTable({
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deletingSlot, setDeletingSlot] = useState<SlotRow | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
+
+  // Cancel dialog state
+  const [cancelOpen, setCancelOpen] = useState(false)
+  const [cancellingSlot, setCancellingSlot] = useState<SlotRow | null>(null)
 
   // Rule dialog state
   const [ruleFormOpen, setRuleFormOpen] = useState(false)
@@ -268,13 +275,25 @@ export function TimetableTable({
                         </div>
 
                         {/* Actions */}
-                        <div className="flex w-[100px] shrink-0 items-center justify-end gap-3">
+                        <div className="flex w-[130px] shrink-0 items-center justify-end gap-3">
                           <button
                             onClick={() => openEditSlot(slot)}
                             className="text-[0.75rem] font-semibold text-gold hover:text-ember"
                           >
                             Edit
                           </button>
+                          {weekDates[slot.day_of_week] && (
+                            <button
+                              onClick={() => {
+                                setCancellingSlot(slot)
+                                setCancelOpen(true)
+                              }}
+                              className="p-1 text-warm-grey hover:text-ember"
+                              title="Cancel this week's class"
+                            >
+                              <Ban className="h-3.5 w-3.5" />
+                            </button>
+                          )}
                           <button
                             onClick={() => openDeleteSlot(slot)}
                             className="text-[0.75rem] font-semibold text-warm-grey hover:text-red-600"
@@ -398,6 +417,22 @@ export function TimetableTable({
         loading={deleteRuleLoading}
         actionLabel="Delete"
       />
+
+      {/* Cancel class dialog */}
+      {cancellingSlot && (
+        <CancelClassDialog
+          open={cancelOpen}
+          onOpenChange={(open) => {
+            setCancelOpen(open)
+            if (!open) setCancellingSlot(null)
+          }}
+          scheduleId={cancellingSlot.id}
+          date={weekDates[cancellingSlot.day_of_week] ?? ""}
+          className={cancellingSlot.classes.name}
+          startTime={cancellingSlot.start_time}
+          bookingCount={bookingsBySlot[cancellingSlot.id] ?? 0}
+        />
+      )}
     </>
   )
 }

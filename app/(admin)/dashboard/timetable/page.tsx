@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server"
 import { getStudioId } from "@/lib/studio-context"
 import { PageHeader } from "@/components/shared/page-header"
 import { TimetableTable } from "@/components/dashboard/timetable-table"
+import { RealtimeBookingListener } from "@/components/dashboard/realtime-booking-listener"
 
 export default async function TimetablePage() {
   const supabase = await createClient()
@@ -57,6 +58,14 @@ export default async function TimetablePage() {
   const bookingsBySlot: Record<string, number> = {}
   for (const b of weekBookings ?? []) {
     bookingsBySlot[b.schedule_id] = (bookingsBySlot[b.schedule_id] ?? 0) + 1
+  }
+
+  // Build weekDates map: day_of_week (0=Mon) → YYYY-MM-DD
+  const weekDates: Record<number, string> = {}
+  for (let d = 0; d < 7; d++) {
+    const dateObj = new Date(monday)
+    dateObj.setDate(monday.getDate() + d)
+    weekDates[d] = dateObj.toISOString().split("T")[0]
   }
 
   const weekLabel = `Week of ${monday.toLocaleDateString("en-GB", {
@@ -131,7 +140,9 @@ export default async function TimetablePage() {
         instructors={instructors}
         weekLabel={weekLabel}
         rules={rules}
+        weekDates={weekDates}
       />
+      <RealtimeBookingListener studioId={studioId} />
     </>
   )
 }

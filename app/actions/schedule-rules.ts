@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { requireManager } from "@/lib/auth"
 import { getStudioId } from "@/lib/studio-context"
+import { notifyInstructorScheduleChange } from "@/lib/email/schedule-notifications"
 import type { Recurrence } from "@/lib/types"
 
 /**
@@ -48,6 +49,19 @@ export async function createScheduleRule(formData: FormData) {
   // Materialise slots for the next 4 weeks
   await materialiseSlots(rule.id)
 
+  // Notify instructor (fire-and-forget)
+  const { data: cls } = await supabase
+    .from("classes")
+    .select("name")
+    .eq("id", class_id)
+    .single()
+
+  notifyInstructorScheduleChange(studioId, instructor_id, "assigned", {
+    className: cls?.name ?? "a class",
+    dayOfWeek: day_of_week,
+    startTime: start_time,
+  }).catch((err) => console.error("[schedule-rules] Notification failed:", err))
+
   revalidatePath("/dashboard/timetable")
   revalidatePath("/dashboard")
 }
@@ -59,6 +73,14 @@ export async function updateScheduleRule(ruleId: string, formData: FormData) {
   await requireManager()
   const studioId = await getStudioId()
   const supabase = await createClient()
+
+  // Fetch old rule for notification comparison
+  const { data: oldRule } = await supabase
+    .from("schedule_rules")
+    .select("instructor_id, day_of_week, start_time, class_id, classes:class_id(name)")
+    .eq("id", ruleId)
+    .eq("studio_id", studioId)
+    .single()
 
   const class_id = formData.get("class_id") as string
   const instructor_id = formData.get("instructor_id") as string
@@ -88,6 +110,38 @@ export async function updateScheduleRule(ruleId: string, formData: FormData) {
 
   // Re-materialise: remove future unmutated slots and regenerate
   await rematerialiseSlots(ruleId)
+
+  // Notify instructor about changes (fire-and-forget)
+  const { data: cls } = await supabase
+    .from("classes")
+    .select("name")
+    .eq("id", class_id)
+    .single()
+
+  const className = cls?.name ?? "a class"
+
+  if (oldRule) {
+    if (oldRule.instructor_id !== instructor_id) {
+      const oldClassName = (oldRule.classes as unknown as { name: string })?.name ?? className
+      notifyInstructorScheduleChange(studioId, oldRule.instructor_id, "removed", {
+        className: oldClassName,
+        dayOfWeek: oldRule.day_of_week,
+        startTime: oldRule.start_time,
+      }).catch((err) => console.error("[schedule-rules] Notification failed:", err))
+
+      notifyInstructorScheduleChange(studioId, instructor_id, "assigned", {
+        className,
+        dayOfWeek: day_of_week,
+        startTime: start_time,
+      }).catch((err) => console.error("[schedule-rules] Notification failed:", err))
+    } else if (oldRule.day_of_week !== day_of_week || oldRule.start_time !== start_time) {
+      notifyInstructorScheduleChange(studioId, instructor_id, "changed", {
+        className,
+        dayOfWeek: day_of_week,
+        startTime: start_time,
+      }).catch((err) => console.error("[schedule-rules] Notification failed:", err))
+    }
+  }
 
   revalidatePath("/dashboard/timetable")
   revalidatePath("/dashboard")
@@ -139,6 +193,14 @@ export async function deleteScheduleRule(ruleId: string) {
   const studioId = await getStudioId()
   const supabase = await createClient()
 
+  // Fetch rule data before deletion for notification
+  const { data: rule } = await supabase
+    .from("schedule_rules")
+    .select("instructor_id, day_of_week, start_time, classes:class_id(name)")
+    .eq("id", ruleId)
+    .eq("studio_id", studioId)
+    .single()
+
   const { error } = await supabase
     .from("schedule_rules")
     .delete()
@@ -146,6 +208,17 @@ export async function deleteScheduleRule(ruleId: string) {
     .eq("studio_id", studioId)
 
   if (error) throw new Error(error.message)
+
+  // Notify instructor (fire-and-forget)
+  if (rule) {
+    const cls = rule.classes as unknown as { name: string } | null
+    notifyInstructorScheduleChange(studioId, rule.instructor_id, "removed", {
+      className: cls?.name ?? "a class",
+      dayOfWeek: rule.day_of_week,
+      startTime: rule.start_time,
+    }).catch((err) => console.error("[schedule-rules] Notification failed:", err))
+  }
+
   revalidatePath("/dashboard/timetable")
   revalidatePath("/dashboard")
 }

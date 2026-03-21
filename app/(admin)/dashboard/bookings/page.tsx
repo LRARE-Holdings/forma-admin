@@ -2,6 +2,8 @@ import { createClient } from "@/lib/supabase/server"
 import { getStudioId } from "@/lib/studio-context"
 import { PageHeader } from "@/components/shared/page-header"
 import { BookingsTable } from "@/components/dashboard/bookings-table"
+import { WaitlistSection } from "@/components/dashboard/waitlist-section"
+import { getUpcomingWaitlist } from "@/lib/waitlist"
 import { dayShort, formatTime } from "@/lib/utils"
 
 export default async function BookingsPage() {
@@ -94,6 +96,9 @@ export default async function BookingsPage() {
     }
   })
 
+  // Fetch waitlist entries
+  const waitlistEntries = await getUpcomingWaitlist(studioId)
+
   return (
     <>
       <PageHeader
@@ -105,6 +110,19 @@ export default async function BookingsPage() {
         members={members}
         slots={slotOptions}
       />
+
+      {/* Waitlist section */}
+      <div className="mt-6 overflow-hidden rounded-2xl border border-sand bg-white">
+        <div className="border-b border-sand px-5 py-4">
+          <h3 className="font-heading text-[1.05rem] font-semibold text-cocoa">
+            Waitlist
+          </h3>
+          <p className="mt-0.5 text-[0.7rem] text-warm-grey">
+            Members waiting for spots in full classes.
+          </p>
+        </div>
+        <WaitlistSection entries={waitlistEntries as unknown as Parameters<typeof WaitlistSection>[0]["entries"]} />
+      </div>
     </>
   )
 }

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { requireReception, requireManager } from "@/lib/auth"
 import { getStudioId } from "@/lib/studio-context"
+import { promoteNextInWaitlist } from "@/lib/waitlist"
 
 export async function createManualBooking(formData: FormData) {
   await requireReception()
@@ -100,11 +101,17 @@ export async function cancelBooking(bookingId: string) {
 
   const { error } = await supabase
     .from("bookings")
-    .update({ status: "cancelled" })
+    .update({ status: "cancelled", cancelled_by: "member" })
     .eq("id", bookingId)
     .eq("studio_id", studioId)
 
   if (error) throw new Error(error.message)
+
+  // Promote next person on waitlist (fire-and-forget)
+  promoteNextInWaitlist(studioId, booking.schedule_id, booking.date).catch((err) =>
+    console.error("[bookings] Waitlist promotion failed:", err)
+  )
+
   revalidatePath("/dashboard/bookings")
   revalidatePath("/dashboard")
 }

@@ -49,6 +49,7 @@ export interface Studio {
   stripe_subscription_id: string | null
   stripe_account_id: string | null
   stripe_onboarding_complete: boolean
+  onboarding_dismissed?: boolean
   plan_tier: string
   timezone: string | null
   active: boolean
@@ -173,6 +174,8 @@ export interface Booking {
   status: BookingStatus
   payment_method: PaymentMethod
   stripe_session_id: string | null
+  cancelled_by?: "member" | "studio" | null
+  cancellation_reason?: string | null
   created_at: string
 }
 
@@ -237,4 +240,21 @@ export interface MemberWithDetails extends Profile {
   studio_memberships: StudioMembership[]
   bookings_count?: number
   credits_remaining?: number
+}
+
+// Waitlist
+export type WaitlistStatus = "waiting" | "offered" | "claimed" | "expired" | "cancelled"
+
+export interface WaitlistEntry {
+  id: string
+  studio_id: string
+  schedule_id: string
+  date: string
+  profile_id: string
+  position: number
+  status: WaitlistStatus
+  offered_at: string | null
+  expires_at: string | null
+  claim_token: string
+  created_at: string
 }

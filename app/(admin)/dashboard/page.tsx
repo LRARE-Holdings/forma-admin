@@ -1,12 +1,16 @@
 import { createClient } from "@/lib/supabase/server"
-import { getUser } from "@/lib/auth"
+import { getUser, getUserRole } from "@/lib/auth"
 import { getStudioId } from "@/lib/studio-context"
 import { getGreeting, formatTime, formatPence } from "@/lib/utils"
 import { getMonthlyRevenue } from "@/lib/stripe/revenue"
+import { ADMIN_ROLES } from "@/lib/types"
 import { StatCard } from "@/components/shared/stat-card"
 import { ClassColorBar } from "@/components/shared/class-color-bar"
 import { EmptyState } from "@/components/shared/empty-state"
 import { PageHeader } from "@/components/shared/page-header"
+import { OnboardingChecklist } from "@/components/dashboard/onboarding-checklist"
+import { TodayCancelButton } from "@/components/dashboard/today-cancel-button"
+import { RealtimeBookingListener } from "@/components/dashboard/realtime-booking-listener"
 
 export default async function OverviewPage() {
   const supabase = await createClient()
@@ -28,8 +32,10 @@ export default async function OverviewPage() {
 
   const today = now.toISOString().split("T")[0]
 
+  const role = await getUserRole(studioId)
+
   // Fetch data in parallel
-  const [scheduleRes, bookingsTodayRes, membersRes, revenue, recentBookingsRes] =
+  const [scheduleRes, bookingsTodayRes, membersRes, revenue, recentBookingsRes, studioRes, classesCountRes, scheduleCountRes, teamCountRes] =
     await Promise.all([
       // Today's schedule
       supabase
@@ -61,6 +67,30 @@ export default async function OverviewPage() {
         .eq("studio_id", studioId)
         .order("created_at", { ascending: false })
         .limit(7),
+      // Studio info for onboarding
+      supabase
+        .from("studios")
+        .select("stripe_onboarding_complete, onboarding_dismissed")
+        .eq("id", studioId)
+        .single(),
+      // Onboarding checks
+      supabase
+        .from("classes")
+        .select("id")
+        .eq("studio_id", studioId)
+        .limit(1),
+      supabase
+        .from("schedule")
+        .select("id")
+        .eq("studio_id", studioId)
+        .eq("is_active", true)
+        .limit(1),
+      supabase
+        .from("studio_memberships")
+        .select("id")
+        .eq("studio_id", studioId)
+        .neq("role", "member")
+        .limit(2),
     ])
 
   const todaySchedule = scheduleRes.data ?? []
@@ -82,6 +112,22 @@ export default async function OverviewPage() {
     bookingsBySlot[b.schedule_id] = (bookingsBySlot[b.schedule_id] ?? 0) + 1
   }
 
+  // Onboarding checklist
+  const studioInfo = studioRes.data
+  const showOnboarding =
+    role &&
+    ADMIN_ROLES.includes(role) &&
+    !studioInfo?.onboarding_dismissed
+
+  const onboardingItems = showOnboarding
+    ? [
+        { label: "Add your first class", href: "/dashboard/classes", completed: (classesCountRes.data?.length ?? 0) > 0 },
+        { label: "Set up your timetable", href: "/dashboard/timetable", completed: (scheduleCountRes.data?.length ?? 0) > 0 },
+        { label: "Connect Stripe", href: "/dashboard/settings", completed: studioInfo?.stripe_onboarding_complete ?? false },
+        { label: "Invite your team", href: "/dashboard/team", completed: (teamCountRes.data?.length ?? 0) > 1 },
+      ]
+    : null
+
   return (
     <>
       <PageHeader
@@ -89,8 +135,13 @@ export default async function OverviewPage() {
         description={`Here\u2019s what\u2019s happening at your studio today.`}
       />
 
+      {/* Onboarding checklist */}
+      {onboardingItems && onboardingItems.some((i) => !i.completed) && (
+        <OnboardingChecklist items={onboardingItems} />
+      )}
+
       {/* Stat cards */}
-      <div className="mb-7 grid grid-cols-4 gap-4">
+      <div className="mb-7 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
           label="Classes today"
           value={todaySchedule.length}
@@ -123,7 +174,7 @@ export default async function OverviewPage() {
         />
       </div>
 
-      <div className="mb-6 grid grid-cols-[2fr_1fr] gap-5">
+      <div className="mb-6 grid grid-cols-1 gap-5 lg:grid-cols-[2fr_1fr]">
         {/* Today's timetable */}
         <div className="overflow-hidden rounded-2xl border border-sand bg-white">
           <div className="flex items-center justify-between border-b border-sand px-5 py-4">
@@ -186,6 +237,13 @@ export default async function OverviewPage() {
                     >
                       {booked}/{capacity}
                     </div>
+                    <TodayCancelButton
+                      scheduleId={slot.id as string}
+                      date={today}
+                      className={cls.name}
+                      startTime={formatTime(slot.start_time as string)}
+                      bookingCount={booked}
+                    />
                   </div>
                 )
               })
@@ -255,6 +313,7 @@ export default async function OverviewPage() {
           </div>
         </div>
       </div>
+      <RealtimeBookingListener studioId={studioId} />
     </>
   )
 }

@@ -16,6 +16,7 @@ import {
   Repeat,
   User,
   Settings,
+  BarChart3,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 
@@ -23,6 +24,7 @@ interface SidebarProps {
   studio: Studio
   profile: Profile
   role: UserRole
+  onNavigate?: () => void
 }
 
 interface NavItem {
@@ -40,6 +42,7 @@ const navItems: NavItem[] = [
   { href: "/dashboard/classes", label: "Classes", icon: Star, minRoles: ADMIN_ROLES },
   { href: "/dashboard/packages", label: "Packages", icon: Package, minRoles: ADMIN_ROLES },
   { href: "/dashboard/memberships", label: "Memberships", icon: Repeat, minRoles: ADMIN_ROLES },
+  { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3, minRoles: ADMIN_ROLES },
   { href: "/dashboard/team", label: "Team", icon: User, minRoles: ADMIN_ROLES },
   { href: "/dashboard/settings", label: "Settings", icon: Settings, minRoles: ADMIN_ROLES },
 ]
@@ -51,7 +54,7 @@ const ROLE_LABELS: Record<string, string> = {
   reception: "Reception",
 }
 
-export function Sidebar({ studio, profile, role }: SidebarProps) {
+export function Sidebar({ studio, profile, role, onNavigate }: SidebarProps) {
   const visibleItems = navItems.filter((item) => item.minRoles.includes(role))
 
   return (
@@ -79,7 +82,7 @@ export function Sidebar({ studio, profile, role }: SidebarProps) {
       {/* Navigation */}
       <div className="flex-1 overflow-y-auto py-4">
         {visibleItems.map((item) => (
-          <SidebarNavItem key={item.href} href={item.href} label={item.label} icon={item.icon} />
+          <SidebarNavItem key={item.href} href={item.href} label={item.label} icon={item.icon} onNavigate={onNavigate} />
         ))}
       </div>
 

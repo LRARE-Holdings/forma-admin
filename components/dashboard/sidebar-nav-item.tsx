@@ -9,9 +9,10 @@ interface SidebarNavItemProps {
   href: string
   label: string
   icon: LucideIcon
+  onNavigate?: () => void
 }
 
-export function SidebarNavItem({ href, label, icon: Icon }: SidebarNavItemProps) {
+export function SidebarNavItem({ href, label, icon: Icon, onNavigate }: SidebarNavItemProps) {
   const pathname = usePathname()
   const isActive =
     href === "/dashboard"
@@ -21,6 +22,7 @@ export function SidebarNavItem({ href, label, icon: Icon }: SidebarNavItemProps)
   return (
     <Link
       href={href}
+      onClick={onNavigate}
       className={cn(
         "flex items-center gap-3 border-l-[3px] border-transparent px-5 py-2.5 text-[0.82rem] font-medium text-warm-grey transition-all hover:bg-white/[0.04] hover:text-wheat",
         isActive &&
