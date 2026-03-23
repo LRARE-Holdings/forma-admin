@@ -7,7 +7,11 @@ import type Stripe from "stripe"
  * POST /api/stripe/webhook
  *
  * Handles Stripe webhook events from connected accounts.
- * Events include: checkout completions, subscription lifecycle.
+ * Events include: payment completions, subscription lifecycle, refunds, disputes.
+ *
+ * The public site (burn-public) uses PaymentIntents + Elements for checkout,
+ * so the primary payment event is `payment_intent.succeeded`.
+ * `checkout.session.completed` is kept for backwards compatibility.
  */
 export async function POST(request: NextRequest) {
   const body = await request.text()
@@ -54,6 +58,10 @@ export async function POST(request: NextRequest) {
 
   try {
     switch (event.type) {
+      case "payment_intent.succeeded":
+        await handlePaymentIntentSucceeded(supabase, studioId, event.data.object as Stripe.PaymentIntent)
+        break
+
       case "checkout.session.completed":
         await handleCheckoutCompleted(supabase, studioId, event.data.object as Stripe.Checkout.Session)
         break
@@ -88,8 +96,127 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * Handle a completed checkout session.
- * Creates class_packs or bookings based on product metadata.
+ * Handle a successful PaymentIntent (the primary payment flow).
+ *
+ * The public site creates PaymentIntents via Stripe Elements with metadata
+ * describing the purchase type. This handler reads that metadata and creates
+ * the corresponding DB records (class_packs for pack purchases, bookings
+ * for drop-in classes and waitlist claims).
+ */
+async function handlePaymentIntentSucceeded(
+  supabase: ReturnType<typeof createAdminClient>,
+  studioId: string,
+  paymentIntent: Stripe.PaymentIntent,
+) {
+  const metadata = paymentIntent.metadata ?? {}
+  const profileId = metadata.profile_id
+  if (!profileId) return
+
+  // Guard against duplicate processing — check if we already handled this PI
+  const piId = paymentIntent.id
+
+  if (metadata.type === "pack_tier") {
+    const packTierId = metadata.pack_tier_id
+    if (!packTierId) return
+
+    // Idempotency: check if pack already created for this payment
+    const { data: existingPack } = await supabase
+      .from("class_packs")
+      .select("id")
+      .eq("stripe_session_id", piId)
+      .eq("studio_id", studioId)
+      .maybeSingle()
+
+    if (existingPack) return
+
+    const { data: tier } = await supabase
+      .from("pack_tiers")
+      .select("credits, validity_days")
+      .eq("id", packTierId)
+      .single()
+
+    if (!tier) return
+
+    const expiresAt = new Date()
+    expiresAt.setDate(expiresAt.getDate() + (tier.validity_days as number))
+
+    await supabase.from("class_packs").insert({
+      studio_id: studioId,
+      profile_id: profileId,
+      pack_type: String(tier.credits),
+      credits_total: tier.credits,
+      credits_remaining: tier.credits,
+      purchased_at: new Date().toISOString(),
+      expires_at: expiresAt.toISOString(),
+      stripe_session_id: piId,
+    })
+  }
+
+  if (metadata.type === "drop_in_class") {
+    const scheduleId = metadata.schedule_id
+    const date = metadata.date
+    if (!scheduleId || !date) return
+
+    // Idempotency: check if booking already exists for this payment
+    const { data: existingBooking } = await supabase
+      .from("bookings")
+      .select("id")
+      .eq("stripe_session_id", piId)
+      .eq("studio_id", studioId)
+      .maybeSingle()
+
+    if (existingBooking) return
+
+    await supabase.from("bookings").insert({
+      studio_id: studioId,
+      profile_id: profileId,
+      schedule_id: scheduleId,
+      date,
+      status: "confirmed",
+      payment_method: "stripe",
+      stripe_session_id: piId,
+    })
+  }
+
+  if (metadata.type === "waitlist_claim") {
+    const scheduleId = metadata.schedule_id
+    const date = metadata.date
+    const claimToken = metadata.waitlist_claim_token
+    if (!scheduleId || !date) return
+
+    // Idempotency check
+    const { data: existingBooking } = await supabase
+      .from("bookings")
+      .select("id")
+      .eq("stripe_session_id", piId)
+      .eq("studio_id", studioId)
+      .maybeSingle()
+
+    if (existingBooking) return
+
+    await supabase.from("bookings").insert({
+      studio_id: studioId,
+      profile_id: profileId,
+      schedule_id: scheduleId,
+      date,
+      status: "confirmed",
+      payment_method: "stripe",
+      stripe_session_id: piId,
+    })
+
+    if (claimToken) {
+      await supabase
+        .from("waitlist")
+        .update({ status: "claimed" })
+        .eq("claim_token", claimToken)
+        .eq("studio_id", studioId)
+    }
+  }
+}
+
+/**
+ * Handle a completed checkout session (legacy / backwards compatibility).
+ * Kept in case any older integrations still use Checkout Sessions.
  */
 async function handleCheckoutCompleted(
   supabase: ReturnType<typeof createAdminClient>,
@@ -101,9 +228,18 @@ async function handleCheckoutCompleted(
   if (!profileId) return
 
   if (metadata.type === "pack_tier") {
-    // Customer bought a class pack
     const packTierId = metadata.pack_tier_id
     if (!packTierId) return
+
+    // Idempotency check
+    const { data: existingPack } = await supabase
+      .from("class_packs")
+      .select("id")
+      .eq("stripe_session_id", session.id)
+      .eq("studio_id", studioId)
+      .maybeSingle()
+
+    if (existingPack) return
 
     const { data: tier } = await supabase
       .from("pack_tiers")
@@ -129,7 +265,6 @@ async function handleCheckoutCompleted(
   }
 
   if (metadata.type === "drop_in_class") {
-    // Customer bought a single class drop-in
     const scheduleId = metadata.schedule_id
     const date = metadata.date
     if (!scheduleId || !date) return
@@ -146,13 +281,11 @@ async function handleCheckoutCompleted(
   }
 
   if (metadata.type === "waitlist_claim") {
-    // Customer claimed a waitlist spot via Stripe payment
     const scheduleId = metadata.schedule_id
     const date = metadata.date
     const claimToken = metadata.waitlist_claim_token
     if (!scheduleId || !date) return
 
-    // Create the booking (bypasses capacity check — spot was held for them)
     await supabase.from("bookings").insert({
       studio_id: studioId,
       profile_id: profileId,
@@ -163,7 +296,6 @@ async function handleCheckoutCompleted(
       stripe_session_id: session.id,
     })
 
-    // Mark the waitlist entry as claimed
     if (claimToken) {
       await supabase
         .from("waitlist")
@@ -254,8 +386,8 @@ async function handleSubscriptionDeleted(
 
 /**
  * Handle a charge refund.
- * Looks up the booking or class_pack by stripe_session_id from the charge's
- * payment intent and marks it as refunded/cancelled.
+ * Looks up the booking or class_pack by the payment intent ID stored in
+ * stripe_session_id, then marks it as refunded/cancelled.
  */
 async function handleChargeRefunded(
   supabase: ReturnType<typeof createAdminClient>,
@@ -269,7 +401,45 @@ async function handleChargeRefunded(
 
   if (!paymentIntentId) return
 
-  // Retrieve the checkout session that created this payment intent
+  const fullyRefunded = charge.refunded
+
+  // Look up directly by payment intent ID (primary path — Elements flow)
+  const { data: packByPi } = await supabase
+    .from("class_packs")
+    .select("id")
+    .eq("stripe_session_id", paymentIntentId)
+    .eq("studio_id", studioId)
+    .maybeSingle()
+
+  const { data: bookingByPi } = await supabase
+    .from("bookings")
+    .select("id")
+    .eq("stripe_session_id", paymentIntentId)
+    .eq("studio_id", studioId)
+    .maybeSingle()
+
+  if (packByPi || bookingByPi) {
+    // Found via payment intent ID
+    if (bookingByPi) {
+      await supabase
+        .from("bookings")
+        .update({ status: fullyRefunded ? "cancelled" : "confirmed" })
+        .eq("stripe_session_id", paymentIntentId)
+        .eq("studio_id", studioId)
+    }
+
+    if (fullyRefunded && packByPi) {
+      await supabase
+        .from("class_packs")
+        .update({ credits_remaining: 0 })
+        .eq("stripe_session_id", paymentIntentId)
+        .eq("studio_id", studioId)
+    }
+
+    return
+  }
+
+  // Fallback: look up via checkout session (legacy Checkout Sessions flow)
   const sessions = await stripe.checkout.sessions.list(
     { payment_intent: paymentIntentId, limit: 1 },
     { stripeAccount: connectedAccountId },
@@ -277,16 +447,12 @@ async function handleChargeRefunded(
   const session = sessions.data[0]
   if (!session) return
 
-  const fullyRefunded = charge.refunded
-
-  // Cancel the booking if this was a drop-in or waitlist claim
   await supabase
     .from("bookings")
     .update({ status: fullyRefunded ? "cancelled" : "confirmed" })
     .eq("stripe_session_id", session.id)
     .eq("studio_id", studioId)
 
-  // Invalidate the class pack if this was a pack purchase
   if (fullyRefunded) {
     await supabase
       .from("class_packs")
@@ -298,7 +464,7 @@ async function handleChargeRefunded(
 
 /**
  * Handle a dispute (chargeback) created.
- * Marks the associated booking as disputed.
+ * Marks the associated booking as disputed and zeroes out pack credits.
  */
 async function handleDisputeCreated(
   supabase: ReturnType<typeof createAdminClient>,
@@ -312,7 +478,6 @@ async function handleDisputeCreated(
 
   if (!chargeId) return
 
-  // Get the charge to find the payment intent
   const charge = await stripe.charges.retrieve(
     chargeId,
     { expand: ["payment_intent"] },
@@ -325,6 +490,42 @@ async function handleDisputeCreated(
 
   if (!paymentIntentId) return
 
+  // Try direct lookup by payment intent ID first (Elements flow)
+  const { data: packByPi } = await supabase
+    .from("class_packs")
+    .select("id")
+    .eq("stripe_session_id", paymentIntentId)
+    .eq("studio_id", studioId)
+    .maybeSingle()
+
+  const { data: bookingByPi } = await supabase
+    .from("bookings")
+    .select("id")
+    .eq("stripe_session_id", paymentIntentId)
+    .eq("studio_id", studioId)
+    .maybeSingle()
+
+  if (packByPi || bookingByPi) {
+    if (bookingByPi) {
+      await supabase
+        .from("bookings")
+        .update({ status: "cancelled" })
+        .eq("stripe_session_id", paymentIntentId)
+        .eq("studio_id", studioId)
+    }
+
+    if (packByPi) {
+      await supabase
+        .from("class_packs")
+        .update({ credits_remaining: 0 })
+        .eq("stripe_session_id", paymentIntentId)
+        .eq("studio_id", studioId)
+    }
+
+    return
+  }
+
+  // Fallback: checkout session lookup (legacy flow)
   const sessions = await stripe.checkout.sessions.list(
     { payment_intent: paymentIntentId, limit: 1 },
     { stripeAccount: connectedAccountId },
@@ -332,14 +533,12 @@ async function handleDisputeCreated(
   const session = sessions.data[0]
   if (!session) return
 
-  // Mark the booking as disputed
   await supabase
     .from("bookings")
     .update({ status: "cancelled" })
     .eq("stripe_session_id", session.id)
     .eq("studio_id", studioId)
 
-  // Zero out credits if this was a pack purchase
   await supabase
     .from("class_packs")
     .update({ credits_remaining: 0 })
