@@ -74,8 +74,9 @@ export async function inviteStaffMember(
     { onConflict: "studio_id,profile_id" }
   )
 
-  // Only create instructor record for instructor roles
-  if (INSTRUCTOR_ROLES.includes(role)) {
+  // Create instructor record for instructor roles, or if "also instructor" was checked
+  const alsoInstructor = formData.get("alsoInstructor") === "true"
+  if (INSTRUCTOR_ROLES.includes(role) || alsoInstructor) {
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
     await adminClient.from("instructors").insert({
       studio_id: studioId,
@@ -336,4 +337,113 @@ export async function updateInstructor(instructorId: string, formData: FormData)
 
   if (error) throw new Error(error.message)
   revalidatePath("/dashboard/team")
+}
+
+/**
+ * Self-edit: lets an instructor update their own bio and photo.
+ * No admin check — validates the record belongs to the current user.
+ * Name is admin-controlled, so it's not editable here.
+ */
+export async function updateOwnInstructorProfile(formData: FormData) {
+  const studioId = await getStudioId()
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) throw new Error("Not authenticated")
+
+  // Verify the instructor record belongs to the current user
+  const { data: instructor } = await supabase
+    .from("instructors")
+    .select("id")
+    .eq("studio_id", studioId)
+    .eq("profile_id", user.id)
+    .single()
+
+  if (!instructor) throw new Error("No instructor record found")
+
+  const bio = (formData.get("bio") as string) ?? ""
+  const photo_url = formData.get("photo_url") as string | null
+
+  const updates: Record<string, unknown> = { bio }
+  if (photo_url !== null) updates.photo_url = photo_url
+
+  const { error } = await supabase
+    .from("instructors")
+    .update(updates)
+    .eq("id", instructor.id)
+    .eq("studio_id", studioId)
+
+  if (error) throw new Error(error.message)
+  revalidatePath("/staff")
+  revalidatePath("/dashboard/team")
+}
+
+/**
+ * Toggle instructor record for a team member.
+ * Admin-only. Creates or removes an instructor record for any role.
+ * Staff members always have instructor records and cannot be toggled off.
+ */
+export async function toggleInstructorRecord(
+  membershipId: string,
+  shouldBeInstructor: boolean
+): Promise<{ error?: string }> {
+  await requireAdmin()
+  const studioId = await getStudioId()
+  const supabase = await createClient()
+
+  const { data: membership } = await supabase
+    .from("studio_memberships")
+    .select("profile_id, role")
+    .eq("id", membershipId)
+    .eq("studio_id", studioId)
+    .single()
+
+  if (!membership) return { error: "Membership not found" }
+
+  if (shouldBeInstructor) {
+    // Check if instructor record already exists
+    const { data: existing } = await supabase
+      .from("instructors")
+      .select("id")
+      .eq("profile_id", membership.profile_id)
+      .eq("studio_id", studioId)
+      .maybeSingle()
+
+    if (!existing) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("full_name")
+        .eq("id", membership.profile_id)
+        .single()
+
+      const name = profile?.full_name ?? "Instructor"
+      const slug = name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "")
+
+      await supabase.from("instructors").insert({
+        studio_id: studioId,
+        profile_id: membership.profile_id,
+        name,
+        slug,
+        bio: "",
+      })
+    }
+  } else {
+    // Staff members are always instructors — don't allow removal
+    if (membership.role === "staff") {
+      return { error: "Staff members are always instructors" }
+    }
+    await supabase
+      .from("instructors")
+      .delete()
+      .eq("profile_id", membership.profile_id)
+      .eq("studio_id", studioId)
+  }
+
+  revalidatePath("/dashboard/team")
+  return {}
 }

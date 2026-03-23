@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation"
 import { getUser, getUserRole } from "@/lib/auth"
-import { getStudioId } from "@/lib/studio-context"
 import { DASHBOARD_ROLES } from "@/lib/types"
 import { LoginForm } from "@/components/auth/login-form"
 
@@ -12,8 +11,6 @@ export default async function LoginPage() {
     if (role && DASHBOARD_ROLES.includes(role)) redirect("/dashboard")
     if (role === "staff") redirect("/staff")
   }
-
-  const studioId = await getStudioId()
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-cream">
@@ -27,7 +24,7 @@ export default async function LoginPage() {
           </p>
         </div>
         <div className="rounded-2xl border border-sand bg-white p-8">
-          <LoginForm studioId={studioId} />
+          <LoginForm />
         </div>
       </div>
     </div>

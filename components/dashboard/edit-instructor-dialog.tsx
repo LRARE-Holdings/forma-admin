@@ -22,7 +22,7 @@ import {
   SelectItem,
 } from "@/components/ui/select"
 import { ImageCropDialog } from "@/components/dashboard/image-crop-dialog"
-import { updateInstructor, updateStaffRole, removeStaffMember } from "@/app/actions/team"
+import { updateInstructor, updateStaffRole, removeStaffMember, toggleInstructorRecord } from "@/app/actions/team"
 import { createClient } from "@/lib/supabase/client"
 import { getInitial } from "@/lib/utils"
 import { toast } from "sonner"
@@ -42,6 +42,7 @@ interface InstructorData {
   profile_id: string | null
   membershipId: string | null
   role: string
+  hasInstructorRecord: boolean
 }
 
 interface EditInstructorDialogProps {
@@ -67,14 +68,18 @@ export function EditInstructorDialog({
   const [cropOpen, setCropOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleteLoading, setDeleteLoading] = useState(false)
+  const [isInstructor, setIsInstructor] = useState(false)
+  const [instructorToggleLoading, setInstructorToggleLoading] = useState(false)
 
   useEffect(() => {
     if (open && instructor) {
       setPhotoUrl(instructor.photo_url)
       setRole(instructor.role)
+      setIsInstructor(instructor.hasInstructorRecord)
     } else if (!open) {
       setPhotoUrl(null)
       setRole("")
+      setIsInstructor(false)
       setCropSrc(null)
       setCropOpen(false)
       formRef.current?.reset()
@@ -96,6 +101,24 @@ export function EditInstructorDialog({
       toast.error(e instanceof Error ? e.message : "Failed to change role")
     } finally {
       setRoleLoading(false)
+    }
+  }
+
+  async function handleToggleInstructor(checked: boolean) {
+    if (!instructor?.membershipId) return
+    setInstructorToggleLoading(true)
+    try {
+      const result = await toggleInstructorRecord(instructor.membershipId, checked)
+      if (result.error) {
+        toast.error(result.error)
+      } else {
+        setIsInstructor(checked)
+        toast.success(checked ? "Marked as instructor" : "Instructor record removed")
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update")
+    } finally {
+      setInstructorToggleLoading(false)
     }
   }
 
@@ -191,61 +214,66 @@ export function EditInstructorDialog({
           <DialogHeader>
             <DialogTitle>Edit profile</DialogTitle>
           </DialogHeader>
-          <form ref={formRef} key={instructor.id} action={handleSubmit} className="space-y-4">
-            {/* Photo */}
-            <div className="flex items-center gap-4">
-              <div className="relative">
-                {photoUrl ? (
-                  <img
-                    src={photoUrl}
-                    alt={instructor.name}
-                    className="h-16 w-16 rounded-full object-cover"
-                  />
-                ) : (
-                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gold font-heading text-[1.5rem] font-semibold text-cocoa">
-                    {getInitial(instructor.name)}
+          <form ref={formRef} key={instructor.id} action={isInstructor ? handleSubmit : undefined} className="space-y-4">
+            {/* Instructor profile fields — only shown if they have an instructor record */}
+            {isInstructor && (
+              <>
+                {/* Photo */}
+                <div className="flex items-center gap-4">
+                  <div className="relative">
+                    {photoUrl ? (
+                      <img
+                        src={photoUrl}
+                        alt={instructor.name}
+                        className="h-16 w-16 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gold font-heading text-[1.5rem] font-semibold text-cocoa">
+                        {getInitial(instructor.name)}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-              <div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading}
-                >
-                  {uploading ? "Uploading…" : "Change photo"}
-                </Button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/png,image/jpeg"
-                  className="hidden"
-                  onChange={handleFileSelect}
-                />
-              </div>
-            </div>
+                  <div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploading}
+                    >
+                      {uploading ? "Uploading…" : "Change photo"}
+                    </Button>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg"
+                      className="hidden"
+                      onChange={handleFileSelect}
+                    />
+                  </div>
+                </div>
 
-            <div>
-              <Label htmlFor="name">Name</Label>
-              <Input
-                id="name"
-                name="name"
-                required
-                defaultValue={instructor.name}
-              />
-            </div>
-            <div>
-              <Label htmlFor="bio">Bio</Label>
-              <Textarea
-                id="bio"
-                name="bio"
-                rows={3}
-                defaultValue={instructor.bio}
-                placeholder="A short bio…"
-              />
-            </div>
+                <div>
+                  <Label htmlFor="name">Name</Label>
+                  <Input
+                    id="name"
+                    name="name"
+                    required
+                    defaultValue={instructor.name}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="bio">Bio</Label>
+                  <Textarea
+                    id="bio"
+                    name="bio"
+                    rows={3}
+                    defaultValue={instructor.bio}
+                    placeholder="A short bio…"
+                  />
+                </div>
+              </>
+            )}
 
             {/* Role selector */}
             {instructor.membershipId && (
@@ -287,8 +315,24 @@ export function EditInstructorDialog({
               </div>
             )}
 
+            {/* "Also an instructor" toggle — only for non-staff roles */}
+            {instructor.membershipId && !isSelf && role !== "staff" && (
+              <label className="flex cursor-pointer items-center gap-2.5">
+                <input
+                  type="checkbox"
+                  checked={isInstructor}
+                  onChange={(e) => handleToggleInstructor(e.target.checked)}
+                  disabled={instructorToggleLoading}
+                  className="h-4 w-4 rounded border-sand text-gold accent-gold"
+                />
+                <span className="text-[0.82rem] text-cocoa">
+                  {instructorToggleLoading ? "Updating…" : "Also an instructor"}
+                </span>
+              </label>
+            )}
+
             <DialogFooter>
-              <SubmitButton>Save changes</SubmitButton>
+              {isInstructor && <SubmitButton>Save changes</SubmitButton>}
               {instructor.membershipId && !isOwner && !isSelf && (
                 <Button
                   type="button"

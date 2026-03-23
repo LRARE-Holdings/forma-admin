@@ -93,6 +93,16 @@ export async function requireStaff(studioId?: string) {
   return role
 }
 
+/**
+ * Check if the current user has an instructor record that needs initial setup
+ * (empty bio AND no photo). Used to redirect to the profile setup page after invite.
+ */
+export async function instructorNeedsSetup(studioId?: string): Promise<boolean> {
+  const instructor = await getInstructorForUser(studioId)
+  if (!instructor) return false
+  return (!instructor.bio || instructor.bio.trim() === "") && !instructor.photo_url
+}
+
 export async function getInstructorForUser(studioId?: string) {
   const resolvedStudioId = studioId ?? (await getStudioId())
   const supabase = await createClient()

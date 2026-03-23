@@ -44,6 +44,16 @@ export async function GET(request: NextRequest) {
         .eq("studio_id", studioId)
         .eq("status", "pending")
 
+      // If this is an invite or recovery flow, send them to set their password
+      // before they land on the dashboard
+      const isInvite = type === "invite" || type === "signup"
+      const isRecovery = type === "recovery"
+
+      if (isInvite || isRecovery) {
+        return NextResponse.redirect(`${origin}/auth/set-password`)
+      }
+
+      // For other flows (e.g. magic link from older sessions), redirect by role
       const { data: membership } = await supabase
         .from("studio_memberships")
         .select("role")

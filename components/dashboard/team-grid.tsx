@@ -17,6 +17,7 @@ interface TeamMember {
   membershipId: string | null
   role: string
   classNames: string
+  hasInstructorRecord: boolean
 }
 
 interface PendingInvite {
@@ -105,7 +106,6 @@ export function TeamGrid({ team, currentProfileId, pendingInvites }: TeamGridPro
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
         {team.map((member) => {
           const badge = ROLE_BADGE[member.role] ?? ROLE_BADGE.staff
-          const isInstructor = member.role === "staff" || member.role === "admin" || member.role === "owner"
 
           return (
             <div
@@ -131,7 +131,7 @@ export function TeamGrid({ team, currentProfileId, pendingInvites }: TeamGridPro
                   <span className={`inline-block rounded-full px-2.5 py-0.5 text-[0.62rem] font-semibold uppercase tracking-[0.08em] ${badge.className}`}>
                     {badge.label}
                   </span>
-                  {isInstructor && member.role !== "staff" && (
+                  {member.hasInstructorRecord && member.role !== "staff" && (
                     <span className="inline-block rounded-full bg-sand px-2.5 py-0.5 text-[0.62rem] font-semibold uppercase tracking-[0.08em] text-slate">
                       Instructor
                     </span>

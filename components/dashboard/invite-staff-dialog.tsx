@@ -37,11 +37,13 @@ const ROLE_OPTIONS = [
 export function InviteStaffDialog({ open, onOpenChange }: InviteStaffDialogProps) {
   const formRef = useRef<HTMLFormElement>(null)
   const [role, setRole] = useState("staff")
+  const [alsoInstructor, setAlsoInstructor] = useState(false)
 
   useEffect(() => {
     if (!open) {
       formRef.current?.reset()
       setRole("staff")
+      setAlsoInstructor(false)
     }
   }, [open])
 
@@ -67,6 +69,9 @@ export function InviteStaffDialog({ open, onOpenChange }: InviteStaffDialogProps
         </DialogHeader>
         <form ref={formRef} action={handleSubmit} className="space-y-4">
           <input type="hidden" name="role" value={role} />
+          {role !== "staff" && alsoInstructor && (
+            <input type="hidden" name="alsoInstructor" value="true" />
+          )}
 
           <div>
             <Label htmlFor="name">Full name</Label>
@@ -102,6 +107,17 @@ export function InviteStaffDialog({ open, onOpenChange }: InviteStaffDialogProps
               {ROLE_OPTIONS.find((r) => r.value === role)?.description}
             </p>
           </div>
+          {role !== "staff" && (
+            <label className="flex cursor-pointer items-center gap-2.5">
+              <input
+                type="checkbox"
+                checked={alsoInstructor}
+                onChange={(e) => setAlsoInstructor(e.target.checked)}
+                className="h-4 w-4 rounded border-sand text-gold accent-gold"
+              />
+              <span className="text-[0.82rem] text-cocoa">Also an instructor</span>
+            </label>
+          )}
           <DialogFooter>
             <SubmitButton>Send invite</SubmitButton>
           </DialogFooter>

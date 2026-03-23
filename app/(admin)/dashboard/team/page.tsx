@@ -66,6 +66,7 @@ export default async function TeamPage() {
     membershipId: string | null
     role: string
     classNames: string
+    hasInstructorRecord: boolean
   }[] = []
 
   for (const sm of staffMemberships ?? []) {
@@ -84,6 +85,7 @@ export default async function TeamPage() {
         membershipId: sm.id,
         role: sm.role,
         classNames: classes ? Array.from(classes).join(", ") : "No classes assigned",
+        hasInstructorRecord: true,
       })
     } else {
       team.push({
@@ -95,6 +97,7 @@ export default async function TeamPage() {
         membershipId: sm.id,
         role: sm.role,
         classNames: "",
+        hasInstructorRecord: false,
       })
     }
   }
@@ -112,6 +115,7 @@ export default async function TeamPage() {
       membershipId: null,
       role: "staff",
       classNames: classes ? Array.from(classes).join(", ") : "No classes assigned",
+      hasInstructorRecord: true,
     })
   }
 

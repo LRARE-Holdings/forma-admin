@@ -3,6 +3,7 @@ import { getUser, getInstructorForUser } from "@/lib/auth"
 import { getStudioId } from "@/lib/studio-context"
 import { StatCard } from "@/components/shared/stat-card"
 import { StaffScheduleView } from "@/components/staff/staff-schedule-view"
+import { EditOwnProfile } from "@/components/staff/edit-own-profile"
 import { formatTime } from "@/lib/utils"
 
 export default async function StaffPage() {
@@ -145,6 +146,14 @@ export default async function StaffPage() {
         <p className="mt-0.5 text-[0.85rem] text-warm-grey">
           Here are your classes for this week.
         </p>
+        <EditOwnProfile
+          instructor={{
+            id: instructor.id,
+            name: instructor.name,
+            bio: instructor.bio ?? "",
+            photo_url: instructor.photo_url ?? null,
+          }}
+        />
       </div>
 
       <div className="mb-7 grid grid-cols-3 gap-4">
