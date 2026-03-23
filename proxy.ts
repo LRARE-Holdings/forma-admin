@@ -39,11 +39,17 @@ async function resolveStudioId(host: string): Promise<string | null> {
 
 export async function proxy(request: NextRequest) {
   const host = request.headers.get("host") || ""
+  const { pathname } = request.nextUrl
 
   // --- Resolve studio from domain ---
   const studioId = await resolveStudioId(host)
 
   if (!studioId) {
+    // Allow cron/webhook API routes through even without a studio domain match
+    // (Vercel cron and Stripe webhooks hit the deployment URL, not the custom domain)
+    if (pathname.startsWith("/api")) {
+      return NextResponse.next()
+    }
     // Unknown domain — redirect to Forma landing
     return NextResponse.redirect("https://useforma.co.uk")
   }
@@ -83,8 +89,6 @@ export async function proxy(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser()
-
-  const { pathname } = request.nextUrl
 
   // Public routes — always accessible
   if (
