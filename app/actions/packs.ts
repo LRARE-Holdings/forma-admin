@@ -192,11 +192,12 @@ export async function addMemberCredits(formData: FormData) {
   const { error } = await supabase.from("class_packs").insert({
     studio_id: studioId,
     profile_id,
-    pack_type: String(credits),
+    pack_type: "manual",
     credits_total: credits,
     credits_remaining: credits,
     purchased_at: new Date().toISOString(),
     expires_at: expires_at.toISOString(),
+    stripe_session_id: null,
   })
 
   if (error) throw new Error(error.message)
