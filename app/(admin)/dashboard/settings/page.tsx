@@ -33,6 +33,7 @@ export default async function SettingsPage() {
           email_domain: (studio.email_domain as string) ?? null,
           plan_tier: studio.plan_tier as string,
           active: studio.active as boolean,
+          first_class_free_enabled: studio.first_class_free_enabled as boolean,
         }}
       />
       <div className="mt-6 max-w-2xl">

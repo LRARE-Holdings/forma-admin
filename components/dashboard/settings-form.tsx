@@ -1,10 +1,10 @@
 "use client"
 
-import { useRef } from "react"
+import { useRef, useState } from "react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { SubmitButton } from "@/components/shared/submit-button"
-import { updateStudioSettings } from "@/app/actions/studio"
+import { updateStudioSettings, updateFirstClassFree } from "@/app/actions/studio"
 import { toast } from "sonner"
 
 interface StudioData {
@@ -15,6 +15,7 @@ interface StudioData {
   email_domain: string | null
   plan_tier: string
   active: boolean
+  first_class_free_enabled: boolean
 }
 
 interface SettingsFormProps {
@@ -106,6 +107,68 @@ export function SettingsForm({ studio }: SettingsFormProps) {
               {studio.active ? "Active" : "Inactive"}
             </span>
           </div>
+        </div>
+      </div>
+
+      {/* Promotions */}
+      <PromotionsCard initialEnabled={studio.first_class_free_enabled} />
+    </div>
+  )
+}
+
+function PromotionsCard({ initialEnabled }: { initialEnabled: boolean }) {
+  const [enabled, setEnabled] = useState(initialEnabled)
+  const [saving, setSaving] = useState(false)
+
+  async function handleToggle() {
+    const newValue = !enabled
+    setSaving(true)
+    try {
+      await updateFirstClassFree(newValue)
+      setEnabled(newValue)
+      toast.success(newValue ? "First class free enabled" : "First class free disabled")
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update setting")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-sand bg-white">
+      <div className="border-b border-sand px-5 py-4">
+        <h3 className="font-heading text-[1.15rem] font-semibold text-cocoa">
+          Promotions
+        </h3>
+      </div>
+      <div className="p-5">
+        <div className="flex items-start justify-between gap-6">
+          <div>
+            <p className="text-[0.9rem] font-semibold text-cocoa mb-0.5">
+              First class free
+            </p>
+            <p className="text-[0.78rem] text-warm-grey leading-relaxed max-w-sm">
+              New members can book their first class for free. A promotional
+              banner appears on the studio website and signup page. Each member
+              can only use this once.
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={enabled}
+            disabled={saving}
+            onClick={handleToggle}
+            className={`relative mt-0.5 inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 disabled:opacity-50 ${
+              enabled ? "bg-gold" : "bg-sand"
+            }`}
+          >
+            <span
+              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                enabled ? "translate-x-5" : "translate-x-0"
+              }`}
+            />
+          </button>
         </div>
       </div>
     </div>

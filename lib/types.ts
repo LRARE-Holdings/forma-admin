@@ -52,6 +52,7 @@ export interface Studio {
   onboarding_dismissed?: boolean
   plan_tier: string
   timezone: string | null
+  first_class_free_enabled: boolean
   active: boolean
   created_at: string
   updated_at: string

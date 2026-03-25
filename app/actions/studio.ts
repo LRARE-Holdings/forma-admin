@@ -24,3 +24,17 @@ export async function updateStudioSettings(formData: FormData) {
   revalidatePath("/dashboard/settings")
   revalidatePath("/dashboard")
 }
+
+export async function updateFirstClassFree(enabled: boolean) {
+  await requireAdmin()
+  const studioId = await getStudioId()
+  const supabase = await createClient()
+
+  const { error } = await supabase
+    .from("studios")
+    .update({ first_class_free_enabled: enabled })
+    .eq("id", studioId)
+
+  if (error) throw new Error(error.message)
+  revalidatePath("/dashboard/settings")
+}
