@@ -21,6 +21,7 @@ export type AssistToolName =
   | "list_pack_tiers"
   | "list_instructors"
   | "get_studio_stats"
+  | "list_at_risk_members"
   // Admin write tools
   | "create_class"
   | "update_class"
@@ -48,6 +49,7 @@ const ADMIN_TOOLS: AssistToolName[] = [
   "list_pack_tiers",
   "list_instructors",
   "get_studio_stats",
+  "list_at_risk_members",
   "create_class",
   "update_class",
   "delete_class",
@@ -71,6 +73,7 @@ const MANAGER_TOOLS: AssistToolName[] = [
   "list_pack_tiers",
   "list_instructors",
   "get_studio_stats",
+  "list_at_risk_members",
   "create_schedule_slot",
   "update_schedule_slot",
   "delete_schedule_slot",
@@ -87,6 +90,7 @@ const RECEPTION_TOOLS: AssistToolName[] = [
   "list_pack_tiers",
   "list_instructors",
   "get_studio_stats",
+  "list_at_risk_members",
   "create_booking",
   "cancel_booking",
 ]

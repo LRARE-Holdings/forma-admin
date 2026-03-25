@@ -147,6 +147,23 @@ const allToolDefinitions: Record<AssistToolName, Anthropic.Tool> = {
     },
   },
 
+  list_at_risk_members: {
+    name: "list_at_risk_members",
+    description:
+      "List members who are at risk of churning — those who haven't booked a class in 30+ days. Returns name, email, last booking date, and days since last booking, sorted by longest absence first.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        days_threshold: {
+          type: "number",
+          description:
+            "Number of days without a booking to be considered at risk (default: 30)",
+        },
+      },
+      required: [],
+    },
+  },
+
   // ── Admin write tools ──────────────────────────────────────────────────
 
   create_class: {
@@ -652,6 +669,94 @@ export async function executeTool(
           month_revenue: revenue.stripeConnected
             ? `£${formatPence(revenue.revenuePence)}`
             : "Stripe not connected",
+        })
+      }
+
+      case "list_at_risk_members": {
+        const threshold = (input.days_threshold as number) ?? 30
+
+        // Get all members
+        const { data: memberRows } = await supabase
+          .from("studio_memberships")
+          .select("profile_id, profiles(id, full_name, email)")
+          .eq("studio_id", studioId)
+          .eq("role", "member")
+
+        if (!memberRows?.length) return "No members found."
+
+        // Get all confirmed bookings (most recent per member)
+        const { data: allBookings } = await supabase
+          .from("bookings")
+          .select("profile_id, date")
+          .eq("studio_id", studioId)
+          .eq("status", "confirmed")
+          .order("date", { ascending: false })
+
+        const memberIds = new Set(
+          memberRows.map((m: Record<string, unknown>) => m.profile_id as string)
+        )
+
+        const lastBookingByProfile: Record<string, string> = {}
+        for (const b of allBookings ?? []) {
+          if (memberIds.has(b.profile_id) && !lastBookingByProfile[b.profile_id]) {
+            lastBookingByProfile[b.profile_id] = b.date
+          }
+        }
+
+        const cutoffDate = new Date()
+        cutoffDate.setDate(cutoffDate.getDate() - threshold)
+        const cutoffStr = cutoffDate.toISOString().split("T")[0]
+        const nowMs = Date.now()
+
+        const atRisk: Array<{
+          profile_id: string
+          name: string
+          email: string
+          last_booking_date: string | null
+          days_since_last_booking: number | null
+        }> = []
+
+        for (const m of memberRows) {
+          const p = (m as Record<string, unknown>).profiles as {
+            id: string
+            full_name: string | null
+            email: string | null
+          } | null
+          if (!p) continue
+
+          const lastDate = lastBookingByProfile[p.id]
+          if (!lastDate || lastDate < cutoffStr) {
+            const daysSince = lastDate
+              ? Math.floor(
+                  (nowMs - new Date(lastDate + "T00:00:00").getTime()) /
+                    (1000 * 60 * 60 * 24)
+                )
+              : null
+            atRisk.push({
+              profile_id: p.id,
+              name: p.full_name ?? "Unknown",
+              email: p.email ?? "",
+              last_booking_date: lastDate ?? null,
+              days_since_last_booking: daysSince,
+            })
+          }
+        }
+
+        // Sort: longest-absent first, never-booked last
+        atRisk.sort((a, b) => {
+          if (a.days_since_last_booking === null && b.days_since_last_booking === null) return 0
+          if (a.days_since_last_booking === null) return 1
+          if (b.days_since_last_booking === null) return -1
+          return b.days_since_last_booking - a.days_since_last_booking
+        })
+
+        if (!atRisk.length)
+          return `No at-risk members found (all members have booked within the last ${threshold} days).`
+
+        return JSON.stringify({
+          threshold_days: threshold,
+          total_at_risk: atRisk.length,
+          members: atRisk,
         })
       }
 

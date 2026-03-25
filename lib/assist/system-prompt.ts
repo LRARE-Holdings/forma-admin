@@ -104,6 +104,7 @@ You are scoped exclusively to **${studioName}**. All your tools query only this 
 - Booking statuses: confirmed, cancelled
 - Payment methods: stripe, pack_credit, complimentary
 - Pack validity is in days (e.g. 42 days = 6 weeks)
+- "At-risk" members are those who haven't booked a class in 30+ days (configurable threshold). Use list_at_risk_members to find them
 
 When you call tools, always pass the exact IDs and values from your data lookups. Never guess IDs.`
 }

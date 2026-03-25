@@ -259,3 +259,55 @@ export interface WaitlistEntry {
   claim_token: string
   created_at: string
 }
+
+// Schedule exceptions (skip individual weeks of recurring classes)
+export type ExceptionType = "skip"
+
+export interface ScheduleException {
+  id: string
+  studio_id: string
+  schedule_id: string
+  date: string
+  type: ExceptionType
+  reason: string | null
+  created_at: string
+}
+
+// Studio holidays (closure periods)
+export interface StudioHoliday {
+  id: string
+  studio_id: string
+  name: string
+  start_date: string
+  end_date: string
+  created_at: string
+}
+
+// Computed slot for a specific week view
+export interface WeekSlot {
+  scheduleId: string
+  classId: string
+  className: string
+  classSlug: string
+  instructorId: string
+  instructorName: string
+  dayOfWeek: number
+  date: string
+  startTime: string
+  endTime: string
+  pricePence: number
+  capacity: number
+  durationMins: number
+  ruleId: string | null
+  bookingCount: number
+  isSkipped: boolean
+  isHoliday: boolean
+  isPast: boolean
+}
+
+export interface WeekData {
+  slots: WeekSlot[]
+  holidays: StudioHoliday[]
+  weekStart: string
+  weekEnd: string
+}

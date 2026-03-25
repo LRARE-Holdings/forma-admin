@@ -33,6 +33,7 @@ const TOOL_META: Record<
   list_pack_tiers: { label: "Loading pack tiers", icon: Package, color: "text-gold" },
   list_instructors: { label: "Loading instructors", icon: Users, color: "text-gold" },
   get_studio_stats: { label: "Crunching stats", icon: BarChart3, color: "text-gold" },
+  list_at_risk_members: { label: "Checking at-risk members", icon: Users, color: "text-gold" },
 
   create_class: { label: "Creating class", icon: Star, color: "text-success" },
   update_class: { label: "Updating class", icon: Pencil, color: "text-ember" },
