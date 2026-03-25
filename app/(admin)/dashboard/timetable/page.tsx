@@ -6,6 +6,9 @@ import { HolidayBanner } from "@/components/dashboard/holiday-banner"
 import { RealtimeBookingListener } from "@/components/dashboard/realtime-booking-listener"
 import { getWeekData } from "@/lib/schedule-utils"
 
+// Bypass client-side router cache so ?week= changes always re-fetch server data
+export const dynamic = "force-dynamic"
+
 interface TimetablePageProps {
   searchParams: Promise<{ week?: string }>
 }
