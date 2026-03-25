@@ -35,7 +35,7 @@ export default async function OverviewPage() {
   const role = await getUserRole(studioId)
 
   // Fetch data in parallel
-  const [scheduleRes, bookingsTodayRes, membersRes, revenue, recentBookingsRes, studioRes, classesCountRes, scheduleCountRes, teamCountRes] =
+  const [scheduleRes, bookingsTodayRes, membersRes, revenue, recentBookingsRes, studioRes, classesCountRes, scheduleCountRes, teamCountRes, allBookingsRes] =
     await Promise.all([
       // Today's schedule
       supabase
@@ -52,10 +52,10 @@ export default async function OverviewPage() {
         .eq("studio_id", studioId)
         .eq("date", today)
         .eq("status", "confirmed"),
-      // Active members count
+      // Active members (with profile details for at-risk section)
       supabase
         .from("studio_memberships")
-        .select("id")
+        .select("profile_id, profiles:profile_id(id, full_name, email)")
         .eq("studio_id", studioId)
         .eq("role", "member"),
       // Revenue this month from Stripe
@@ -91,6 +91,13 @@ export default async function OverviewPage() {
         .eq("studio_id", studioId)
         .neq("role", "member")
         .limit(2),
+      // All confirmed bookings for at-risk calculation
+      supabase
+        .from("bookings")
+        .select("profile_id, date")
+        .eq("studio_id", studioId)
+        .eq("status", "confirmed")
+        .order("date", { ascending: false }),
     ])
 
   const todaySchedule = scheduleRes.data ?? []
@@ -98,6 +105,66 @@ export default async function OverviewPage() {
   const membersCount = membersRes.data?.length ?? 0
   const recentBookings = recentBookingsRes.data ?? []
   const { revenuePence, stripeConnected } = revenue
+
+  // At-risk members: no confirmed booking in 30+ days
+  const memberIdSet = new Set(
+    (membersRes.data ?? []).map((m: Record<string, unknown>) => m.profile_id as string)
+  )
+
+  const lastBookingByProfile: Record<string, string> = {}
+  for (const b of allBookingsRes.data ?? []) {
+    if (memberIdSet.has(b.profile_id) && !lastBookingByProfile[b.profile_id]) {
+      lastBookingByProfile[b.profile_id] = b.date
+    }
+  }
+
+  const thirtyDaysAgo = new Date()
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+  const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split("T")[0]
+
+  const nowMs = Date.now()
+  const atRiskMembers: Array<{
+    id: string
+    name: string
+    email: string
+    lastBookingDate: string | null
+    daysSinceLastBooking: number | null
+  }> = []
+
+  for (const m of membersRes.data ?? []) {
+    const profile = (m as Record<string, unknown>).profiles as {
+      id: string
+      full_name: string | null
+      email: string | null
+    } | null
+    if (!profile) continue
+    const lastDate = lastBookingByProfile[profile.id]
+    if (!lastDate || lastDate < thirtyDaysAgoStr) {
+      const daysSince = lastDate
+        ? Math.floor(
+            (nowMs - new Date(lastDate + "T00:00:00").getTime()) /
+              (1000 * 60 * 60 * 24)
+          )
+        : null
+      atRiskMembers.push({
+        id: profile.id,
+        name: profile.full_name ?? "Unknown",
+        email: profile.email ?? "",
+        lastBookingDate: lastDate ?? null,
+        daysSinceLastBooking: daysSince,
+      })
+    }
+  }
+
+  // Sort: longest-absent first, never-booked last
+  atRiskMembers.sort((a, b) => {
+    if (a.daysSinceLastBooking === null && b.daysSinceLastBooking === null) return 0
+    if (a.daysSinceLastBooking === null) return 1
+    if (b.daysSinceLastBooking === null) return -1
+    return b.daysSinceLastBooking - a.daysSinceLastBooking
+  })
+
+  const atRiskCount = atRiskMembers.length
 
   // Get booking counts per schedule slot for today
   const { data: todayBookings } = await supabase
@@ -141,7 +208,7 @@ export default async function OverviewPage() {
       )}
 
       {/* Stat cards */}
-      <div className="mb-7 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mb-7 grid grid-cols-2 gap-4 lg:grid-cols-5">
         <StatCard
           label="Classes today"
           value={todaySchedule.length}
@@ -171,6 +238,16 @@ export default async function OverviewPage() {
                 ? "No revenue yet"
                 : "Net after Stripe fees"
           }
+        />
+        <StatCard
+          label="At risk"
+          value={atRiskCount}
+          subtitle={
+            atRiskCount === 0
+              ? "All members active"
+              : "No booking in 30+ days"
+          }
+          subtitleClassName={atRiskCount > 0 ? "text-ember" : "text-warm-grey"}
         />
       </div>
 
@@ -313,6 +390,68 @@ export default async function OverviewPage() {
           </div>
         </div>
       </div>
+      {/* At risk members */}
+      {atRiskMembers.length > 0 && (
+        <div className="mb-6 overflow-hidden rounded-2xl border border-sand bg-white">
+          <div className="flex items-center justify-between border-b border-sand px-5 py-4">
+            <h3 className="font-heading text-[1.15rem] font-semibold text-cocoa">
+              At risk members
+            </h3>
+            <a
+              href="/dashboard/members"
+              className="text-[0.7rem] font-semibold uppercase tracking-[0.04em] text-gold hover:text-ember"
+            >
+              View all members
+            </a>
+          </div>
+          <div>
+            {atRiskMembers.slice(0, 8).map((m) => (
+              <div
+                key={m.id}
+                className="flex items-center gap-3 border-b border-sand/40 px-5 py-2.5 last:border-b-0"
+              >
+                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-ember/10 font-heading text-[0.7rem] font-semibold text-ember">
+                  {m.name.charAt(0).toUpperCase()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[0.82rem] font-semibold text-cocoa">
+                    {m.name}
+                  </div>
+                  <div className="truncate text-[0.7rem] text-warm-grey">
+                    {m.email}
+                  </div>
+                </div>
+                <div className="shrink-0 text-right">
+                  <div className="text-[0.75rem] font-semibold text-ember">
+                    {m.daysSinceLastBooking !== null
+                      ? `${m.daysSinceLastBooking}d ago`
+                      : "Never booked"}
+                  </div>
+                  {m.lastBookingDate && (
+                    <div className="text-[0.65rem] text-warm-grey">
+                      {new Date(m.lastBookingDate + "T00:00:00").toLocaleDateString("en-GB", {
+                        day: "numeric",
+                        month: "short",
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+          {atRiskMembers.length > 8 && (
+            <div className="border-t border-sand px-5 py-3 text-center">
+              <a
+                href="/dashboard/members"
+                className="text-[0.75rem] font-semibold text-gold hover:text-ember"
+              >
+                +{atRiskMembers.length - 8} more at risk members
+              </a>
+            </div>
+          )}
+        </div>
+      )}
+
       <RealtimeBookingListener studioId={studioId} />
     </>
   )

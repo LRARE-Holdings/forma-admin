@@ -25,6 +25,7 @@ export default async function MembersPage() {
 
   let bookingCounts: Record<string, number> = {}
   let creditsByProfile: Record<string, number> = {}
+  let lastBookingByProfile: Record<string, string> = {}
   let packsByProfile: Record<string, Array<{
     id: string
     pack_type: string
@@ -37,27 +38,42 @@ export default async function MembersPage() {
     const now = new Date()
     const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`
 
-    const { data: bookings } = await supabase
-      .from("bookings")
-      .select("profile_id")
-      .eq("studio_id", studioId)
-      .eq("status", "confirmed")
-      .gte("date", monthStart)
-      .in("profile_id", memberIds)
+    const [bookingsRes, lastBookingsRes, packsRes] = await Promise.all([
+      supabase
+        .from("bookings")
+        .select("profile_id")
+        .eq("studio_id", studioId)
+        .eq("status", "confirmed")
+        .gte("date", monthStart)
+        .in("profile_id", memberIds),
+      // Most recent confirmed booking per member (for at-risk calculation)
+      supabase
+        .from("bookings")
+        .select("profile_id, date")
+        .eq("studio_id", studioId)
+        .eq("status", "confirmed")
+        .in("profile_id", memberIds)
+        .order("date", { ascending: false }),
+      // All packs for member balance management
+      supabase
+        .from("class_packs")
+        .select("id, profile_id, pack_type, credits_total, credits_remaining, expires_at")
+        .eq("studio_id", studioId)
+        .in("profile_id", memberIds)
+        .order("expires_at", { ascending: false }),
+    ])
 
-    for (const b of bookings ?? []) {
+    for (const b of bookingsRes.data ?? []) {
       bookingCounts[b.profile_id] = (bookingCounts[b.profile_id] ?? 0) + 1
     }
 
-    // Get all packs for member balance management
-    const { data: packs } = await supabase
-      .from("class_packs")
-      .select("id, profile_id, pack_type, credits_total, credits_remaining, expires_at")
-      .eq("studio_id", studioId)
-      .in("profile_id", memberIds)
-      .order("expires_at", { ascending: false })
+    for (const b of lastBookingsRes.data ?? []) {
+      if (!lastBookingByProfile[b.profile_id]) {
+        lastBookingByProfile[b.profile_id] = b.date
+      }
+    }
 
-    for (const p of packs ?? []) {
+    for (const p of packsRes.data ?? []) {
       if (!packsByProfile[p.profile_id]) packsByProfile[p.profile_id] = []
       packsByProfile[p.profile_id].push({
         id: p.id as string,
@@ -73,16 +89,21 @@ export default async function MembersPage() {
     }
   }
 
+  const thirtyDaysAgo = new Date()
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+  const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split("T")[0]
+
   const rows = members.map((m) => {
     const profile = m.profiles as unknown as {
       id: string
       full_name: string | null
       email: string | null
     }
+    const lastBooking = lastBookingByProfile[profile.id] ?? null
     return {
       id: profile.id,
       name: profile.full_name ?? "Unknown",
-      email: profile.email ?? "—",
+      email: profile.email ?? "",
       credits: creditsByProfile[profile.id] ?? 0,
       classesThisMonth: bookingCounts[profile.id] ?? 0,
       joinedAt: new Date(m.created_at as string).toLocaleDateString("en-GB", {
@@ -90,6 +111,8 @@ export default async function MembersPage() {
         year: "numeric",
       }),
       packs: packsByProfile[profile.id] ?? [],
+      lastBookingDate: lastBooking,
+      atRisk: !lastBooking || lastBooking < thirtyDaysAgoStr,
     }
   })
 
