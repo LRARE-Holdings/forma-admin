@@ -1,14 +1,11 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import Link from "next/link"
 import { CalendarSlotBlock } from "./calendar-slot-block"
 import { CalendarSlotPopover } from "./calendar-slot-popover"
 import { AddClassDialog } from "./add-class-dialog"
 import { ScheduleFormDialog } from "./schedule-form-dialog"
-import { ScheduleRuleDialog } from "./schedule-rule-dialog"
 import { EmptyState } from "@/components/shared/empty-state"
-import { Button } from "@/components/ui/button"
 import { DAY_SHORT } from "@/lib/constants"
 import { formatTime } from "@/lib/utils"
 import { ClassColorBar } from "@/components/shared/class-color-bar"
@@ -139,7 +136,7 @@ export function WeekCalendar({
     isCurrentWeek ? Math.min(todayDow, 6) : 0
   )
 
-  // --- Navigation (Link-based for proper server re-render) ---
+  // --- Navigation (plain <a> tags to force full page load with new searchParams) ---
   const prevWeekHref = useMemo(() => {
     const prev = new Date(weekStart + "T00:00:00")
     prev.setDate(prev.getDate() - 7)
@@ -230,30 +227,30 @@ export function WeekCalendar({
         {/* Header: week navigation */}
         <div className="flex items-center justify-between border-b border-sand px-5 py-3">
           <div className="flex items-center gap-3">
-            <Link
+            <a
               href={prevWeekHref}
               className="rounded-full p-1.5 text-warm-grey transition-colors hover:bg-cream hover:text-cocoa"
             >
               <ChevronLeft className="h-4 w-4" />
-            </Link>
+            </a>
             <h3 className="font-heading text-[1.1rem] font-semibold text-cocoa">
               Week of {weekLabel}
             </h3>
-            <Link
+            <a
               href={nextWeekHref}
               className="rounded-full p-1.5 text-warm-grey transition-colors hover:bg-cream hover:text-cocoa"
             >
               <ChevronRight className="h-4 w-4" />
-            </Link>
+            </a>
           </div>
           <div className="flex items-center gap-2">
             {!isCurrentWeek && (
-              <Link
+              <a
                 href={currentWeekHref}
                 className="rounded-full border border-sand px-3 py-1 text-[0.72rem] font-semibold text-gold transition-colors hover:border-gold"
               >
                 Today
-              </Link>
+              </a>
             )}
           </div>
         </div>
@@ -364,31 +361,31 @@ export function WeekCalendar({
       <div className="lg:hidden">
         {/* Week navigation */}
         <div className="mb-4 flex items-center justify-between">
-          <Link
+          <a
             href={prevWeekHref}
             className="rounded-full p-2 text-warm-grey hover:text-cocoa"
           >
             <ChevronLeft className="h-4 w-4" />
-          </Link>
+          </a>
           <div className="text-center">
             <h3 className="font-heading text-[1rem] font-semibold text-cocoa">
               Week of {weekLabel}
             </h3>
             {!isCurrentWeek && (
-              <Link
+              <a
                 href={currentWeekHref}
                 className="mt-0.5 text-[0.72rem] font-semibold text-gold hover:text-ember"
               >
                 Go to today
-              </Link>
+              </a>
             )}
           </div>
-          <Link
+          <a
             href={nextWeekHref}
             className="rounded-full p-2 text-warm-grey hover:text-cocoa"
           >
             <ChevronRight className="h-4 w-4" />
-          </Link>
+          </a>
         </div>
 
         {/* Day pills */}
