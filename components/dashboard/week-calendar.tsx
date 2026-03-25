@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useMemo } from "react"
+import Link from "next/link"
 import { CalendarSlotBlock } from "./calendar-slot-block"
 import { CalendarSlotPopover } from "./calendar-slot-popover"
 import { AddClassDialog } from "./add-class-dialog"
@@ -89,7 +89,6 @@ export function WeekCalendar({
   instructors,
   isCurrentWeek,
 }: WeekCalendarProps) {
-  const router = useRouter()
   const dayHeaders = buildDayHeaders(weekStart)
   const todayDow = (() => {
     const d = new Date()
@@ -140,26 +139,20 @@ export function WeekCalendar({
     isCurrentWeek ? Math.min(todayDow, 6) : 0
   )
 
-  // --- Navigation ---
-  function goToPreviousWeek() {
+  // --- Navigation (Link-based for proper server re-render) ---
+  const prevWeekHref = useMemo(() => {
     const prev = new Date(weekStart + "T00:00:00")
     prev.setDate(prev.getDate() - 7)
-    router.push(
-      `/dashboard/timetable?week=${prev.toISOString().split("T")[0]}`
-    )
-  }
+    return `/dashboard/timetable?week=${prev.toISOString().split("T")[0]}`
+  }, [weekStart])
 
-  function goToNextWeek() {
+  const nextWeekHref = useMemo(() => {
     const next = new Date(weekStart + "T00:00:00")
     next.setDate(next.getDate() + 7)
-    router.push(
-      `/dashboard/timetable?week=${next.toISOString().split("T")[0]}`
-    )
-  }
+    return `/dashboard/timetable?week=${next.toISOString().split("T")[0]}`
+  }, [weekStart])
 
-  function goToCurrentWeek() {
-    router.push("/dashboard/timetable")
-  }
+  const currentWeekHref = "/dashboard/timetable"
 
   // --- Interactions ---
   function handleEmptyCellClick(dayOfWeek: number, e: React.MouseEvent<HTMLDivElement>) {
@@ -237,30 +230,30 @@ export function WeekCalendar({
         {/* Header: week navigation */}
         <div className="flex items-center justify-between border-b border-sand px-5 py-3">
           <div className="flex items-center gap-3">
-            <button
-              onClick={goToPreviousWeek}
+            <Link
+              href={prevWeekHref}
               className="rounded-full p-1.5 text-warm-grey transition-colors hover:bg-cream hover:text-cocoa"
             >
               <ChevronLeft className="h-4 w-4" />
-            </button>
+            </Link>
             <h3 className="font-heading text-[1.1rem] font-semibold text-cocoa">
               Week of {weekLabel}
             </h3>
-            <button
-              onClick={goToNextWeek}
+            <Link
+              href={nextWeekHref}
               className="rounded-full p-1.5 text-warm-grey transition-colors hover:bg-cream hover:text-cocoa"
             >
               <ChevronRight className="h-4 w-4" />
-            </button>
+            </Link>
           </div>
           <div className="flex items-center gap-2">
             {!isCurrentWeek && (
-              <button
-                onClick={goToCurrentWeek}
+              <Link
+                href={currentWeekHref}
                 className="rounded-full border border-sand px-3 py-1 text-[0.72rem] font-semibold text-gold transition-colors hover:border-gold"
               >
                 Today
-              </button>
+              </Link>
             )}
           </div>
         </div>
@@ -371,31 +364,31 @@ export function WeekCalendar({
       <div className="lg:hidden">
         {/* Week navigation */}
         <div className="mb-4 flex items-center justify-between">
-          <button
-            onClick={goToPreviousWeek}
+          <Link
+            href={prevWeekHref}
             className="rounded-full p-2 text-warm-grey hover:text-cocoa"
           >
             <ChevronLeft className="h-4 w-4" />
-          </button>
+          </Link>
           <div className="text-center">
             <h3 className="font-heading text-[1rem] font-semibold text-cocoa">
               Week of {weekLabel}
             </h3>
             {!isCurrentWeek && (
-              <button
-                onClick={goToCurrentWeek}
+              <Link
+                href={currentWeekHref}
                 className="mt-0.5 text-[0.72rem] font-semibold text-gold hover:text-ember"
               >
                 Go to today
-              </button>
+              </Link>
             )}
           </div>
-          <button
-            onClick={goToNextWeek}
+          <Link
+            href={nextWeekHref}
             className="rounded-full p-2 text-warm-grey hover:text-cocoa"
           >
             <ChevronRight className="h-4 w-4" />
-          </button>
+          </Link>
         </div>
 
         {/* Day pills */}
