@@ -112,7 +112,10 @@ export default async function MembersPage() {
       }),
       packs: packsByProfile[profile.id] ?? [],
       lastBookingDate: lastBooking,
-      atRisk: !lastBooking || lastBooking < thirtyDaysAgoStr,
+      atRisk:
+        // Only flag as at-risk if they joined 30+ days ago
+        new Date(m.created_at as string).getTime() <= thirtyDaysAgo.getTime() &&
+        (!lastBooking || lastBooking < thirtyDaysAgoStr),
     }
   })
 

@@ -55,7 +55,7 @@ export default async function OverviewPage() {
       // Active members (with profile details for at-risk section)
       supabase
         .from("studio_memberships")
-        .select("profile_id, profiles:profile_id(id, full_name, email)")
+        .select("profile_id, created_at, profiles:profile_id(id, full_name, email)")
         .eq("studio_id", studioId)
         .eq("role", "member"),
       // Revenue this month from Stripe
@@ -138,6 +138,9 @@ export default async function OverviewPage() {
       email: string | null
     } | null
     if (!profile) continue
+    // Skip members who joined less than 30 days ago — they're still new
+    const joinedAt = (m as Record<string, unknown>).created_at as string | null
+    if (joinedAt && new Date(joinedAt).getTime() > thirtyDaysAgo.getTime()) continue
     const lastDate = lastBookingByProfile[profile.id]
     if (!lastDate || lastDate < thirtyDaysAgoStr) {
       const daysSince = lastDate
