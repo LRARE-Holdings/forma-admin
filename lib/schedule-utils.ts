@@ -1,6 +1,14 @@
 import { createClient } from "@/lib/supabase/server"
 import type { WeekData, WeekSlot, StudioHoliday } from "@/lib/types"
 
+/** Format a Date as YYYY-MM-DD in local time (avoids toISOString UTC shift). */
+function toDateStr(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, "0")
+  const day = String(d.getDate()).padStart(2, "0")
+  return `${y}-${m}-${day}`
+}
+
 /**
  * Check if a recurrence rule applies to a specific date.
  */
@@ -51,7 +59,7 @@ export async function getWeekData(
   const weekStart = new Date(weekStartStr + "T00:00:00")
   const weekEnd = new Date(weekStart)
   weekEnd.setDate(weekStart.getDate() + 6)
-  const weekEndStr = weekEnd.toISOString().split("T")[0]
+  const weekEndStr = toDateStr(weekEnd)
 
   const [scheduleRes, rulesRes, exceptionsRes, holidaysRes, bookingsRes] =
     await Promise.all([
@@ -113,7 +121,7 @@ export async function getWeekData(
     bookingCounts.set(key, (bookingCounts.get(key) ?? 0) + 1)
   }
 
-  const today = new Date().toISOString().split("T")[0]
+  const today = toDateStr(new Date())
 
   // Build slots
   const slots: WeekSlot[] = []
@@ -122,7 +130,7 @@ export async function getWeekData(
     const dayOfWeek = entry.day_of_week as number
     const dateObj = new Date(weekStart)
     dateObj.setDate(weekStart.getDate() + dayOfWeek)
-    const dateStr = dateObj.toISOString().split("T")[0]
+    const dateStr = toDateStr(dateObj)
 
     // Check rule applicability for recurring slots
     if (entry.rule_id) {

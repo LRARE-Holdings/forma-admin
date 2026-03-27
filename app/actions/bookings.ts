@@ -56,6 +56,7 @@ export async function createManualBooking(formData: FormData) {
 
   if (error) throw new Error(error.message)
   revalidatePath("/dashboard/bookings")
+  revalidatePath("/dashboard/timetable")
   revalidatePath("/dashboard")
 }
 
@@ -113,5 +114,6 @@ export async function cancelBooking(bookingId: string) {
   )
 
   revalidatePath("/dashboard/bookings")
+  revalidatePath("/dashboard/timetable")
   revalidatePath("/dashboard")
 }
