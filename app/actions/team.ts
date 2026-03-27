@@ -280,29 +280,33 @@ export async function revokeInvite(
   if (!invite) return { error: "Invite not found" }
   if (invite.status !== "pending") return { error: "Invite is no longer pending" }
 
-  // Find the auth user by email to clean up
-  const { data: userList } = await adminClient.auth.admin.listUsers()
-  const authUser = userList?.users.find((u) => u.email === invite.email)
+  // Find the auth user by email via profiles (avoids listUsers pagination limits)
+  const { data: profile } = await adminClient
+    .from("profiles")
+    .select("id")
+    .eq("email", invite.email)
+    .maybeSingle()
 
-  if (authUser) {
+  if (profile) {
     // Remove studio membership
     await adminClient
       .from("studio_memberships")
       .delete()
-      .eq("profile_id", authUser.id)
+      .eq("profile_id", profile.id)
       .eq("studio_id", studioId)
 
     // Remove instructor record if any
     await adminClient
       .from("instructors")
       .delete()
-      .eq("profile_id", authUser.id)
+      .eq("profile_id", profile.id)
       .eq("studio_id", studioId)
 
     // Delete the auth user if they've never signed in
-    if (!authUser.last_sign_in_at) {
-      await adminClient.auth.admin.deleteUser(authUser.id)
-      await adminClient.from("profiles").delete().eq("id", authUser.id)
+    const { data: authUserData } = await adminClient.auth.admin.getUserById(profile.id)
+    if (authUserData?.user && !authUserData.user.last_sign_in_at) {
+      await adminClient.auth.admin.deleteUser(profile.id)
+      await adminClient.from("profiles").delete().eq("id", profile.id)
     }
   }
 
