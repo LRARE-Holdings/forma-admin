@@ -1,9 +1,10 @@
 "use client"
 
-import { useState } from "react"
-import { formatTime, formatPence } from "@/lib/utils"
+import { useState, useEffect } from "react"
+import { formatTime, formatPence, getInitial } from "@/lib/utils"
 import { unskipClassInstance } from "@/app/actions/schedule-exceptions"
 import { deleteScheduleSlot } from "@/app/actions/schedule"
+import { getSlotAttendees, type SlotAttendee } from "@/app/actions/bookings"
 import { ClassColorBar } from "@/components/shared/class-color-bar"
 import { CapacityBadge } from "@/components/shared/capacity-badge"
 import { SkipClassDialog } from "./skip-class-dialog"
@@ -17,7 +18,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Repeat, Pencil, SkipForward, Undo2, Ban, Trash2, Upload } from "lucide-react"
+import { Repeat, Pencil, SkipForward, Undo2, Ban, Trash2, Upload, Users, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import type { WeekSlot } from "@/lib/types"
 
@@ -26,6 +27,32 @@ interface CalendarSlotPopoverProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onEdit: (slot: WeekSlot) => void
+}
+
+function paymentLabel(method: string) {
+  switch (method) {
+    case "pack_credit":
+      return "Pack"
+    case "membership":
+      return "Membership"
+    case "complimentary":
+      return "Comp"
+    default:
+      return "Drop-in"
+  }
+}
+
+function paymentStyle(method: string) {
+  switch (method) {
+    case "pack_credit":
+      return "bg-gold/15 text-gold"
+    case "membership":
+      return "bg-purple-100 text-purple-700"
+    case "complimentary":
+      return "bg-green-100 text-green-700"
+    default:
+      return "bg-ember/12 text-ember"
+  }
 }
 
 export function CalendarSlotPopover({
@@ -40,6 +67,29 @@ export function CalendarSlotPopover({
   const [csvUploadOpen, setCsvUploadOpen] = useState(false)
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [unskipLoading, setUnskipLoading] = useState(false)
+
+  // Attendee state
+  const [attendees, setAttendees] = useState<SlotAttendee[]>([])
+  const [attendeesLoading, setAttendeesLoading] = useState(false)
+  const [showAttendees, setShowAttendees] = useState(false)
+
+  // Fetch attendees when dialog opens and slot has bookings
+  useEffect(() => {
+    if (open && slot && slot.bookingCount > 0) {
+      setAttendeesLoading(true)
+      setShowAttendees(true)
+      getSlotAttendees(slot.scheduleId, slot.date)
+        .then(setAttendees)
+        .catch(() => {
+          setAttendees([])
+          toast.error("Failed to load attendees")
+        })
+        .finally(() => setAttendeesLoading(false))
+    } else {
+      setShowAttendees(false)
+      setAttendees([])
+    }
+  }, [open, slot?.scheduleId, slot?.date, slot?.bookingCount])
 
   if (!slot) return null
 
@@ -134,6 +184,76 @@ export function CalendarSlotPopover({
                 />
               </div>
             </div>
+
+            {/* Attendee list */}
+            {showAttendees && (
+              <div className="rounded-xl border border-sand overflow-hidden">
+                <div className="flex items-center justify-between bg-cream px-3 py-2 text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-warm-grey">
+                  <span className="flex items-center gap-1.5">
+                    <Users className="h-3 w-3" />
+                    Attendees ({slot.bookingCount} of {slot.capacity})
+                    {slot.bookingCount >= slot.capacity ? " — FULL" : ""}
+                  </span>
+                  <span>Payment</span>
+                </div>
+
+                {attendeesLoading ? (
+                  <div className="flex items-center justify-center py-4">
+                    <Loader2 className="h-4 w-4 animate-spin text-warm-grey" />
+                  </div>
+                ) : (
+                  <div className="max-h-[200px] overflow-y-auto">
+                    {attendees.map((att, i) => (
+                      <div
+                        key={att.id}
+                        className="flex items-center gap-2.5 border-b border-sand/40 px-3 py-1.5 text-[0.78rem] last:border-b-0"
+                      >
+                        <span className="w-4 text-center text-[0.65rem] text-warm-grey">
+                          {i + 1}
+                        </span>
+                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-sand font-heading text-[0.65rem] font-semibold text-cocoa">
+                          {getInitial(att.full_name)}
+                        </div>
+                        <span className="flex-1 truncate font-medium text-cocoa">
+                          {att.full_name ?? "Unknown"}
+                        </span>
+                        <span
+                          className={`inline-block rounded-full px-1.5 py-0.5 text-[0.58rem] font-semibold uppercase ${paymentStyle(att.payment_method)}`}
+                        >
+                          {paymentLabel(att.payment_method)}
+                        </span>
+                      </div>
+                    ))}
+
+                    {/* Empty spots */}
+                    {Array.from(
+                      { length: slot.capacity - attendees.length },
+                      (_, i) => (
+                        <div
+                          key={`empty-${i}`}
+                          className="flex items-center gap-2.5 border-b border-sand/40 px-3 py-1.5 last:border-b-0"
+                        >
+                          <span className="w-4 text-center text-[0.65rem] text-warm-grey">
+                            {attendees.length + i + 1}
+                          </span>
+                          <div className="h-6 w-6 rounded-full border-[1.5px] border-dashed border-sand" />
+                          <span className="text-[0.72rem] italic text-sand">
+                            Open spot
+                          </span>
+                        </div>
+                      )
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* No bookings message */}
+            {slot.bookingCount === 0 && !slot.isSkipped && !slot.isHoliday && (
+              <div className="rounded-lg bg-sand/30 px-3 py-2 text-center text-[0.78rem] text-warm-grey">
+                No bookings yet
+              </div>
+            )}
 
             {/* Status badges */}
             {slot.isSkipped && (
