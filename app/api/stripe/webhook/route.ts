@@ -167,6 +167,12 @@ async function handlePaymentIntentSucceeded(
 
     if (existingBooking) return
 
+    // Reject booking if class is skipped for this date
+    if (await isClassSkipped(supabase, studioId, scheduleId, date)) {
+      console.warn(`Rejected booking for skipped class: schedule=${scheduleId} date=${date}`)
+      return
+    }
+
     await supabase.from("bookings").insert({
       studio_id: studioId,
       profile_id: profileId,
@@ -193,6 +199,12 @@ async function handlePaymentIntentSucceeded(
       .maybeSingle()
 
     if (existingBooking) return
+
+    // Reject booking if class is skipped for this date
+    if (await isClassSkipped(supabase, studioId, scheduleId, date)) {
+      console.warn(`Rejected waitlist claim for skipped class: schedule=${scheduleId} date=${date}`)
+      return
+    }
 
     await supabase.from("bookings").insert({
       studio_id: studioId,
@@ -269,6 +281,12 @@ async function handleCheckoutCompleted(
     const date = metadata.date
     if (!scheduleId || !date) return
 
+    // Reject booking if class is skipped for this date
+    if (await isClassSkipped(supabase, studioId, scheduleId, date)) {
+      console.warn(`Rejected booking for skipped class: schedule=${scheduleId} date=${date}`)
+      return
+    }
+
     await supabase.from("bookings").insert({
       studio_id: studioId,
       profile_id: profileId,
@@ -285,6 +303,12 @@ async function handleCheckoutCompleted(
     const date = metadata.date
     const claimToken = metadata.waitlist_claim_token
     if (!scheduleId || !date) return
+
+    // Reject booking if class is skipped for this date
+    if (await isClassSkipped(supabase, studioId, scheduleId, date)) {
+      console.warn(`Rejected waitlist claim for skipped class: schedule=${scheduleId} date=${date}`)
+      return
+    }
 
     await supabase.from("bookings").insert({
       studio_id: studioId,
@@ -544,4 +568,25 @@ async function handleDisputeCreated(
     .update({ credits_remaining: 0 })
     .eq("stripe_session_id", session.id)
     .eq("studio_id", studioId)
+}
+
+/**
+ * Check if a class instance is skipped (has a schedule_exception for that date).
+ * Used as a server-side guard to prevent bookings on skipped classes.
+ */
+async function isClassSkipped(
+  supabase: ReturnType<typeof createAdminClient>,
+  studioId: string,
+  scheduleId: string,
+  date: string,
+): Promise<boolean> {
+  const { data } = await supabase
+    .from("schedule_exceptions")
+    .select("id")
+    .eq("studio_id", studioId)
+    .eq("schedule_id", scheduleId)
+    .eq("date", date)
+    .maybeSingle()
+
+  return !!data
 }
