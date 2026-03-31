@@ -14,22 +14,15 @@ export default async function AdminLayout({
   const user = await getUser()
   if (!user) redirect("/login")
 
-  const role = await requireDashboard()
   const studioId = await getStudioId()
-
   const supabase = await createClient()
 
-  const { data: studio } = await supabase
-    .from("studios")
-    .select("*")
-    .eq("id", studioId)
-    .single()
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", user.id)
-    .single()
+  // Run role check, studio fetch, and profile fetch in parallel
+  const [role, { data: studio }, { data: profile }] = await Promise.all([
+    requireDashboard(studioId),
+    supabase.from("studios").select("*").eq("id", studioId).single(),
+    supabase.from("profiles").select("*").eq("id", user.id).single(),
+  ])
 
   return (
     <div className="min-h-screen">

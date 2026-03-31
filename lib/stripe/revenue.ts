@@ -52,3 +52,62 @@ export async function getMonthlyRevenue(): Promise<{
     return { revenuePence: 0, stripeConnected: true }
   }
 }
+
+/**
+ * Get revenue for the same period of the previous month.
+ * E.g. if today is March 27, returns revenue from Feb 1–27.
+ * Used for month-over-month comparison on the dashboard.
+ */
+export async function getPreviousMonthRevenue(): Promise<number> {
+  const stripeAccountId = await getStudioStripeAccount()
+  if (!stripeAccountId) return 0
+
+  const now = new Date()
+  const dayOfMonth = now.getDate()
+
+  // Previous month start
+  const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+  // Same day offset in previous month (capped to last day of prev month)
+  const prevMonthLastDay = new Date(now.getFullYear(), now.getMonth(), 0).getDate()
+  const prevMonthEnd = new Date(
+    now.getFullYear(),
+    now.getMonth() - 1,
+    Math.min(dayOfMonth, prevMonthLastDay),
+    23, 59, 59
+  )
+
+  const createdGte = Math.floor(prevMonthStart.getTime() / 1000)
+  const createdLte = Math.floor(prevMonthEnd.getTime() / 1000)
+
+  try {
+    let revenuePence = 0
+    let hasMore = true
+    let startingAfter: string | undefined
+
+    while (hasMore) {
+      const transactions = await stripe.balanceTransactions.list(
+        {
+          created: { gte: createdGte, lte: createdLte },
+          type: "charge",
+          limit: 100,
+          ...(startingAfter ? { starting_after: startingAfter } : {}),
+        },
+        { stripeAccount: stripeAccountId }
+      )
+
+      for (const txn of transactions.data) {
+        revenuePence += txn.net
+      }
+
+      hasMore = transactions.has_more
+      if (transactions.data.length > 0) {
+        startingAfter = transactions.data[transactions.data.length - 1].id
+      }
+    }
+
+    return revenuePence
+  } catch (e) {
+    console.error("Failed to fetch previous month Stripe revenue:", e)
+    return 0
+  }
+}

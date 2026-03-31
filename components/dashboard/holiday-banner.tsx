@@ -18,6 +18,7 @@ import { DeleteConfirmDialog } from "@/components/shared/delete-confirm-dialog"
 import { Palmtree, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import type { StudioHoliday } from "@/lib/types"
+import { localDateStr } from "@/lib/utils"
 
 interface HolidayBannerProps {
   holidays: StudioHoliday[]
@@ -32,7 +33,7 @@ export function HolidayBanner({ holidays }: HolidayBannerProps) {
   const [deleteLoading, setDeleteLoading] = useState(false)
 
   // Only show upcoming or current holidays (not past ones)
-  const today = new Date().toISOString().split("T")[0]
+  const today = localDateStr()
   const relevantHolidays = holidays.filter((h) => h.end_date >= today)
 
   async function handleAddHoliday(formData: FormData) {

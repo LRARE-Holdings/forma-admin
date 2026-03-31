@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select"
 import { SubmitButton } from "@/components/shared/submit-button"
 import { createScheduleRule, updateScheduleRule } from "@/app/actions/schedule-rules"
+import { dateToDateStr } from "@/lib/utils"
 import { toast } from "sonner"
 
 interface ClassOption {
@@ -121,14 +122,14 @@ export function ScheduleRuleDialog({
     if (daysAhead <= 0) daysAhead += 7
     const next = new Date(today)
     next.setDate(next.getDate() + daysAhead)
-    return next.toISOString().split("T")[0]
+    return dateToDateStr(next)
   }
 
   // Calculate end date from "after X weeks"
   function getEndDateFromWeeks(startDate: string, weeks: number): string {
     const d = new Date(startDate + "T00:00:00")
     d.setDate(d.getDate() + weeks * 7)
-    return d.toISOString().split("T")[0]
+    return dateToDateStr(d)
   }
 
   useEffect(() => {

@@ -1,7 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { sendStudioEmail } from "@/lib/email/send"
 import { waitlistOfferEmail } from "@/lib/email/templates"
-import { formatTime } from "@/lib/utils"
+import { formatTime, localDateStr } from "@/lib/utils"
 
 const OFFER_WINDOW_MINUTES = 30
 
@@ -127,7 +127,7 @@ export async function expireUnclaimedOffers() {
  */
 export async function getUpcomingWaitlist(studioId: string) {
   const supabase = createAdminClient()
-  const today = new Date().toISOString().split("T")[0]
+  const today = localDateStr()
 
   const { data } = await supabase
     .from("waitlist")

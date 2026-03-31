@@ -1,7 +1,10 @@
+import { cache } from "react"
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
 
-export async function createClient() {
+// React cache() ensures all server components in one render share a single
+// Supabase client instance (and a single cookies() call).
+export const createClient = cache(async () => {
   const cookieStore = await cookies()
 
   return createServerClient(
@@ -25,4 +28,4 @@ export async function createClient() {
       },
     }
   )
-}
+})

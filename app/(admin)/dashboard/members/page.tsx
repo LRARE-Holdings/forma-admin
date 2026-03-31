@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { getStudioId } from "@/lib/studio-context"
+import { dateToDateStr } from "@/lib/utils"
 import { PageHeader } from "@/components/shared/page-header"
 import { MembersTable } from "@/components/dashboard/members-table"
 
@@ -10,7 +11,7 @@ export default async function MembersPage() {
   // Get all members for this studio
   const { data: memberships } = await supabase
     .from("studio_memberships")
-    .select("profile_id, created_at, profiles:profile_id(id, full_name, email)")
+    .select("profile_id, created_at, profiles:profile_id(id, full_name, email, phone)")
     .eq("studio_id", studioId)
     .eq("role", "member")
 
@@ -24,6 +25,7 @@ export default async function MembersPage() {
     .filter(Boolean) as string[]
 
   let bookingCounts: Record<string, number> = {}
+  let totalAttendance: Record<string, number> = {}
   let creditsByProfile: Record<string, number> = {}
   let lastBookingByProfile: Record<string, string> = {}
   let packsByProfile: Record<string, Array<{
@@ -33,18 +35,26 @@ export default async function MembersPage() {
     credits_remaining: number
     expires_at: string
   }>> = {}
+  let membershipByProfile: Record<string, { status: string; tierName: string }> = {}
 
   if (memberIds.length > 0) {
     const now = new Date()
     const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`
 
-    const [bookingsRes, lastBookingsRes, packsRes] = await Promise.all([
+    const [bookingsRes, allBookingsRes, lastBookingsRes, packsRes, membershipsRes] = await Promise.all([
       supabase
         .from("bookings")
         .select("profile_id")
         .eq("studio_id", studioId)
         .eq("status", "confirmed")
         .gte("date", monthStart)
+        .in("profile_id", memberIds),
+      // All-time confirmed bookings per member (total attendance)
+      supabase
+        .from("bookings")
+        .select("profile_id")
+        .eq("studio_id", studioId)
+        .eq("status", "confirmed")
         .in("profile_id", memberIds),
       // Most recent confirmed booking per member (for at-risk calculation)
       supabase
@@ -61,10 +71,32 @@ export default async function MembersPage() {
         .eq("studio_id", studioId)
         .in("profile_id", memberIds)
         .order("expires_at", { ascending: false }),
+      // Active memberships with tier names
+      supabase
+        .from("memberships")
+        .select("profile_id, status, membership_tiers:membership_tier_id(name)")
+        .eq("studio_id", studioId)
+        .in("profile_id", memberIds),
     ])
 
     for (const b of bookingsRes.data ?? []) {
       bookingCounts[b.profile_id] = (bookingCounts[b.profile_id] ?? 0) + 1
+    }
+
+    for (const b of allBookingsRes.data ?? []) {
+      totalAttendance[b.profile_id] = (totalAttendance[b.profile_id] ?? 0) + 1
+    }
+
+    for (const m of membershipsRes.data ?? []) {
+      const tier = m.membership_tiers as unknown as { name: string } | null
+      // Keep the most "active" membership if multiple exist
+      const existing = membershipByProfile[m.profile_id]
+      if (!existing || m.status === "active") {
+        membershipByProfile[m.profile_id] = {
+          status: m.status as string,
+          tierName: tier?.name ?? "Unknown",
+        }
+      }
     }
 
     for (const b of lastBookingsRes.data ?? []) {
@@ -91,27 +123,34 @@ export default async function MembersPage() {
 
   const thirtyDaysAgo = new Date()
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
-  const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split("T")[0]
+  const thirtyDaysAgoStr = dateToDateStr(thirtyDaysAgo)
 
   const rows = members.map((m) => {
     const profile = m.profiles as unknown as {
       id: string
       full_name: string | null
       email: string | null
+      phone: string | null
     }
     const lastBooking = lastBookingByProfile[profile.id] ?? null
+    const membership = membershipByProfile[profile.id] ?? null
     return {
       id: profile.id,
       name: profile.full_name ?? "Unknown",
       email: profile.email ?? "",
+      phone: profile.phone ?? "",
       credits: creditsByProfile[profile.id] ?? 0,
+      totalClasses: totalAttendance[profile.id] ?? 0,
       classesThisMonth: bookingCounts[profile.id] ?? 0,
       joinedAt: new Date(m.created_at as string).toLocaleDateString("en-GB", {
         month: "short",
         year: "numeric",
       }),
+      joinedRaw: m.created_at as string,
       packs: packsByProfile[profile.id] ?? [],
       lastBookingDate: lastBooking,
+      membershipStatus: membership?.status ?? null,
+      membershipTier: membership?.tierName ?? null,
       atRisk:
         // Only flag as at-risk if they joined 30+ days ago
         new Date(m.created_at as string).getTime() <= thirtyDaysAgo.getTime() &&

@@ -1,8 +1,8 @@
 import { createClient } from "@/lib/supabase/server"
 import { getUser, getUserRole } from "@/lib/auth"
 import { getStudioId } from "@/lib/studio-context"
-import { getGreeting, formatTime, formatPence } from "@/lib/utils"
-import { getMonthlyRevenue } from "@/lib/stripe/revenue"
+import { getGreeting, formatTime, formatPence, localDateStr, dateToDateStr } from "@/lib/utils"
+import { getMonthlyRevenue, getPreviousMonthRevenue } from "@/lib/stripe/revenue"
 import { ADMIN_ROLES } from "@/lib/types"
 import { StatCard } from "@/components/shared/stat-card"
 import { ClassColorBar } from "@/components/shared/class-color-bar"
@@ -30,12 +30,28 @@ export default async function OverviewPage() {
   const jsDow = now.getDay() // 0 = Sunday
   const dow = jsDow === 0 ? 6 : jsDow - 1 // Convert to 0 = Monday
 
-  const today = now.toISOString().split("T")[0]
+  const today = localDateStr(now)
+
+  // Date calculations for week-over-week comparisons
+  const lastWeekSameDay = new Date(now)
+  lastWeekSameDay.setDate(now.getDate() - 7)
+  const lastWeekSameDayStr = dateToDateStr(lastWeekSameDay)
+
+  // This Monday and last Monday for new-member comparison
+  const mondayOffset = jsDow === 0 ? -6 : 1 - jsDow
+  const thisMonday = new Date(now)
+  thisMonday.setDate(now.getDate() + mondayOffset)
+  thisMonday.setHours(0, 0, 0, 0)
+  const thisMondayISO = thisMonday.toISOString()
+
+  const lastMonday = new Date(thisMonday)
+  lastMonday.setDate(thisMonday.getDate() - 7)
+  const lastMondayISO = lastMonday.toISOString()
 
   const role = await getUserRole(studioId)
 
   // Fetch data in parallel
-  const [scheduleRes, bookingsTodayRes, membersRes, revenue, recentBookingsRes, studioRes, classesCountRes, scheduleCountRes, teamCountRes, allBookingsRes] =
+  const [scheduleRes, bookingsTodayRes, membersRes, revenue, recentBookingsRes, studioRes, classesCountRes, scheduleCountRes, teamCountRes, allBookingsRes, bookingsLastWeekRes, newMembersThisWeekRes, newMembersLastWeekRes, prevMonthRevenue] =
     await Promise.all([
       // Today's schedule
       supabase
@@ -98,6 +114,30 @@ export default async function OverviewPage() {
         .eq("studio_id", studioId)
         .eq("status", "confirmed")
         .order("date", { ascending: false }),
+      // Bookings same day last week (for comparison)
+      supabase
+        .from("bookings")
+        .select("id")
+        .eq("studio_id", studioId)
+        .eq("date", lastWeekSameDayStr)
+        .eq("status", "confirmed"),
+      // New members this week (since Monday)
+      supabase
+        .from("studio_memberships")
+        .select("id")
+        .eq("studio_id", studioId)
+        .eq("role", "member")
+        .gte("created_at", thisMondayISO),
+      // New members last week (last Monday to this Monday)
+      supabase
+        .from("studio_memberships")
+        .select("id")
+        .eq("studio_id", studioId)
+        .eq("role", "member")
+        .gte("created_at", lastMondayISO)
+        .lt("created_at", thisMondayISO),
+      // Previous month revenue (same period) for comparison
+      getPreviousMonthRevenue(),
     ])
 
   const todaySchedule = scheduleRes.data ?? []
@@ -105,6 +145,29 @@ export default async function OverviewPage() {
   const membersCount = membersRes.data?.length ?? 0
   const recentBookings = recentBookingsRes.data ?? []
   const { revenuePence, stripeConnected } = revenue
+
+  // Week-over-week comparison calculations
+  const bookingsLastWeekCount = bookingsLastWeekRes.data?.length ?? 0
+  const newMembersThisWeek = newMembersThisWeekRes.data?.length ?? 0
+  const newMembersLastWeek = newMembersLastWeekRes.data?.length ?? 0
+  const prevMonthRevenuePence = prevMonthRevenue
+
+  function percentChange(current: number, previous: number): number {
+    if (previous === 0) return current > 0 ? 100 : 0
+    return Math.round(((current - previous) / previous) * 100)
+  }
+
+  const bookingsChange = bookingsLastWeekCount > 0 || bookingsTodayCount > 0
+    ? { value: percentChange(bookingsTodayCount, bookingsLastWeekCount), label: "vs last week" }
+    : undefined
+
+  const membersChange = newMembersLastWeek > 0 || newMembersThisWeek > 0
+    ? { value: percentChange(newMembersThisWeek, newMembersLastWeek), label: "new vs last week" }
+    : undefined
+
+  const revenueChange = stripeConnected && (prevMonthRevenuePence > 0 || revenuePence > 0)
+    ? { value: percentChange(revenuePence, prevMonthRevenuePence), label: "vs last month" }
+    : undefined
 
   // At-risk members: no confirmed booking in 30+ days
   const memberIdSet = new Set(
@@ -120,7 +183,7 @@ export default async function OverviewPage() {
 
   const thirtyDaysAgo = new Date()
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
-  const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split("T")[0]
+  const thirtyDaysAgoStr = dateToDateStr(thirtyDaysAgo)
 
   const nowMs = Date.now()
   const atRiskMembers: Array<{
@@ -225,11 +288,13 @@ export default async function OverviewPage() {
           label="Bookings today"
           value={bookingsTodayCount}
           subtitle={bookingsTodayCount === 0 ? "No bookings yet" : undefined}
+          change={bookingsChange}
         />
         <StatCard
           label="Active members"
           value={membersCount}
           subtitle={membersCount === 0 ? "No members yet" : undefined}
+          change={membersChange}
         />
         <StatCard
           label="Revenue this month"
@@ -241,6 +306,7 @@ export default async function OverviewPage() {
                 ? "No revenue yet"
                 : "Net after Stripe fees"
           }
+          change={revenueChange}
         />
         <StatCard
           label="At risk"
@@ -370,9 +436,14 @@ export default async function OverviewPage() {
                         </strong>{" "}
                         {isCancelled ? "cancelled" : "booked"}{" "}
                         {schedule?.classes?.name ?? "a class"}
-                        {schedule?.start_time
-                          ? ` (${formatTime(schedule.start_time)})`
-                          : ""}
+                        {booking.date
+                          ? ` — ${new Date(booking.date as string).toLocaleDateString(
+                              "en-GB",
+                              { weekday: "short", day: "numeric", month: "short" }
+                            )}${schedule?.start_time ? `, ${formatTime(schedule.start_time)}` : ""}`
+                          : schedule?.start_time
+                            ? ` (${formatTime(schedule.start_time)})`
+                            : ""}
                       </div>
                       <div className="mt-0.5 text-[0.68rem] text-warm-grey">
                         {new Date(booking.created_at as string).toLocaleDateString(

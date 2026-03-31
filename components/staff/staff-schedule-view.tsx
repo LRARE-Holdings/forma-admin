@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { DAY_SHORT } from "@/lib/constants"
+import { dateToDateStr } from "@/lib/utils"
 import { StaffClassCard } from "./staff-class-card"
 
 interface SlotData {
@@ -49,7 +50,7 @@ export function StaffScheduleView({
   const daySlots = slots.filter((s) => s.day_of_week === selectedDay)
   const selectedDate = new Date(monday)
   selectedDate.setDate(monday.getDate() + selectedDay)
-  const dateStr = selectedDate.toISOString().split("T")[0]
+  const dateStr = dateToDateStr(selectedDate)
 
   return (
     <>

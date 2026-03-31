@@ -1,13 +1,14 @@
 import { createClient } from "@/lib/supabase/server"
 import { getStudioId } from "@/lib/studio-context"
 import { PageHeader } from "@/components/shared/page-header"
-import { WeekCalendar } from "@/components/dashboard/week-calendar"
 import { HolidayBanner } from "@/components/dashboard/holiday-banner"
-import { RealtimeBookingListener } from "@/components/dashboard/realtime-booking-listener"
+import { TimetableShell } from "@/components/dashboard/timetable-shell"
 import { getWeekData } from "@/lib/schedule-utils"
+import { dateToDateStr } from "@/lib/utils"
 
-// Bypass client-side router cache so ?week= changes always re-fetch server data
-export const dynamic = "force-dynamic"
+// Page is automatically dynamic (reads searchParams).
+// Cache invalidation is handled by revalidatePath() in server actions
+// and by staleTimes.dynamic = 0 in next.config.ts.
 
 interface TimetablePageProps {
   searchParams: Promise<{ week?: string }>
@@ -26,7 +27,7 @@ export default async function TimetablePage({
     const offset = dow === 0 ? -6 : 1 - dow
     const monday = new Date(date)
     monday.setDate(date.getDate() + offset)
-    return monday.toISOString().split("T")[0]
+    return dateToDateStr(monday)
   }
 
   let weekStart: string
@@ -74,7 +75,7 @@ export default async function TimetablePage({
         description="Your weekly class schedule."
       />
       <HolidayBanner holidays={weekData.holidays} />
-      <WeekCalendar
+      <TimetableShell
         slots={weekData.slots}
         holidays={weekData.holidays}
         weekStart={weekData.weekStart}
@@ -82,8 +83,8 @@ export default async function TimetablePage({
         classes={classes}
         instructors={instructors}
         isCurrentWeek={isCurrentWeek}
+        studioId={studioId}
       />
-      <RealtimeBookingListener studioId={studioId} />
     </>
   )
 }

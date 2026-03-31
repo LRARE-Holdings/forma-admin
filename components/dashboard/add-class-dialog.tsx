@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
+import { dateToDateStr } from "@/lib/utils"
 import {
   Dialog,
   DialogContent,
@@ -72,7 +73,7 @@ function addMinutes(time: string, minutes: number): string {
 function addWeeks(dateStr: string, weeks: number): string {
   const d = new Date(dateStr + "T00:00:00")
   d.setDate(d.getDate() + weeks * 7)
-  return d.toISOString().split("T")[0]
+  return dateToDateStr(d)
 }
 
 export function AddClassDialog({

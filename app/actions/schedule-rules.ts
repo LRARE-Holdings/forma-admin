@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server"
 import { requireManager } from "@/lib/auth"
 import { getStudioId } from "@/lib/studio-context"
 import { notifyInstructorScheduleChange } from "@/lib/email/schedule-notifications"
+import { dateToDateStr } from "@/lib/utils"
 import type { Recurrence } from "@/lib/types"
 
 /**
@@ -338,7 +339,7 @@ function calculateDates(
 
   while (cursor <= effectiveEnd) {
     if (cursor >= today) {
-      dates.push(cursor.toISOString().split("T")[0])
+      dates.push(dateToDateStr(cursor))
     }
 
     if (recurrence === "monthly") {

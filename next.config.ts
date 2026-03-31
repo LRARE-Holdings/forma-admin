@@ -1,7 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  experimental: {
+    staleTimes: {
+      dynamic: 0, // Never serve stale client-side cache for dynamic pages
+    },
+  },
 };
 
 export default nextConfig;

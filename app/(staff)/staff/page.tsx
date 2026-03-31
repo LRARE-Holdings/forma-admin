@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { getUser, getInstructorForUser } from "@/lib/auth"
 import { getStudioId } from "@/lib/studio-context"
+import { dateToDateStr } from "@/lib/utils"
 import { StatCard } from "@/components/shared/stat-card"
 import { StaffScheduleView } from "@/components/staff/staff-schedule-view"
 import { EditOwnProfile } from "@/components/staff/edit-own-profile"
@@ -56,8 +57,8 @@ export default async function StaffPage() {
   const sunday = new Date(monday)
   sunday.setDate(monday.getDate() + 6)
 
-  const mondayStr = monday.toISOString().split("T")[0]
-  const sundayStr = sunday.toISOString().split("T")[0]
+  const mondayStr = dateToDateStr(monday)
+  const sundayStr = dateToDateStr(sunday)
 
   const slotIds = slots.map((s: { id: string }) => s.id)
 

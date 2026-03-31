@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { getStudioId } from "@/lib/studio-context"
-import { formatPence } from "@/lib/utils"
+import { formatPence, dateToDateStr } from "@/lib/utils"
 import { PageHeader } from "@/components/shared/page-header"
 import { StatCard } from "@/components/shared/stat-card"
 import { WeeklyRevenueChart } from "@/components/dashboard/analytics/weekly-revenue-chart"
@@ -30,7 +30,7 @@ export default async function AnalyticsPage() {
   const lastSunday = new Date(lastMonday)
   lastSunday.setDate(lastMonday.getDate() + 6)
 
-  const toDateStr = (d: Date) => d.toISOString().split("T")[0]
+  const toDateStr = (d: Date) => dateToDateStr(d)
 
   // Fetch all bookings from last 8 weeks with class info
   const { data: bookings } = await supabase

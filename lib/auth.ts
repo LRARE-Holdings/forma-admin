@@ -1,3 +1,4 @@
+import { cache } from "react"
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import { getStudioId } from "@/lib/studio-context"
@@ -9,25 +10,25 @@ import {
 } from "@/lib/types"
 import type { UserRole } from "@/lib/types"
 
-export async function getUser() {
+// React cache() deduplicates within a single server render pass.
+// Layout + page both call getUser() but only 1 actual auth round-trip fires.
+export const getUser = cache(async () => {
   const supabase = await createClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()
   return user
-}
+})
 
 export async function getUserRole(
   studioId?: string
 ): Promise<UserRole | null> {
   const resolvedStudioId = studioId ?? (await getStudioId())
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getUser()
 
   if (!user) return null
 
+  const supabase = await createClient()
   const { data: membership } = await supabase
     .from("studio_memberships")
     .select("role")
