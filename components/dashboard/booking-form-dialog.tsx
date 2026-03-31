@@ -17,6 +17,22 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import {
+  Command,
+  CommandInput,
+  CommandList,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+} from "@/components/ui/command"
+import { Button } from "@/components/ui/button"
+import { ChevronsUpDown, Check } from "lucide-react"
+import { cn } from "@/lib/utils"
 import { SubmitButton } from "@/components/shared/submit-button"
 import { createManualBooking } from "@/app/actions/bookings"
 import { toast } from "sonner"
@@ -49,6 +65,7 @@ export function BookingFormDialog({
   const [profileId, setProfileId] = useState("")
   const [scheduleId, setScheduleId] = useState("")
   const [paymentMethod, setPaymentMethod] = useState("")
+  const [memberOpen, setMemberOpen] = useState(false)
 
   const selectedMember = members.find((m) => m.id === profileId)
 
@@ -94,20 +111,55 @@ export function BookingFormDialog({
 
           <div>
             <Label>Member</Label>
-            <Select value={profileId} onValueChange={(v) => setProfileId(v ?? "")}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select a member">
-                  {selectedMember ? `${selectedMember.name} (${selectedMember.credits} credits)` : null}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {members.map((m) => (
-                  <SelectItem key={m.id} value={m.id}>
-                    {m.name} ({m.credits} credits)
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Popover open={memberOpen} onOpenChange={setMemberOpen}>
+              <PopoverTrigger
+                render={
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={memberOpen}
+                    className="w-full justify-between font-normal"
+                  />
+                }
+              >
+                {selectedMember
+                  ? `${selectedMember.name} (${selectedMember.credits} credits)`
+                  : "Search members..."}
+                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+              </PopoverTrigger>
+              <PopoverContent className="w-[var(--anchor-width)] p-0">
+                <Command>
+                  <CommandInput placeholder="Search by name..." />
+                  <CommandList>
+                    <CommandEmpty>No member found.</CommandEmpty>
+                    <CommandGroup>
+                      {members.map((m) => (
+                        <CommandItem
+                          key={m.id}
+                          value={m.name}
+                          onSelect={() => {
+                            setProfileId(m.id)
+                            setMemberOpen(false)
+                          }}
+                          data-checked={profileId === m.id}
+                        >
+                          <Check
+                            className={cn(
+                              "mr-2 h-4 w-4",
+                              profileId === m.id ? "opacity-100" : "opacity-0"
+                            )}
+                          />
+                          {m.name}
+                          <span className="ml-auto text-xs text-muted-foreground">
+                            {m.credits} credits
+                          </span>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
           </div>
 
           <div>
