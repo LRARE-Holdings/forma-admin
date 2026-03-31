@@ -25,9 +25,8 @@ export async function sendStudioEmail(
       .single()
 
     const studioName = studio?.name ?? "Forma Studio"
-    const emailFrom = studio?.email_from ?? "noreply"
-    const emailDomain = studio?.email_domain ?? "useforma.co.uk"
-    const from = `${studioName} <${emailFrom}@${emailDomain}>`
+    const emailFrom = studio?.email_from ?? "noreply@useforma.co.uk"
+    const from = `${studioName} <${emailFrom}>`
 
     const { error } = await resend.emails.send({
       from,

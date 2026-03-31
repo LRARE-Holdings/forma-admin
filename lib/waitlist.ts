@@ -2,6 +2,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { sendStudioEmail } from "@/lib/email/send"
 import { waitlistOfferEmail } from "@/lib/email/templates"
 import { formatTime, localDateStr } from "@/lib/utils"
+import type { StudioBranding } from "@/lib/types"
 
 const OFFER_WINDOW_MINUTES = 30
 
@@ -57,7 +58,7 @@ export async function promoteNextInWaitlist(
       .single(),
     supabase
       .from("studios")
-      .select("name, domain")
+      .select("name, domain, branding")
       .eq("id", studioId)
       .single(),
   ])
@@ -69,6 +70,7 @@ export async function promoteNextInWaitlist(
   if (!profile?.email || !slot) return
 
   const cls = slot.classes as unknown as { name: string }
+  const branding = studio?.branding as StudioBranding | null
   const formattedDate = new Date(date + "T00:00:00").toLocaleDateString("en-GB", {
     weekday: "long",
     day: "numeric",
@@ -87,6 +89,7 @@ export async function promoteNextInWaitlist(
     claimUrl,
     expiresInMinutes: OFFER_WINDOW_MINUTES,
     studioName: studio?.name ?? "Your studio",
+    branding,
   })
 
   sendStudioEmail(studioId, { to: profile.email, subject, html }).catch((err) =>

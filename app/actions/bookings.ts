@@ -6,6 +6,7 @@ import { requireReception, requireManager } from "@/lib/auth"
 import { getStudioId } from "@/lib/studio-context"
 import { promoteNextInWaitlist } from "@/lib/waitlist"
 import { getWeekData } from "@/lib/schedule-utils"
+import { sendBookingConfirmation } from "@/lib/email/booking-confirmation"
 
 export interface SessionOption {
   scheduleId: string
@@ -98,6 +99,12 @@ export async function createManualBooking(formData: FormData) {
   })
 
   if (error) throw new Error(error.message)
+
+  // Send booking confirmation email (fire-and-forget)
+  sendBookingConfirmation(studioId, profile_id, schedule_id, date).catch((err) =>
+    console.error("[bookings] Confirmation email failed:", err)
+  )
+
   revalidatePath("/dashboard/bookings")
   revalidatePath("/dashboard/timetable")
   revalidatePath("/dashboard")

@@ -2,6 +2,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { sendStudioEmail } from "./send"
 import { scheduleChangeEmail } from "./templates"
 import { dayName, formatTime } from "@/lib/utils"
+import type { StudioBranding } from "@/lib/types"
 
 type ChangeType = "assigned" | "changed" | "removed"
 
@@ -36,12 +37,14 @@ export async function notifyInstructorScheduleChange(
     const profile = instructor.profiles as unknown as { email: string | null }
     if (!profile.email) return
 
-    // Get studio name for the email
+    // Get studio name and branding for the email
     const { data: studio } = await supabase
       .from("studios")
-      .select("name")
+      .select("name, branding")
       .eq("id", studioId)
       .single()
+
+    const branding = studio?.branding as StudioBranding | null
 
     const { subject, html } = scheduleChangeEmail({
       type: changeType,
@@ -50,6 +53,7 @@ export async function notifyInstructorScheduleChange(
       day: dayName(details.dayOfWeek),
       time: formatTime(details.startTime),
       studioName: studio?.name ?? "Your studio",
+      branding,
     })
 
     await sendStudioEmail(studioId, { to: profile.email, subject, html })

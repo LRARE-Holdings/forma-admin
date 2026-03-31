@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
 import { stripe } from "@/lib/stripe"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { sendBookingConfirmation } from "@/lib/email/booking-confirmation"
+import { sendStudioEmail } from "@/lib/email/send"
+import { refundEmail } from "@/lib/email/templates"
+import { formatTime } from "@/lib/utils"
 import type Stripe from "stripe"
+import type { StudioBranding } from "@/lib/types"
 
 /**
  * POST /api/stripe/webhook
@@ -182,6 +187,11 @@ async function handlePaymentIntentSucceeded(
       payment_method: "stripe",
       stripe_session_id: piId,
     })
+
+    // Send booking confirmation email (fire-and-forget)
+    sendBookingConfirmation(studioId, profileId, scheduleId, date).catch((err) =>
+      console.error("[webhook] Booking confirmation email failed:", err)
+    )
   }
 
   if (metadata.type === "waitlist_claim") {
@@ -215,6 +225,11 @@ async function handlePaymentIntentSucceeded(
       payment_method: "stripe",
       stripe_session_id: piId,
     })
+
+    // Send booking confirmation email (fire-and-forget)
+    sendBookingConfirmation(studioId, profileId, scheduleId, date).catch((err) =>
+      console.error("[webhook] Booking confirmation email failed:", err)
+    )
 
     if (claimToken) {
       await supabase
@@ -296,6 +311,11 @@ async function handleCheckoutCompleted(
       payment_method: "stripe",
       stripe_session_id: session.id,
     })
+
+    // Send booking confirmation email (fire-and-forget)
+    sendBookingConfirmation(studioId, profileId, scheduleId, date).catch((err) =>
+      console.error("[webhook] Booking confirmation email failed:", err)
+    )
   }
 
   if (metadata.type === "waitlist_claim") {
@@ -319,6 +339,11 @@ async function handleCheckoutCompleted(
       payment_method: "stripe",
       stripe_session_id: session.id,
     })
+
+    // Send booking confirmation email (fire-and-forget)
+    sendBookingConfirmation(studioId, profileId, scheduleId, date).catch((err) =>
+      console.error("[webhook] Booking confirmation email failed:", err)
+    )
 
     if (claimToken) {
       await supabase
@@ -411,7 +436,7 @@ async function handleSubscriptionDeleted(
 /**
  * Handle a charge refund.
  * Looks up the booking or class_pack by the payment intent ID stored in
- * stripe_session_id, then marks it as refunded/cancelled.
+ * stripe_session_id, marks it as refunded/cancelled, then emails the member.
  */
 async function handleChargeRefunded(
   supabase: ReturnType<typeof createAdminClient>,
@@ -426,30 +451,49 @@ async function handleChargeRefunded(
   if (!paymentIntentId) return
 
   const fullyRefunded = charge.refunded
+  const amountRefundedPounds = (charge.amount_refunded / 100).toFixed(2)
+
+  // Fetch studio branding once for the email
+  const { data: studio } = await supabase
+    .from("studios")
+    .select("name, branding")
+    .eq("id", studioId)
+    .single()
+  const studioName = studio?.name ?? "Your studio"
+  const branding = studio?.branding as StudioBranding | null
 
   // Look up directly by payment intent ID (primary path — Elements flow)
   const { data: packByPi } = await supabase
     .from("class_packs")
-    .select("id")
+    .select("id, profile_id, pack_type, credits_total")
     .eq("stripe_session_id", paymentIntentId)
     .eq("studio_id", studioId)
     .maybeSingle()
 
   const { data: bookingByPi } = await supabase
     .from("bookings")
-    .select("id")
+    .select("id, profile_id, schedule_id, date")
     .eq("stripe_session_id", paymentIntentId)
     .eq("studio_id", studioId)
     .maybeSingle()
 
   if (packByPi || bookingByPi) {
-    // Found via payment intent ID
     if (bookingByPi) {
       await supabase
         .from("bookings")
         .update({ status: fullyRefunded ? "cancelled" : "confirmed" })
         .eq("stripe_session_id", paymentIntentId)
         .eq("studio_id", studioId)
+
+      // Send refund email for the booking
+      sendRefundEmailForBooking({
+        supabase, studioId, studioName, branding,
+        profileId: bookingByPi.profile_id,
+        scheduleId: bookingByPi.schedule_id,
+        date: bookingByPi.date,
+        amountRefundedPounds,
+        fullyRefunded,
+      }).catch((err) => console.error("[webhook] Refund email failed:", err))
     }
 
     if (fullyRefunded && packByPi) {
@@ -458,6 +502,15 @@ async function handleChargeRefunded(
         .update({ credits_remaining: 0 })
         .eq("stripe_session_id", paymentIntentId)
         .eq("studio_id", studioId)
+
+      // Send refund email for the pack
+      sendRefundEmailForPack({
+        supabase, studioId, studioName, branding,
+        profileId: packByPi.profile_id,
+        creditsTotal: packByPi.credits_total,
+        amountRefundedPounds,
+        fullyRefunded,
+      }).catch((err) => console.error("[webhook] Refund email failed:", err))
     }
 
     return
@@ -471,11 +524,36 @@ async function handleChargeRefunded(
   const session = sessions.data[0]
   if (!session) return
 
+  const { data: legacyBooking } = await supabase
+    .from("bookings")
+    .select("id, profile_id, schedule_id, date")
+    .eq("stripe_session_id", session.id)
+    .eq("studio_id", studioId)
+    .maybeSingle()
+
+  const { data: legacyPack } = await supabase
+    .from("class_packs")
+    .select("id, profile_id, credits_total")
+    .eq("stripe_session_id", session.id)
+    .eq("studio_id", studioId)
+    .maybeSingle()
+
   await supabase
     .from("bookings")
     .update({ status: fullyRefunded ? "cancelled" : "confirmed" })
     .eq("stripe_session_id", session.id)
     .eq("studio_id", studioId)
+
+  if (legacyBooking) {
+    sendRefundEmailForBooking({
+      supabase, studioId, studioName, branding,
+      profileId: legacyBooking.profile_id,
+      scheduleId: legacyBooking.schedule_id,
+      date: legacyBooking.date,
+      amountRefundedPounds,
+      fullyRefunded,
+    }).catch((err) => console.error("[webhook] Refund email failed:", err))
+  }
 
   if (fullyRefunded) {
     await supabase
@@ -483,7 +561,97 @@ async function handleChargeRefunded(
       .update({ credits_remaining: 0 })
       .eq("stripe_session_id", session.id)
       .eq("studio_id", studioId)
+
+    if (legacyPack) {
+      sendRefundEmailForPack({
+        supabase, studioId, studioName, branding,
+        profileId: legacyPack.profile_id,
+        creditsTotal: legacyPack.credits_total,
+        amountRefundedPounds,
+        fullyRefunded,
+      }).catch((err) => console.error("[webhook] Refund email failed:", err))
+    }
   }
+}
+
+/** Send a refund email for a booking refund. */
+async function sendRefundEmailForBooking({
+  supabase, studioId, studioName, branding,
+  profileId, scheduleId, date,
+  amountRefundedPounds, fullyRefunded,
+}: {
+  supabase: ReturnType<typeof createAdminClient>
+  studioId: string
+  studioName: string
+  branding: StudioBranding | null
+  profileId: string
+  scheduleId: string
+  date: string
+  amountRefundedPounds: string
+  fullyRefunded: boolean
+}) {
+  const [profileRes, slotRes] = await Promise.all([
+    supabase.from("profiles").select("full_name, email").eq("id", profileId).single(),
+    supabase.from("schedule").select("start_time, classes:class_id(name)").eq("id", scheduleId).single(),
+  ])
+
+  const profile = profileRes.data
+  const slot = slotRes.data
+  if (!profile?.email || !slot) return
+
+  const cls = slot.classes as unknown as { name: string }
+  const formattedDate = new Date(date + "T00:00:00").toLocaleDateString("en-GB", {
+    weekday: "long", day: "numeric", month: "long",
+  })
+  const description = `${cls?.name ?? "Class"} on ${formattedDate} at ${formatTime(slot.start_time)}`
+
+  const { subject, html } = refundEmail({
+    memberName: profile.full_name?.split(" ")[0] ?? "there",
+    amountPounds: amountRefundedPounds,
+    description,
+    fullyRefunded,
+    studioName,
+    branding,
+  })
+
+  await sendStudioEmail(studioId, { to: profile.email, subject, html })
+}
+
+/** Send a refund email for a class pack refund. */
+async function sendRefundEmailForPack({
+  supabase, studioId, studioName, branding,
+  profileId, creditsTotal,
+  amountRefundedPounds, fullyRefunded,
+}: {
+  supabase: ReturnType<typeof createAdminClient>
+  studioId: string
+  studioName: string
+  branding: StudioBranding | null
+  profileId: string
+  creditsTotal: number
+  amountRefundedPounds: string
+  fullyRefunded: boolean
+}) {
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("full_name, email")
+    .eq("id", profileId)
+    .single()
+
+  if (!profile?.email) return
+
+  const description = `${creditsTotal}-class pack`
+
+  const { subject, html } = refundEmail({
+    memberName: profile.full_name?.split(" ")[0] ?? "there",
+    amountPounds: amountRefundedPounds,
+    description,
+    fullyRefunded,
+    studioName,
+    branding,
+  })
+
+  await sendStudioEmail(studioId, { to: profile.email, subject, html })
 }
 
 /**

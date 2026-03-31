@@ -1,6 +1,8 @@
-// --- Shared styles ---
+import type { StudioBranding } from "@/lib/types"
 
-const COLORS = {
+// --- Default branding (Burn Mat Studio) used as fallback ---
+
+const DEFAULT_BRANDING = {
   cocoa: "#473728",
   gold: "#C4A95A",
   wheat: "#DFD0A5",
@@ -9,27 +11,47 @@ const COLORS = {
   warmGrey: "#8A8070",
   ember: "#D4713A",
   white: "#FFFFFF",
-} as const
+  logo_url: "https://burnmatstudio.co.uk/burn-light.png",
+}
 
-function layout(studioName: string, body: string) {
+function resolveColors(branding?: StudioBranding | null) {
+  return {
+    cocoa:    branding?.colors?.cocoa    ?? DEFAULT_BRANDING.cocoa,
+    gold:     branding?.colors?.gold     ?? DEFAULT_BRANDING.gold,
+    wheat:    branding?.colors?.wheat    ?? DEFAULT_BRANDING.wheat,
+    cream:    branding?.colors?.cream    ?? DEFAULT_BRANDING.cream,
+    sand:     branding?.colors?.sand     ?? DEFAULT_BRANDING.sand,
+    warmGrey: branding?.colors?.warmGrey ?? DEFAULT_BRANDING.warmGrey,
+    ember:    branding?.colors?.ember    ?? DEFAULT_BRANDING.ember,
+    white:    DEFAULT_BRANDING.white,
+    logo_url: branding?.logo_url         ?? DEFAULT_BRANDING.logo_url,
+  }
+}
+
+function layout(studioName: string, body: string, branding?: StudioBranding | null) {
+  const c = resolveColors(branding)
+  const header = c.logo_url
+    ? `<img src="${c.logo_url}" alt="${studioName}" width="180" style="display:block;" />`
+    : `<span style="font-size:20px;font-weight:700;color:${c.white};">${studioName}</span>`
+
   return `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background-color:${COLORS.cream};font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:${COLORS.cream};padding:32px 16px;">
+<body style="margin:0;padding:0;background-color:${c.cream};font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:${c.cream};padding:32px 16px;">
     <tr><td align="center">
-      <table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background-color:${COLORS.white};border-radius:12px;border:1px solid ${COLORS.sand};overflow:hidden;">
+      <table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background-color:${c.white};border-radius:12px;border:1px solid ${c.sand};overflow:hidden;">
         <!-- Header -->
-        <tr><td style="background-color:${COLORS.cocoa};padding:24px 32px;">
-          <span style="font-size:20px;font-weight:600;color:${COLORS.wheat};">${studioName}</span>
+        <tr><td style="background-color:${c.cocoa};padding:24px 32px;" align="center">
+          ${header}
         </td></tr>
         <!-- Body -->
         <tr><td style="padding:32px;">
           ${body}
         </td></tr>
         <!-- Footer -->
-        <tr><td style="padding:16px 32px;border-top:1px solid ${COLORS.sand};">
-          <span style="font-size:12px;color:${COLORS.warmGrey};">Sent by ${studioName} via Forma</span>
+        <tr><td style="padding:16px 32px;border-top:1px solid ${c.sand};">
+          <span style="font-size:12px;color:${c.warmGrey};">Sent by ${studioName} via Forma</span>
         </td></tr>
       </table>
     </td></tr>
@@ -38,7 +60,7 @@ function layout(studioName: string, body: string) {
 </html>`
 }
 
-// --- Schedule change emails (Feature 2) ---
+// --- Schedule change emails ---
 
 interface ScheduleChangeParams {
   type: "assigned" | "changed" | "removed"
@@ -47,6 +69,7 @@ interface ScheduleChangeParams {
   day: string
   time: string
   studioName: string
+  branding?: StudioBranding | null
 }
 
 const SCHEDULE_SUBJECTS: Record<string, string> = {
@@ -56,7 +79,8 @@ const SCHEDULE_SUBJECTS: Record<string, string> = {
 }
 
 export function scheduleChangeEmail(params: ScheduleChangeParams) {
-  const { type, instructorName, className, day, time, studioName } = params
+  const { type, instructorName, className, day, time, studioName, branding } = params
+  const c = resolveColors(branding)
 
   const messages: Record<string, string> = {
     assigned: `You've been assigned to teach <strong>${className}</strong>.`,
@@ -65,25 +89,25 @@ export function scheduleChangeEmail(params: ScheduleChangeParams) {
   }
 
   const body = `
-    <p style="margin:0 0 16px;font-size:15px;color:${COLORS.cocoa};">Hi ${instructorName},</p>
-    <p style="margin:0 0 24px;font-size:15px;color:${COLORS.cocoa};">${messages[type]}</p>
-    <table cellpadding="0" cellspacing="0" style="background-color:${COLORS.cream};border-radius:8px;padding:16px 20px;width:100%;">
+    <p style="margin:0 0 16px;font-size:15px;color:${c.cocoa};">Hi ${instructorName},</p>
+    <p style="margin:0 0 24px;font-size:15px;color:${c.cocoa};">${messages[type]}</p>
+    <table cellpadding="0" cellspacing="0" style="background-color:${c.cream};border-radius:8px;padding:16px 20px;width:100%;">
       <tr><td>
-        <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:${COLORS.warmGrey};text-transform:uppercase;letter-spacing:0.05em;">Class</p>
-        <p style="margin:0 0 12px;font-size:15px;font-weight:600;color:${COLORS.cocoa};">${className}</p>
-        <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:${COLORS.warmGrey};text-transform:uppercase;letter-spacing:0.05em;">When</p>
-        <p style="margin:0;font-size:15px;color:${COLORS.cocoa};">${day} at ${time}</p>
+        <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:${c.warmGrey};text-transform:uppercase;letter-spacing:0.05em;">Class</p>
+        <p style="margin:0 0 12px;font-size:15px;font-weight:600;color:${c.cocoa};">${className}</p>
+        <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:${c.warmGrey};text-transform:uppercase;letter-spacing:0.05em;">When</p>
+        <p style="margin:0;font-size:15px;color:${c.cocoa};">${day} at ${time}</p>
       </td></tr>
     </table>
-    <p style="margin:24px 0 0;font-size:14px;color:${COLORS.warmGrey};">If you have any questions, contact your studio manager.</p>`
+    <p style="margin:24px 0 0;font-size:14px;color:${c.warmGrey};">If you have any questions, contact your studio manager.</p>`
 
   return {
     subject: SCHEDULE_SUBJECTS[type],
-    html: layout(studioName, body),
+    html: layout(studioName, body, branding),
   }
 }
 
-// --- Class cancellation email (Feature 3) ---
+// --- Class cancellation email ---
 
 interface ClassCancelledParams {
   memberName: string
@@ -93,41 +117,116 @@ interface ClassCancelledParams {
   reason?: string
   creditRestored: boolean
   studioName: string
+  branding?: StudioBranding | null
 }
 
 export function classCancelledEmail(params: ClassCancelledParams) {
-  const { memberName, className, date, time, reason, creditRestored, studioName } = params
+  const { memberName, className, date, time, reason, creditRestored, studioName, branding } = params
+  const c = resolveColors(branding)
 
   const creditLine = creditRestored
-    ? `<p style="margin:16px 0 0;font-size:14px;color:${COLORS.cocoa};"><strong>Your class credit has been restored</strong> and is ready to use for another booking.</p>`
+    ? `<p style="margin:16px 0 0;font-size:14px;color:${c.cocoa};"><strong>Your class credit has been restored</strong> and is ready to use for another booking.</p>`
     : ""
 
   const reasonLine = reason
-    ? `<p style="margin:16px 0 0;font-size:14px;color:${COLORS.warmGrey};"><strong>Reason:</strong> ${reason}</p>`
+    ? `<p style="margin:16px 0 0;font-size:14px;color:${c.warmGrey};"><strong>Reason:</strong> ${reason}</p>`
     : ""
 
   const body = `
-    <p style="margin:0 0 16px;font-size:15px;color:${COLORS.cocoa};">Hi ${memberName},</p>
-    <p style="margin:0 0 24px;font-size:15px;color:${COLORS.cocoa};">We're sorry to let you know that the following class has been cancelled:</p>
-    <table cellpadding="0" cellspacing="0" style="background-color:${COLORS.cream};border-radius:8px;padding:16px 20px;width:100%;">
+    <p style="margin:0 0 16px;font-size:15px;color:${c.cocoa};">Hi ${memberName},</p>
+    <p style="margin:0 0 24px;font-size:15px;color:${c.cocoa};">We're sorry to let you know that the following class has been cancelled:</p>
+    <table cellpadding="0" cellspacing="0" style="background-color:${c.cream};border-radius:8px;padding:16px 20px;width:100%;">
       <tr><td>
-        <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:${COLORS.warmGrey};text-transform:uppercase;letter-spacing:0.05em;">Class</p>
-        <p style="margin:0 0 12px;font-size:15px;font-weight:600;color:${COLORS.cocoa};">${className}</p>
-        <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:${COLORS.warmGrey};text-transform:uppercase;letter-spacing:0.05em;">Date &amp; time</p>
-        <p style="margin:0;font-size:15px;color:${COLORS.cocoa};">${date} at ${time}</p>
+        <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:${c.warmGrey};text-transform:uppercase;letter-spacing:0.05em;">Class</p>
+        <p style="margin:0 0 12px;font-size:15px;font-weight:600;color:${c.cocoa};">${className}</p>
+        <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:${c.warmGrey};text-transform:uppercase;letter-spacing:0.05em;">Date &amp; time</p>
+        <p style="margin:0;font-size:15px;color:${c.cocoa};">${date} at ${time}</p>
       </td></tr>
     </table>
     ${reasonLine}
     ${creditLine}
-    <p style="margin:24px 0 0;font-size:14px;color:${COLORS.warmGrey};">We apologise for the inconvenience. We look forward to seeing you at another class soon.</p>`
+    <p style="margin:24px 0 0;font-size:14px;color:${c.warmGrey};">We apologise for the inconvenience. We look forward to seeing you at another class soon.</p>`
 
   return {
     subject: `${className} on ${date} has been cancelled`,
-    html: layout(studioName, body),
+    html: layout(studioName, body, branding),
   }
 }
 
-// --- Waitlist offer email (Feature 1) ---
+// --- Booking confirmation email ---
+
+interface BookingConfirmationParams {
+  memberName: string
+  className: string
+  date: string
+  time: string
+  studioName: string
+  branding?: StudioBranding | null
+}
+
+export function bookingConfirmationEmail(params: BookingConfirmationParams) {
+  const { memberName, className, date, time, studioName, branding } = params
+  const c = resolveColors(branding)
+
+  const body = `
+    <p style="margin:0 0 16px;font-size:15px;color:${c.cocoa};">Hi ${memberName},</p>
+    <p style="margin:0 0 24px;font-size:15px;color:${c.cocoa};">Your booking has been confirmed!</p>
+    <table cellpadding="0" cellspacing="0" style="background-color:${c.cream};border-radius:8px;padding:16px 20px;width:100%;">
+      <tr><td>
+        <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:${c.warmGrey};text-transform:uppercase;letter-spacing:0.05em;">Class</p>
+        <p style="margin:0 0 12px;font-size:15px;font-weight:600;color:${c.cocoa};">${className}</p>
+        <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:${c.warmGrey};text-transform:uppercase;letter-spacing:0.05em;">Date &amp; time</p>
+        <p style="margin:0;font-size:15px;color:${c.cocoa};">${date} at ${time}</p>
+      </td></tr>
+    </table>
+    <p style="margin:24px 0 0;font-size:14px;color:${c.warmGrey};">We look forward to seeing you! If you need to cancel, please do so at least 24 hours before the class.</p>`
+
+  return {
+    subject: `Booking confirmed — ${className} on ${date}`,
+    html: layout(studioName, body, branding),
+  }
+}
+
+// --- Refund email ---
+
+interface RefundParams {
+  memberName: string
+  amountPounds: string
+  description: string  // e.g. "Hot Pilates on Monday 7 April" or "5-class pack"
+  fullyRefunded: boolean
+  studioName: string
+  branding?: StudioBranding | null
+}
+
+export function refundEmail(params: RefundParams) {
+  const { memberName, amountPounds, description, fullyRefunded, studioName, branding } = params
+  const c = resolveColors(branding)
+
+  const refundType = fullyRefunded ? "Full refund" : "Partial refund"
+  const intro = fullyRefunded
+    ? `A full refund of <strong>£${amountPounds}</strong> has been processed for the following:`
+    : `A partial refund of <strong>£${amountPounds}</strong> has been processed for the following:`
+
+  const body = `
+    <p style="margin:0 0 16px;font-size:15px;color:${c.cocoa};">Hi ${memberName},</p>
+    <p style="margin:0 0 24px;font-size:15px;color:${c.cocoa};">${intro}</p>
+    <table cellpadding="0" cellspacing="0" style="background-color:${c.cream};border-radius:8px;padding:16px 20px;width:100%;">
+      <tr><td>
+        <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:${c.warmGrey};text-transform:uppercase;letter-spacing:0.05em;">${refundType}</p>
+        <p style="margin:0 0 12px;font-size:15px;font-weight:600;color:${c.cocoa};">£${amountPounds}</p>
+        <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:${c.warmGrey};text-transform:uppercase;letter-spacing:0.05em;">For</p>
+        <p style="margin:0;font-size:15px;color:${c.cocoa};">${description}</p>
+      </td></tr>
+    </table>
+    <p style="margin:24px 0 0;font-size:14px;color:${c.warmGrey};">Refunds typically appear on your statement within 5–10 business days. If you have any questions, please contact us.</p>`
+
+  return {
+    subject: `Your refund of £${amountPounds} is on its way`,
+    html: layout(studioName, body, branding),
+  }
+}
+
+// --- Waitlist offer email ---
 
 interface WaitlistOfferParams {
   memberName: string
@@ -137,32 +236,34 @@ interface WaitlistOfferParams {
   claimUrl: string
   expiresInMinutes: number
   studioName: string
+  branding?: StudioBranding | null
 }
 
 export function waitlistOfferEmail(params: WaitlistOfferParams) {
-  const { memberName, className, date, time, claimUrl, expiresInMinutes, studioName } = params
+  const { memberName, className, date, time, claimUrl, expiresInMinutes, studioName, branding } = params
+  const c = resolveColors(branding)
 
   const body = `
-    <p style="margin:0 0 16px;font-size:15px;color:${COLORS.cocoa};">Hi ${memberName},</p>
-    <p style="margin:0 0 24px;font-size:15px;color:${COLORS.cocoa};">A spot has opened up in a class you're on the waitlist for!</p>
-    <table cellpadding="0" cellspacing="0" style="background-color:${COLORS.cream};border-radius:8px;padding:16px 20px;width:100%;">
+    <p style="margin:0 0 16px;font-size:15px;color:${c.cocoa};">Hi ${memberName},</p>
+    <p style="margin:0 0 24px;font-size:15px;color:${c.cocoa};">A spot has opened up in a class you're on the waitlist for!</p>
+    <table cellpadding="0" cellspacing="0" style="background-color:${c.cream};border-radius:8px;padding:16px 20px;width:100%;">
       <tr><td>
-        <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:${COLORS.warmGrey};text-transform:uppercase;letter-spacing:0.05em;">Class</p>
-        <p style="margin:0 0 12px;font-size:15px;font-weight:600;color:${COLORS.cocoa};">${className}</p>
-        <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:${COLORS.warmGrey};text-transform:uppercase;letter-spacing:0.05em;">Date &amp; time</p>
-        <p style="margin:0;font-size:15px;color:${COLORS.cocoa};">${date} at ${time}</p>
+        <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:${c.warmGrey};text-transform:uppercase;letter-spacing:0.05em;">Class</p>
+        <p style="margin:0 0 12px;font-size:15px;font-weight:600;color:${c.cocoa};">${className}</p>
+        <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:${c.warmGrey};text-transform:uppercase;letter-spacing:0.05em;">Date &amp; time</p>
+        <p style="margin:0;font-size:15px;color:${c.cocoa};">${date} at ${time}</p>
       </td></tr>
     </table>
-    <p style="margin:24px 0;font-size:14px;color:${COLORS.ember};font-weight:600;">You have ${expiresInMinutes} minutes to claim this spot before it's offered to the next person.</p>
+    <p style="margin:24px 0;font-size:14px;color:${c.ember};font-weight:600;">You have ${expiresInMinutes} minutes to claim this spot before it's offered to the next person.</p>
     <table cellpadding="0" cellspacing="0" style="width:100%;">
       <tr><td align="center">
-        <a href="${claimUrl}" style="display:inline-block;background-color:${COLORS.gold};color:${COLORS.cocoa};font-size:15px;font-weight:600;text-decoration:none;padding:12px 32px;border-radius:8px;">Claim your spot</a>
+        <a href="${claimUrl}" style="display:inline-block;background-color:${c.gold};color:${c.cocoa};font-size:15px;font-weight:600;text-decoration:none;padding:12px 32px;border-radius:8px;">Claim your spot</a>
       </td></tr>
     </table>
-    <p style="margin:24px 0 0;font-size:13px;color:${COLORS.warmGrey};">If this link doesn't work, copy and paste this URL into your browser: ${claimUrl}</p>`
+    <p style="margin:24px 0 0;font-size:13px;color:${c.warmGrey};">If this link doesn't work, copy and paste this URL into your browser: ${claimUrl}</p>`
 
   return {
     subject: `A spot opened up in ${className}!`,
-    html: layout(studioName, body),
+    html: layout(studioName, body, branding),
   }
 }

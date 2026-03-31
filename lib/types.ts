@@ -34,6 +34,7 @@ export interface StudioBranding {
     body: string
   }
   borderRadius: string
+  logo_url?: string | null
 }
 
 export interface Studio {

@@ -7,6 +7,7 @@ import { getStudioId } from "@/lib/studio-context"
 import { sendStudioEmail } from "@/lib/email/send"
 import { classCancelledEmail } from "@/lib/email/templates"
 import { formatTime } from "@/lib/utils"
+import type { StudioBranding } from "@/lib/types"
 
 /**
  * Cancel a specific class instance (schedule_id + date).
@@ -35,14 +36,15 @@ export async function cancelClassInstance(
   const className = cls?.name ?? "Class"
   const startTime = formatTime(slot.start_time)
 
-  // Get studio name
+  // Get studio name and branding
   const { data: studio } = await supabase
     .from("studios")
-    .select("name")
+    .select("name, branding")
     .eq("id", studioId)
     .single()
 
   const studioName = studio?.name ?? "Your studio"
+  const branding = studio?.branding as StudioBranding | null
 
   // Fetch all confirmed bookings for this slot + date
   const { data: bookings } = await supabase
@@ -122,6 +124,7 @@ export async function cancelClassInstance(
         reason: reason || undefined,
         creditRestored,
         studioName,
+        branding,
       })
 
       sendStudioEmail(studioId, { to: profile.email, subject, html }).catch((err) =>
