@@ -8,6 +8,7 @@ import { ClassColorBar } from "@/components/shared/class-color-bar"
 import { CapacityBadge } from "@/components/shared/capacity-badge"
 import { SkipClassDialog } from "./skip-class-dialog"
 import { CancelClassDialog } from "./cancel-class-dialog"
+import { CsvUploadDialog } from "./csv-upload-dialog"
 import { DeleteConfirmDialog } from "@/components/shared/delete-confirm-dialog"
 import {
   Dialog,
@@ -16,7 +17,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Repeat, Pencil, SkipForward, Undo2, Ban, Trash2 } from "lucide-react"
+import { Repeat, Pencil, SkipForward, Undo2, Ban, Trash2, Upload } from "lucide-react"
 import { toast } from "sonner"
 import type { WeekSlot } from "@/lib/types"
 
@@ -36,6 +37,7 @@ export function CalendarSlotPopover({
   const [skipOpen, setSkipOpen] = useState(false)
   const [cancelOpen, setCancelOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [csvUploadOpen, setCsvUploadOpen] = useState(false)
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [unskipLoading, setUnskipLoading] = useState(false)
 
@@ -80,6 +82,7 @@ export function CalendarSlotPopover({
     !slot.isPast && !slot.isHoliday && !slot.isSkipped && !!slot.ruleId
   const canUnskip = !slot.isPast && slot.isSkipped
   const canCancel = !slot.isPast && !slot.isHoliday && !slot.isSkipped
+  const canImport = !slot.isHoliday && !slot.isSkipped
 
   return (
     <>
@@ -150,7 +153,7 @@ export function CalendarSlotPopover({
             )}
 
             {/* Actions */}
-            {(canEdit || canSkip || canUnskip || canCancel) && (
+            {(canEdit || canSkip || canUnskip || canCancel || canImport) && (
               <div className="flex flex-wrap gap-2 border-t border-sand pt-3">
                 {canEdit && (
                   <Button
@@ -202,6 +205,19 @@ export function CalendarSlotPopover({
                     Cancel
                   </Button>
                 )}
+                {canImport && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      onOpenChange(false)
+                      setCsvUploadOpen(true)
+                    }}
+                  >
+                    <Upload className="mr-1.5 h-3 w-3" />
+                    Import bookings
+                  </Button>
+                )}
                 {canEdit && (
                   <Button
                     variant="ghost"
@@ -241,6 +257,18 @@ export function CalendarSlotPopover({
         date={slot.date}
         className={slot.className}
         startTime={formatTime(slot.startTime)}
+        bookingCount={slot.bookingCount}
+      />
+
+      {/* CSV upload */}
+      <CsvUploadDialog
+        open={csvUploadOpen}
+        onOpenChange={setCsvUploadOpen}
+        scheduleId={slot.scheduleId}
+        date={slot.date}
+        className={slot.className}
+        startTime={formatTime(slot.startTime)}
+        capacity={slot.capacity}
         bookingCount={slot.bookingCount}
       />
 
