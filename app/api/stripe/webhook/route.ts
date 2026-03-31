@@ -57,8 +57,8 @@ export async function POST(request: NextRequest) {
   }
 
   if (!studioId) {
-    console.warn(`No studio found for Stripe account ${connectedAccountId}`)
-    return NextResponse.json({ received: true })
+    console.error(`[webhook] No studio found for Stripe account ${connectedAccountId}`)
+    return NextResponse.json({ error: "Studio not found" }, { status: 500 })
   }
 
   try {

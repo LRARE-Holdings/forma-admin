@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getAccountStatus } from "@/lib/stripe/connect"
 import { getStudioId } from "@/lib/studio-context"
+import { requireAdmin } from "@/lib/auth"
 import {
   createStripeProduct,
   createStripePrice,
@@ -14,6 +15,7 @@ import {
  * Checks account status, updates DB, and syncs any existing products.
  */
 export async function GET(request: NextRequest) {
+  await requireAdmin()
   const studioId = await getStudioId()
   const accountId = request.nextUrl.searchParams.get("account_id")
 
