@@ -6,12 +6,13 @@ import { StatCard } from "@/components/shared/stat-card"
 import { WeeklyRevenueChart } from "@/components/dashboard/analytics/weekly-revenue-chart"
 import { BookingsComparison } from "@/components/dashboard/analytics/bookings-comparison"
 import { RevenueByClass } from "@/components/dashboard/analytics/revenue-by-class"
+import { getWeeklyRevenue } from "@/lib/stripe/revenue"
 
 export default async function AnalyticsPage() {
   const supabase = await createClient()
   const studioId = await getStudioId()
 
-  // Calculate date ranges
+  // Calculate date ranges for bookings query
   const now = new Date()
   const jsDow = now.getDay()
   const mondayOffset = jsDow === 0 ? -6 : 1 - jsDow
@@ -32,46 +33,20 @@ export default async function AnalyticsPage() {
 
   const toDateStr = (d: Date) => dateToDateStr(d)
 
-  // Fetch all bookings from last 8 weeks with class info
-  const { data: bookings } = await supabase
-    .from("bookings")
-    .select("date, payment_method, schedule:schedule_id(class_id, classes:class_id(name, price_pence))")
-    .eq("studio_id", studioId)
-    .eq("status", "confirmed")
-    .gte("date", toDateStr(eightWeeksAgo))
-    .lte("date", toDateStr(thisSunday))
+  // Fetch Stripe revenue and Supabase bookings in parallel
+  const [stripeRevenue, { data: bookings }] = await Promise.all([
+    getWeeklyRevenue(),
+    supabase
+      .from("bookings")
+      .select("date, payment_method, schedule:schedule_id(class_id, classes:class_id(name, price_pence))")
+      .eq("studio_id", studioId)
+      .eq("status", "confirmed")
+      .gte("date", toDateStr(eightWeeksAgo))
+      .lte("date", toDateStr(thisSunday)),
+  ])
 
+  const { weeklyData, totalRevenue, stripeConnected } = stripeRevenue
   const allBookings = bookings ?? []
-
-  // --- Weekly revenue (last 8 weeks) ---
-  const weeklyMap: Record<string, number> = {}
-  for (const b of allBookings) {
-    const schedule = b.schedule as unknown as { class_id: string; classes: { name: string; price_pence: number } } | null
-    if (!schedule?.classes) continue
-
-    // Only count paid bookings as revenue
-    if (b.payment_method !== "stripe" && b.payment_method !== "pack_credit") continue
-
-    const bookingDate = new Date(b.date + "T00:00:00")
-    // Get the Monday of that booking's week
-    const bDow = bookingDate.getDay()
-    const bMondayOffset = bDow === 0 ? -6 : 1 - bDow
-    const bMonday = new Date(bookingDate)
-    bMonday.setDate(bookingDate.getDate() + bMondayOffset)
-    const weekKey = toDateStr(bMonday)
-
-    weeklyMap[weekKey] = (weeklyMap[weekKey] ?? 0) + schedule.classes.price_pence
-  }
-
-  // Build sorted weekly data
-  const weeklyData: { week: string; revenue: number }[] = []
-  for (let i = 7; i >= 0; i--) {
-    const weekMonday = new Date(thisMonday)
-    weekMonday.setDate(thisMonday.getDate() - i * 7)
-    const key = toDateStr(weekMonday)
-    const label = weekMonday.toLocaleDateString("en-GB", { day: "numeric", month: "short" })
-    weeklyData.push({ week: label, revenue: weeklyMap[key] ?? 0 })
-  }
 
   // --- This week vs last week bookings ---
   const thisWeekBookings = allBookings.filter(
@@ -82,7 +57,7 @@ export default async function AnalyticsPage() {
     (b) => b.date >= toDateStr(lastMonday) && b.date <= toDateStr(lastSunday)
   ).length
 
-  // --- Revenue by class ---
+  // --- Revenue by class (estimated from list prices) ---
   const classTotals: Record<string, number> = {}
   for (const b of allBookings) {
     const schedule = b.schedule as unknown as { class_id: string; classes: { name: string; price_pence: number } } | null
@@ -97,9 +72,6 @@ export default async function AnalyticsPage() {
     .map(([className, revenue]) => ({ className, revenue }))
     .sort((a, b) => b.revenue - a.revenue)
 
-  // --- Total revenue for the period ---
-  const totalRevenue = weeklyData.reduce((sum, w) => sum + w.revenue, 0)
-
   return (
     <>
       <PageHeader
@@ -110,18 +82,18 @@ export default async function AnalyticsPage() {
       <div className="mb-7 grid grid-cols-2 gap-4 lg:grid-cols-3">
         <StatCard
           label="Total revenue (8 weeks)"
-          value={`\u00A3${formatPence(totalRevenue)}`}
-          subtitle="Paid bookings only"
+          value={stripeConnected ? `\u00A3${formatPence(totalRevenue)}` : "--"}
+          subtitle={stripeConnected ? "Net after fees & refunds" : "Connect Stripe to track"}
         />
         <StatCard
           label="Total bookings (8 weeks)"
           value={allBookings.length}
-          subtitle="All payment methods"
+          subtitle="All confirmed bookings"
         />
         <StatCard
           label="Avg. per week"
-          value={`\u00A3${formatPence(Math.round(totalRevenue / 8))}`}
-          subtitle="Revenue average"
+          value={stripeConnected ? `\u00A3${formatPence(Math.round(totalRevenue / 8))}` : "--"}
+          subtitle={stripeConnected ? "Net revenue average" : "Connect Stripe to track"}
         />
       </div>
 
@@ -133,11 +105,17 @@ export default async function AnalyticsPage() {
               Weekly revenue
             </h3>
             <p className="mt-0.5 text-[0.7rem] text-warm-grey">
-              Last 8 weeks, paid bookings only
+              Last 8 weeks, net after Stripe fees
             </p>
           </div>
           <div className="p-4">
-            <WeeklyRevenueChart data={weeklyData} />
+            {stripeConnected ? (
+              <WeeklyRevenueChart data={weeklyData} />
+            ) : (
+              <p className="py-10 text-center text-sm text-warm-grey">
+                Connect Stripe to see revenue analytics
+              </p>
+            )}
           </div>
         </div>
 
@@ -159,6 +137,9 @@ export default async function AnalyticsPage() {
               <h3 className="font-heading text-[1.05rem] font-semibold text-cocoa">
                 Revenue by class
               </h3>
+              <p className="mt-0.5 text-[0.7rem] text-warm-grey">
+                Estimated from list prices
+              </p>
             </div>
             <div className="p-4">
               <RevenueByClass data={revenueByClass} />
