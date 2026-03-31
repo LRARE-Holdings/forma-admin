@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { formatTime } from "@/lib/utils"
 import { EmptyState } from "@/components/shared/empty-state"
-import { BookingFormDialog } from "./booking-form-dialog"
+import { BookingFormDialog, type MemberOption } from "./booking-form-dialog"
 import { cancelBooking } from "@/app/actions/bookings"
 import { Button } from "@/components/ui/button"
 import { Plus } from "lucide-react"
@@ -20,30 +20,19 @@ interface BookingRow {
   day_of_week: number | null
 }
 
-interface MemberOption {
-  id: string
-  name: string
-  credits: number
-}
-
-interface SlotOption {
-  id: string
-  label: string
-}
-
 interface BookingsTableProps {
   bookings: BookingRow[]
   members: MemberOption[]
-  slots: SlotOption[]
 }
 
 const PAYMENT_BADGES: Record<string, { className: string; label: string }> = {
   stripe: { className: "bg-success-bg text-success", label: "Stripe" },
   pack_credit: { className: "bg-gold/15 text-gold", label: "Pack credit" },
+  membership: { className: "bg-clay/15 text-clay", label: "Membership" },
   complimentary: { className: "bg-warm-grey/10 text-warm-grey", label: "Comp" },
 }
 
-export function BookingsTable({ bookings, members, slots }: BookingsTableProps) {
+export function BookingsTable({ bookings, members }: BookingsTableProps) {
   const [formOpen, setFormOpen] = useState(false)
   const [cancellingId, setCancellingId] = useState<string | null>(null)
 
@@ -171,7 +160,6 @@ export function BookingsTable({ bookings, members, slots }: BookingsTableProps) 
         open={formOpen}
         onOpenChange={setFormOpen}
         members={members}
-        slots={slots}
       />
     </>
   )

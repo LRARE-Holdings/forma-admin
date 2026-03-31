@@ -4,7 +4,6 @@ import { PageHeader } from "@/components/shared/page-header"
 import { BookingsTable } from "@/components/dashboard/bookings-table"
 import { WaitlistSection } from "@/components/dashboard/waitlist-section"
 import { getUpcomingWaitlist } from "@/lib/waitlist"
-import { dayShort, formatTime } from "@/lib/utils"
 
 export default async function BookingsPage() {
   const supabase = await createClient()
@@ -35,17 +34,31 @@ export default async function BookingsPage() {
     .filter(Boolean) as string[]
 
   let creditsByProfile: Record<string, number> = {}
-  if (memberIds.length > 0) {
-    const { data: packs } = await supabase
-      .from("class_packs")
-      .select("profile_id, credits_remaining")
-      .eq("studio_id", studioId)
-      .gt("credits_remaining", 0)
-      .in("profile_id", memberIds)
+  let activeMembershipSet = new Set<string>()
 
-    for (const p of packs ?? []) {
+  if (memberIds.length > 0) {
+    const [packsRes, membershipsRes] = await Promise.all([
+      supabase
+        .from("class_packs")
+        .select("profile_id, credits_remaining")
+        .eq("studio_id", studioId)
+        .gt("credits_remaining", 0)
+        .in("profile_id", memberIds),
+      supabase
+        .from("memberships")
+        .select("profile_id")
+        .eq("studio_id", studioId)
+        .eq("status", "active")
+        .in("profile_id", memberIds),
+    ])
+
+    for (const p of packsRes.data ?? []) {
       creditsByProfile[p.profile_id] =
         (creditsByProfile[p.profile_id] ?? 0) + p.credits_remaining
+    }
+
+    for (const m of membershipsRes.data ?? []) {
+      activeMembershipSet.add(m.profile_id)
     }
   }
 
@@ -55,23 +68,7 @@ export default async function BookingsPage() {
       id: p.id,
       name: p.full_name ?? "Unknown",
       credits: creditsByProfile[p.id] ?? 0,
-    }
-  })
-
-  // Fetch active schedule slots for the booking form
-  const { data: activeSlots } = await supabase
-    .from("schedule")
-    .select("id, day_of_week, start_time, classes:class_id(name)")
-    .eq("studio_id", studioId)
-    .eq("is_active", true)
-    .order("day_of_week")
-    .order("start_time")
-
-  const slotOptions = (activeSlots ?? []).map((s) => {
-    const cls = s.classes as unknown as { name: string }
-    return {
-      id: s.id as string,
-      label: `${dayShort(s.day_of_week as number)} ${formatTime(s.start_time as string)} — ${cls.name}`,
+      hasMembership: activeMembershipSet.has(p.id),
     }
   })
 
@@ -108,7 +105,6 @@ export default async function BookingsPage() {
       <BookingsTable
         bookings={rows}
         members={members}
-        slots={slotOptions}
       />
 
       {/* Waitlist section */}

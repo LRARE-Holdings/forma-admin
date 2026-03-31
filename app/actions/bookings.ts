@@ -5,6 +5,49 @@ import { createClient } from "@/lib/supabase/server"
 import { requireReception, requireManager } from "@/lib/auth"
 import { getStudioId } from "@/lib/studio-context"
 import { promoteNextInWaitlist } from "@/lib/waitlist"
+import { getWeekData } from "@/lib/schedule-utils"
+
+export interface SessionOption {
+  scheduleId: string
+  className: string
+  instructorName: string
+  startTime: string
+  endTime: string
+  bookingCount: number
+  capacity: number
+  isFull: boolean
+}
+
+/** Look up valid timetable sessions for a given date. */
+export async function getSessionsForDate(
+  dateStr: string
+): Promise<SessionOption[]> {
+  await requireReception()
+  const studioId = await getStudioId()
+
+  // getWeekData expects a Monday. Compute the Monday of the week containing dateStr.
+  const d = new Date(dateStr + "T00:00:00")
+  const dayIndex = (d.getDay() + 6) % 7 // 0=Mon
+  const monday = new Date(d)
+  monday.setDate(d.getDate() - dayIndex)
+  const mondayStr = `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, "0")}-${String(monday.getDate()).padStart(2, "0")}`
+
+  const { slots } = await getWeekData(studioId, mondayStr)
+
+  // Filter to the requested date, exclude skipped/holiday
+  return slots
+    .filter((s) => s.date === dateStr && !s.isSkipped && !s.isHoliday)
+    .map((s) => ({
+      scheduleId: s.scheduleId,
+      className: s.className,
+      instructorName: s.instructorName,
+      startTime: s.startTime,
+      endTime: s.endTime,
+      bookingCount: s.bookingCount,
+      capacity: s.capacity,
+      isFull: s.bookingCount >= s.capacity,
+    }))
+}
 
 export async function createManualBooking(formData: FormData) {
   await requireReception()
@@ -58,6 +101,39 @@ export async function createManualBooking(formData: FormData) {
   revalidatePath("/dashboard/bookings")
   revalidatePath("/dashboard/timetable")
   revalidatePath("/dashboard")
+}
+
+export interface SlotAttendee {
+  id: string
+  full_name: string | null
+  payment_method: string
+}
+
+/** Fetch confirmed attendees for a specific schedule slot on a given date. */
+export async function getSlotAttendees(
+  scheduleId: string,
+  date: string
+): Promise<SlotAttendee[]> {
+  await requireReception()
+  const studioId = await getStudioId()
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from("bookings")
+    .select("id, payment_method, profiles:profile_id(full_name)")
+    .eq("studio_id", studioId)
+    .eq("schedule_id", scheduleId)
+    .eq("date", date)
+    .eq("status", "confirmed")
+    .order("created_at", { ascending: true })
+
+  if (error) throw new Error(error.message)
+
+  return (data ?? []).map((b) => ({
+    id: b.id,
+    full_name: (b.profiles as unknown as { full_name: string | null })?.full_name ?? null,
+    payment_method: b.payment_method,
+  }))
 }
 
 export async function cancelBooking(bookingId: string) {
