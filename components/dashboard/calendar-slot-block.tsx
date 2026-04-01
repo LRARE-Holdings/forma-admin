@@ -20,6 +20,7 @@ export function CalendarSlotBlock({
 
   return (
     <div
+      data-slot-block
       onClick={onClick}
       className={`absolute left-1 right-1 z-20 cursor-pointer overflow-hidden rounded-lg border transition-shadow hover:shadow-md ${
         slot.isSkipped

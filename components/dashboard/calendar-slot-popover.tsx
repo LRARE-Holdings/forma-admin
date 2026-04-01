@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { formatTime, formatPence, getInitial } from "@/lib/utils"
 import { unskipClassInstance } from "@/app/actions/schedule-exceptions"
 import { deleteScheduleSlot } from "@/app/actions/schedule"
-import { getSlotAttendees, type SlotAttendee } from "@/app/actions/bookings"
+import { getSlotAttendees, cancelBooking, type SlotAttendee } from "@/app/actions/bookings"
 import { ClassColorBar } from "@/components/shared/class-color-bar"
 import { CapacityBadge } from "@/components/shared/capacity-badge"
 import { SkipClassDialog } from "./skip-class-dialog"
@@ -18,7 +18,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Repeat, Pencil, SkipForward, Undo2, Ban, Trash2, Upload, Users, Loader2 } from "lucide-react"
+import { Repeat, Pencil, SkipForward, Undo2, Ban, Trash2, Upload, Users, Loader2, X } from "lucide-react"
 import { toast } from "sonner"
 import type { WeekSlot } from "@/lib/types"
 
@@ -72,6 +72,7 @@ export function CalendarSlotPopover({
   const [attendees, setAttendees] = useState<SlotAttendee[]>([])
   const [attendeesLoading, setAttendeesLoading] = useState(false)
   const [showAttendees, setShowAttendees] = useState(false)
+  const [cancellingId, setCancellingId] = useState<string | null>(null)
 
   // Fetch attendees when dialog opens and slot has bookings
   useEffect(() => {
@@ -206,7 +207,7 @@ export function CalendarSlotPopover({
                     {attendees.map((att, i) => (
                       <div
                         key={att.id}
-                        className="flex items-center gap-2.5 border-b border-sand/40 px-3 py-1.5 text-[0.78rem] last:border-b-0"
+                        className="group flex items-center gap-2.5 border-b border-sand/40 px-3 py-1.5 text-[0.78rem] last:border-b-0"
                       >
                         <span className="w-4 text-center text-[0.65rem] text-warm-grey">
                           {i + 1}
@@ -222,6 +223,34 @@ export function CalendarSlotPopover({
                         >
                           {paymentLabel(att.payment_method)}
                         </span>
+                        {!slot.isPast && (
+                          <button
+                            type="button"
+                            disabled={cancellingId === att.id}
+                            onClick={async (e) => {
+                              e.stopPropagation()
+                              if (!confirm(`Remove ${att.full_name ?? "this attendee"} from the class?`)) return
+                              setCancellingId(att.id)
+                              try {
+                                await cancelBooking(att.id)
+                                setAttendees((prev) => prev.filter((a) => a.id !== att.id))
+                                toast.success(`${att.full_name ?? "Attendee"} removed`)
+                              } catch (err) {
+                                toast.error(err instanceof Error ? err.message : "Failed to cancel booking")
+                              } finally {
+                                setCancellingId(null)
+                              }
+                            }}
+                            className="hidden shrink-0 rounded p-0.5 text-warm-grey transition-colors hover:bg-red-50 hover:text-red-600 group-hover:inline-flex"
+                            title={`Remove ${att.full_name ?? "attendee"}`}
+                          >
+                            {cancellingId === att.id ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <X className="h-3 w-3" />
+                            )}
+                          </button>
+                        )}
                       </div>
                     ))}
 
