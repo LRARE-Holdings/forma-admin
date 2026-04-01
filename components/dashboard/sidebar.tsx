@@ -17,6 +17,7 @@ import {
   User,
   Settings,
   BarChart3,
+  ClipboardCheck,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 
@@ -37,6 +38,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { href: "/dashboard", label: "Overview", icon: LayoutGrid, minRoles: RECEPTION_ROLES },
   { href: "/dashboard/timetable", label: "Timetable", icon: Calendar, minRoles: MANAGER_ROLES },
+  { href: "/dashboard/registration", label: "Registration", icon: ClipboardCheck, minRoles: MANAGER_ROLES },
   { href: "/dashboard/bookings", label: "Bookings", icon: CheckSquare, minRoles: RECEPTION_ROLES },
   { href: "/dashboard/members", label: "Members", icon: Users, minRoles: RECEPTION_ROLES },
   { href: "/dashboard/classes", label: "Classes", icon: Star, minRoles: ADMIN_ROLES },

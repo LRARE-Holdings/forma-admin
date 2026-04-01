@@ -1,13 +1,11 @@
 "use client"
 
 import { useState } from "react"
-import { ChevronDown, Check, XCircle, Clock, Circle, Loader2 } from "lucide-react"
+import { ChevronDown } from "lucide-react"
 import { CapacityRing } from "@/components/shared/capacity-ring"
 import { ClassColorBar } from "@/components/shared/class-color-bar"
+import { AttendanceDropdown } from "@/components/shared/attendance-dropdown"
 import { formatTime, formatPence, getInitial } from "@/lib/utils"
-import { markAttendance } from "@/app/actions/bookings"
-import { nextAttendanceStatus, attendanceLabel, attendanceColor } from "@/lib/attendance"
-import { toast } from "sonner"
 import type { AttendanceStatus } from "@/lib/types"
 
 interface SlotData {
@@ -63,52 +61,9 @@ function paymentStyle(method: string) {
 
 export function StaffClassCard({ slot, attendees }: StaffClassCardProps) {
   const [open, setOpen] = useState(false)
-  const [localStatus, setLocalStatus] = useState<Record<string, AttendanceStatus | null>>({})
-  const [markingId, setMarkingId] = useState<string | null>(null)
   const cls = slot.classes
   const capacity = cls.capacity ?? 10
   const booked = attendees.length
-
-  async function handleToggle(att: StaffAttendee) {
-    const current = localStatus[att.id] ?? (att.attendance_status as AttendanceStatus | null)
-    const next = nextAttendanceStatus(current)
-    setMarkingId(att.id)
-    try {
-      await markAttendance(att.id, next)
-      setLocalStatus((prev) => ({ ...prev, [att.id]: next }))
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to update attendance")
-    } finally {
-      setMarkingId(null)
-    }
-  }
-
-  function getStatusIcon(att: StaffAttendee) {
-    const status = localStatus[att.id] ?? (att.attendance_status as AttendanceStatus | null)
-    if (markingId === att.id) {
-      return <Loader2 className="h-3.5 w-3.5 animate-spin text-warm-grey" />
-    }
-    switch (status) {
-      case "attended":
-        return <Check className="h-3.5 w-3.5" />
-      case "no_show":
-        return <XCircle className="h-3.5 w-3.5" />
-      case "late_cancel":
-        return <Clock className="h-3.5 w-3.5" />
-      default:
-        return <Circle className="h-3.5 w-3.5" />
-    }
-  }
-
-  function getStatusColor(att: StaffAttendee) {
-    const status = localStatus[att.id] ?? (att.attendance_status as AttendanceStatus | null)
-    return attendanceColor(status)
-  }
-
-  function getStatusLabel(att: StaffAttendee) {
-    const status = localStatus[att.id] ?? (att.attendance_status as AttendanceStatus | null)
-    return attendanceLabel(status)
-  }
 
   return (
     <div
@@ -181,18 +136,11 @@ export function StaffClassCard({ slot, attendees }: StaffClassCardProps) {
             <span className="flex-1 font-medium text-cocoa">
               {att.full_name ?? "Unknown"}
             </span>
-            <button
-              type="button"
-              disabled={markingId === att.id}
-              onClick={(e) => {
-                e.stopPropagation()
-                handleToggle(att)
-              }}
-              className={`shrink-0 rounded p-0.5 transition-colors hover:bg-cream ${getStatusColor(att)}`}
-              title={getStatusLabel(att)}
-            >
-              {getStatusIcon(att)}
-            </button>
+            <AttendanceDropdown
+              bookingId={att.id}
+              currentStatus={att.attendance_status as AttendanceStatus | null}
+              size="sm"
+            />
             <span
               className={`inline-block rounded-full px-2 py-0.5 text-[0.62rem] font-semibold uppercase ${paymentStyle(att.payment_method)}`}
             >

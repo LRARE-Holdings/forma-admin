@@ -146,6 +146,38 @@ export async function getSlotAttendees(
   }))
 }
 
+/** Fetch confirmed attendees for all slots on a given date (bulk). */
+export async function getDateAttendees(
+  date: string
+): Promise<Record<string, SlotAttendee[]>> {
+  await requireReception()
+  const studioId = await getStudioId()
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from("bookings")
+    .select("id, schedule_id, payment_method, attendance_status, profiles:profile_id(full_name)")
+    .eq("studio_id", studioId)
+    .eq("date", date)
+    .eq("status", "confirmed")
+    .order("created_at", { ascending: true })
+
+  if (error) throw new Error(error.message)
+
+  const grouped: Record<string, SlotAttendee[]> = {}
+  for (const b of data ?? []) {
+    const scheduleId = b.schedule_id as string
+    if (!grouped[scheduleId]) grouped[scheduleId] = []
+    grouped[scheduleId].push({
+      id: b.id,
+      full_name: (b.profiles as unknown as { full_name: string | null })?.full_name ?? null,
+      payment_method: b.payment_method,
+      attendance_status: (b.attendance_status as AttendanceStatus) ?? null,
+    })
+  }
+  return grouped
+}
+
 export async function cancelBooking(bookingId: string) {
   await requireManager()
   const studioId = await getStudioId()
