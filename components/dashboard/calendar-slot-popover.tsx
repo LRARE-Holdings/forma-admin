@@ -183,6 +183,7 @@ export function CalendarSlotPopover({
                 <CapacityBadge
                   booked={slot.bookingCount}
                   capacity={slot.capacity}
+                  isPast={slot.isPast}
                 />
               </div>
             </div>

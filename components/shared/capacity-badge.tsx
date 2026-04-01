@@ -1,9 +1,18 @@
 interface CapacityBadgeProps {
   booked: number
   capacity: number
+  isPast?: boolean
 }
 
-export function CapacityBadge({ booked, capacity }: CapacityBadgeProps) {
+export function CapacityBadge({ booked, capacity, isPast }: CapacityBadgeProps) {
+  if (isPast) {
+    return (
+      <span className="inline-block rounded-full bg-warm-grey/10 px-2.5 py-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.03em] text-warm-grey">
+        Ended
+      </span>
+    )
+  }
+
   if (booked >= capacity) {
     return (
       <span className="inline-block rounded-full bg-warm-grey/10 px-2.5 py-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.03em] text-warm-grey">

@@ -21,6 +21,7 @@ interface RegistrationClassCardProps {
   instructorName: string
   capacity: number
   attendees: AttendeeData[]
+  isPast?: boolean
 }
 
 function paymentLabel(method: string) {
@@ -57,6 +58,7 @@ export function RegistrationClassCard({
   instructorName,
   capacity,
   attendees,
+  isPast,
 }: RegistrationClassCardProps) {
   const booked = attendees.length
 
@@ -75,7 +77,7 @@ export function RegistrationClassCard({
             </p>
           </div>
         </div>
-        <CapacityBadge booked={booked} capacity={capacity} />
+        <CapacityBadge booked={booked} capacity={capacity} isPast={isPast} />
       </div>
 
       {/* Attendee table */}

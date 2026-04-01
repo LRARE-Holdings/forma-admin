@@ -123,6 +123,7 @@ export default async function RegistrationPage({
               endTime={slot.endTime}
               instructorName={slot.instructorName}
               capacity={slot.capacity}
+              isPast={slot.isPast}
               attendees={(attendeesBySlot[slot.scheduleId] ?? []).map((a) => ({
                 ...a,
                 attendance_status: a.attendance_status as AttendanceStatus | null,
