@@ -5,6 +5,8 @@ import { getStudioId } from "@/lib/studio-context"
 import { formatPence, dayName, formatTime } from "@/lib/utils"
 import { getMonthlyRevenue } from "@/lib/stripe/revenue"
 import { revalidatePath } from "next/cache"
+import { sendBookingConfirmation } from "@/lib/email/booking-confirmation"
+import { sendBookingNotification } from "@/lib/email/booking-notification"
 import type { AssistToolName } from "./permissions"
 
 // ---------------------------------------------------------------------------
@@ -921,6 +923,11 @@ export async function executeTool(
         })
 
         if (error) return `Error: ${error.message}`
+
+        // Send confirmation to member + notification to instructor/admin (fire-and-forget)
+        sendBookingConfirmation(studioId, input.profile_id as string, input.schedule_id as string, input.date as string).catch(() => {})
+        sendBookingNotification(studioId, input.profile_id as string, input.schedule_id as string, input.date as string, input.payment_method as string).catch(() => {})
+
         revalidatePath("/dashboard/bookings")
         revalidatePath("/dashboard")
         return "Booking created successfully."

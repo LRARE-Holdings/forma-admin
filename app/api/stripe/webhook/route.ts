@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { stripe } from "@/lib/stripe"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { sendBookingConfirmation } from "@/lib/email/booking-confirmation"
+import { sendBookingNotification } from "@/lib/email/booking-notification"
 import { sendStudioEmail } from "@/lib/email/send"
 import { refundEmail } from "@/lib/email/templates"
 import { formatTime } from "@/lib/utils"
@@ -192,6 +193,11 @@ async function handlePaymentIntentSucceeded(
     sendBookingConfirmation(studioId, profileId, scheduleId, date).catch((err) =>
       console.error("[webhook] Booking confirmation email failed:", err)
     )
+
+    // Notify instructor & admin about the new booking (fire-and-forget)
+    sendBookingNotification(studioId, profileId, scheduleId, date, "stripe").catch((err) =>
+      console.error("[webhook] Booking notification failed:", err)
+    )
   }
 
   if (metadata.type === "waitlist_claim") {
@@ -229,6 +235,11 @@ async function handlePaymentIntentSucceeded(
     // Send booking confirmation email (fire-and-forget)
     sendBookingConfirmation(studioId, profileId, scheduleId, date).catch((err) =>
       console.error("[webhook] Booking confirmation email failed:", err)
+    )
+
+    // Notify instructor & admin about the new booking (fire-and-forget)
+    sendBookingNotification(studioId, profileId, scheduleId, date, "stripe").catch((err) =>
+      console.error("[webhook] Booking notification failed:", err)
     )
 
     if (claimToken) {
@@ -316,6 +327,11 @@ async function handleCheckoutCompleted(
     sendBookingConfirmation(studioId, profileId, scheduleId, date).catch((err) =>
       console.error("[webhook] Booking confirmation email failed:", err)
     )
+
+    // Notify instructor & admin about the new booking (fire-and-forget)
+    sendBookingNotification(studioId, profileId, scheduleId, date, "stripe").catch((err) =>
+      console.error("[webhook] Booking notification failed:", err)
+    )
   }
 
   if (metadata.type === "waitlist_claim") {
@@ -343,6 +359,11 @@ async function handleCheckoutCompleted(
     // Send booking confirmation email (fire-and-forget)
     sendBookingConfirmation(studioId, profileId, scheduleId, date).catch((err) =>
       console.error("[webhook] Booking confirmation email failed:", err)
+    )
+
+    // Notify instructor & admin about the new booking (fire-and-forget)
+    sendBookingNotification(studioId, profileId, scheduleId, date, "stripe").catch((err) =>
+      console.error("[webhook] Booking notification failed:", err)
     )
 
     if (claimToken) {

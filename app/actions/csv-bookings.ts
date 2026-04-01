@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { requireReception } from "@/lib/auth"
 import { getStudioId } from "@/lib/studio-context"
+import { sendBookingConfirmation } from "@/lib/email/booking-confirmation"
+import { sendBookingNotification } from "@/lib/email/booking-notification"
 
 export interface MatchResult {
   email: string
@@ -161,6 +163,12 @@ export async function importCsvBookings(
   if (toCreate.length > 0) {
     const { error } = await supabase.from("bookings").insert(toCreate)
     if (error) throw new Error(error.message)
+
+    // Send confirmation + notification emails for each booking (fire-and-forget)
+    for (const booking of toCreate) {
+      sendBookingConfirmation(studioId, booking.profile_id, scheduleId, date).catch(() => {})
+      sendBookingNotification(studioId, booking.profile_id, scheduleId, date, "complimentary").catch(() => {})
+    }
   }
 
   revalidatePath("/dashboard/timetable")

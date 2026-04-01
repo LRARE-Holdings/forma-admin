@@ -226,6 +226,61 @@ export function refundEmail(params: RefundParams) {
   }
 }
 
+// --- Booking notification email (for instructors & admins) ---
+
+interface BookingNotificationParams {
+  recipientName: string
+  memberName: string
+  memberEmail: string
+  className: string
+  date: string
+  time: string
+  paymentMethod: string
+  bookedAt: string
+  studioName: string
+  branding?: StudioBranding | null
+}
+
+const PAYMENT_LABELS: Record<string, string> = {
+  stripe: "Card (Stripe)",
+  pack_credit: "Class pack credit",
+  membership: "Membership",
+  complimentary: "Complimentary",
+}
+
+export function bookingNotificationEmail(params: BookingNotificationParams) {
+  const {
+    recipientName, memberName, memberEmail, className,
+    date, time, paymentMethod, bookedAt, studioName, branding,
+  } = params
+  const c = resolveColors(branding)
+  const paymentLabel = PAYMENT_LABELS[paymentMethod] ?? paymentMethod
+
+  const body = `
+    <p style="margin:0 0 16px;font-size:15px;color:${c.cocoa};">Hi ${recipientName},</p>
+    <p style="margin:0 0 24px;font-size:15px;color:${c.cocoa};">A new booking has been made for your class.</p>
+    <table cellpadding="0" cellspacing="0" style="background-color:${c.cream};border-radius:8px;padding:16px 20px;width:100%;">
+      <tr><td>
+        <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:${c.warmGrey};text-transform:uppercase;letter-spacing:0.05em;">Member</p>
+        <p style="margin:0 0 2px;font-size:15px;font-weight:600;color:${c.cocoa};">${memberName}</p>
+        <p style="margin:0 0 12px;font-size:14px;color:${c.warmGrey};">${memberEmail}</p>
+        <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:${c.warmGrey};text-transform:uppercase;letter-spacing:0.05em;">Class</p>
+        <p style="margin:0 0 12px;font-size:15px;font-weight:600;color:${c.cocoa};">${className}</p>
+        <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:${c.warmGrey};text-transform:uppercase;letter-spacing:0.05em;">Date &amp; time</p>
+        <p style="margin:0 0 12px;font-size:15px;color:${c.cocoa};">${date} at ${time}</p>
+        <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:${c.warmGrey};text-transform:uppercase;letter-spacing:0.05em;">Payment</p>
+        <p style="margin:0 0 12px;font-size:15px;color:${c.cocoa};">${paymentLabel}</p>
+        <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:${c.warmGrey};text-transform:uppercase;letter-spacing:0.05em;">Booked at</p>
+        <p style="margin:0;font-size:15px;color:${c.cocoa};">${bookedAt}</p>
+      </td></tr>
+    </table>`
+
+  return {
+    subject: `New booking — ${memberName} for ${className} on ${date}`,
+    html: layout(studioName, body, branding),
+  }
+}
+
 // --- Waitlist offer email ---
 
 interface WaitlistOfferParams {

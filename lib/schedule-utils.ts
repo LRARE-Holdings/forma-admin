@@ -121,7 +121,9 @@ export async function getWeekData(
     bookingCounts.set(key, (bookingCounts.get(key) ?? 0) + 1)
   }
 
-  const today = toDateStr(new Date())
+  const now = new Date()
+  const today = toDateStr(now)
+  const nowTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`
 
   // Build slots
   const slots: WeekSlot[] = []
@@ -172,7 +174,7 @@ export async function getWeekData(
       bookingCount: bookingCounts.get(key) ?? 0,
       isSkipped: exceptionSet.has(key),
       isHoliday: isHolidayDate(dateStr),
-      isPast: dateStr < today,
+      isPast: dateStr < today || (dateStr === today && (entry.start_time as string).slice(0, 5) <= nowTime),
     })
   }
 

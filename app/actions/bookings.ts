@@ -7,6 +7,7 @@ import { getStudioId } from "@/lib/studio-context"
 import { promoteNextInWaitlist } from "@/lib/waitlist"
 import { getWeekData } from "@/lib/schedule-utils"
 import { sendBookingConfirmation } from "@/lib/email/booking-confirmation"
+import { sendBookingNotification } from "@/lib/email/booking-notification"
 import type { AttendanceStatus } from "@/lib/types"
 
 export interface SessionOption {
@@ -101,9 +102,14 @@ export async function createManualBooking(formData: FormData) {
 
   if (error) throw new Error(error.message)
 
-  // Send booking confirmation email (fire-and-forget)
+  // Send booking confirmation email to member (fire-and-forget)
   sendBookingConfirmation(studioId, profile_id, schedule_id, date).catch((err) =>
     console.error("[bookings] Confirmation email failed:", err)
+  )
+
+  // Notify instructor & admin about the new booking (fire-and-forget)
+  sendBookingNotification(studioId, profile_id, schedule_id, date, payment_method).catch((err) =>
+    console.error("[bookings] Booking notification failed:", err)
   )
 
   revalidatePath("/dashboard/bookings")
