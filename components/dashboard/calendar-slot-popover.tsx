@@ -4,7 +4,8 @@ import { useState, useEffect } from "react"
 import { formatTime, formatPence, getInitial } from "@/lib/utils"
 import { unskipClassInstance } from "@/app/actions/schedule-exceptions"
 import { deleteScheduleSlot } from "@/app/actions/schedule"
-import { getSlotAttendees, cancelBooking, type SlotAttendee } from "@/app/actions/bookings"
+import { getSlotAttendees, cancelBooking, markAttendance, type SlotAttendee } from "@/app/actions/bookings"
+import { nextAttendanceStatus, attendanceLabel, attendanceColor } from "@/lib/attendance"
 import { ClassColorBar } from "@/components/shared/class-color-bar"
 import { CapacityBadge } from "@/components/shared/capacity-badge"
 import { SkipClassDialog } from "./skip-class-dialog"
@@ -18,7 +19,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Repeat, Pencil, SkipForward, Undo2, Ban, Trash2, Upload, Users, Loader2, X } from "lucide-react"
+import { Repeat, Pencil, SkipForward, Undo2, Ban, Trash2, Upload, Users, Loader2, X, Check, XCircle, Clock, Circle } from "lucide-react"
 import { toast } from "sonner"
 import type { WeekSlot } from "@/lib/types"
 
@@ -73,6 +74,7 @@ export function CalendarSlotPopover({
   const [attendeesLoading, setAttendeesLoading] = useState(false)
   const [showAttendees, setShowAttendees] = useState(false)
   const [cancellingId, setCancellingId] = useState<string | null>(null)
+  const [markingId, setMarkingId] = useState<string | null>(null)
 
   // Fetch attendees when dialog opens and slot has bookings
   useEffect(() => {
@@ -218,6 +220,41 @@ export function CalendarSlotPopover({
                         <span className="flex-1 truncate font-medium text-cocoa">
                           {att.full_name ?? "Unknown"}
                         </span>
+                        <button
+                          type="button"
+                          disabled={markingId === att.id}
+                          onClick={async (e) => {
+                            e.stopPropagation()
+                            const next = nextAttendanceStatus(att.attendance_status)
+                            setMarkingId(att.id)
+                            try {
+                              await markAttendance(att.id, next)
+                              setAttendees((prev) =>
+                                prev.map((a) =>
+                                  a.id === att.id ? { ...a, attendance_status: next } : a
+                                )
+                              )
+                            } catch (err) {
+                              toast.error(err instanceof Error ? err.message : "Failed to update attendance")
+                            } finally {
+                              setMarkingId(null)
+                            }
+                          }}
+                          className={`shrink-0 rounded p-0.5 transition-colors hover:bg-cream ${attendanceColor(att.attendance_status)}`}
+                          title={attendanceLabel(att.attendance_status)}
+                        >
+                          {markingId === att.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin text-warm-grey" />
+                          ) : att.attendance_status === "attended" ? (
+                            <Check className="h-3.5 w-3.5" />
+                          ) : att.attendance_status === "no_show" ? (
+                            <XCircle className="h-3.5 w-3.5" />
+                          ) : att.attendance_status === "late_cancel" ? (
+                            <Clock className="h-3.5 w-3.5" />
+                          ) : (
+                            <Circle className="h-3.5 w-3.5" />
+                          )}
+                        </button>
                         <span
                           className={`inline-block rounded-full px-1.5 py-0.5 text-[0.58rem] font-semibold uppercase ${paymentStyle(att.payment_method)}`}
                         >

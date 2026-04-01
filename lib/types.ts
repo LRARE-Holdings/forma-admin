@@ -135,6 +135,7 @@ export interface ScheduleRule {
 
 export type BookingStatus = "confirmed" | "cancelled"
 export type PaymentMethod = "stripe" | "pack_credit" | "complimentary" | "membership"
+export type AttendanceStatus = "attended" | "no_show" | "late_cancel"
 
 export type BillingInterval = "week" | "month" | "year"
 
@@ -178,6 +179,9 @@ export interface Booking {
   stripe_session_id: string | null
   cancelled_by?: "member" | "studio" | null
   cancellation_reason?: string | null
+  attendance_status: AttendanceStatus | null
+  attendance_marked_at: string | null
+  attendance_marked_by: string | null
   created_at: string
 }
 

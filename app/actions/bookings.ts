@@ -2,11 +2,12 @@
 
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
-import { requireReception, requireManager } from "@/lib/auth"
+import { requireReception, requireManager, getUser, getUserRole } from "@/lib/auth"
 import { getStudioId } from "@/lib/studio-context"
 import { promoteNextInWaitlist } from "@/lib/waitlist"
 import { getWeekData } from "@/lib/schedule-utils"
 import { sendBookingConfirmation } from "@/lib/email/booking-confirmation"
+import type { AttendanceStatus } from "@/lib/types"
 
 export interface SessionOption {
   scheduleId: string
@@ -114,6 +115,7 @@ export interface SlotAttendee {
   id: string
   full_name: string | null
   payment_method: string
+  attendance_status: AttendanceStatus | null
 }
 
 /** Fetch confirmed attendees for a specific schedule slot on a given date. */
@@ -127,7 +129,7 @@ export async function getSlotAttendees(
 
   const { data, error } = await supabase
     .from("bookings")
-    .select("id, payment_method, profiles:profile_id(full_name)")
+    .select("id, payment_method, attendance_status, profiles:profile_id(full_name)")
     .eq("studio_id", studioId)
     .eq("schedule_id", scheduleId)
     .eq("date", date)
@@ -140,6 +142,7 @@ export async function getSlotAttendees(
     id: b.id,
     full_name: (b.profiles as unknown as { full_name: string | null })?.full_name ?? null,
     payment_method: b.payment_method,
+    attendance_status: (b.attendance_status as AttendanceStatus) ?? null,
   }))
 }
 
@@ -199,4 +202,59 @@ export async function cancelBooking(bookingId: string) {
   revalidatePath("/dashboard/bookings")
   revalidatePath("/dashboard/timetable")
   revalidatePath("/dashboard")
+}
+
+/** Mark attendance for a single booking. Staff can mark their own classes; reception+ can mark any. */
+export async function markAttendance(
+  bookingId: string,
+  status: AttendanceStatus | null
+) {
+  const supabase = await createClient()
+  const studioId = await getStudioId()
+  const user = await getUser()
+  if (!user) throw new Error("Not authenticated")
+
+  const role = await getUserRole()
+
+  if (role === "staff") {
+    // Staff: verify they are the instructor for this booking's class
+    const { data: booking } = await supabase
+      .from("bookings")
+      .select("schedule_id, schedule:schedule_id(instructor_id, instructors:instructor_id(profile_id))")
+      .eq("id", bookingId)
+      .eq("studio_id", studioId)
+      .single()
+
+    if (!booking) throw new Error("Booking not found")
+
+    const schedule = booking.schedule as unknown as {
+      instructor_id: string
+      instructors: { profile_id: string | null }
+    }
+
+    if (schedule.instructors.profile_id !== user.id) {
+      throw new Error("You can only mark attendance for your own classes")
+    }
+  } else {
+    // Non-staff: require at least reception role
+    await requireReception()
+  }
+
+  const { error } = await supabase
+    .from("bookings")
+    .update({
+      attendance_status: status,
+      attendance_marked_at: status ? new Date().toISOString() : null,
+      attendance_marked_by: status ? user.id : null,
+    })
+    .eq("id", bookingId)
+    .eq("studio_id", studioId)
+    .eq("status", "confirmed")
+
+  if (error) throw new Error(error.message)
+
+  revalidatePath("/dashboard/timetable")
+  revalidatePath("/dashboard/analytics")
+  revalidatePath("/dashboard")
+  revalidatePath("/staff")
 }

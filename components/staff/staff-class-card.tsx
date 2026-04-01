@@ -1,10 +1,14 @@
 "use client"
 
 import { useState } from "react"
-import { ChevronDown } from "lucide-react"
+import { ChevronDown, Check, XCircle, Clock, Circle, Loader2 } from "lucide-react"
 import { CapacityRing } from "@/components/shared/capacity-ring"
 import { ClassColorBar } from "@/components/shared/class-color-bar"
 import { formatTime, formatPence, getInitial } from "@/lib/utils"
+import { markAttendance } from "@/app/actions/bookings"
+import { nextAttendanceStatus, attendanceLabel, attendanceColor } from "@/lib/attendance"
+import { toast } from "sonner"
+import type { AttendanceStatus } from "@/lib/types"
 
 interface SlotData {
   id: string
@@ -19,16 +23,92 @@ interface SlotData {
   }
 }
 
+interface StaffAttendee {
+  id: string
+  full_name: string | null
+  payment_method: string
+  attendance_status: string | null
+}
+
 interface StaffClassCardProps {
   slot: SlotData
-  attendees: { full_name: string | null; payment_method: string }[]
+  attendees: StaffAttendee[]
+}
+
+function paymentLabel(method: string) {
+  switch (method) {
+    case "pack_credit":
+      return "Pack"
+    case "membership":
+      return "Membership"
+    case "complimentary":
+      return "Comp"
+    default:
+      return "Drop-in"
+  }
+}
+
+function paymentStyle(method: string) {
+  switch (method) {
+    case "pack_credit":
+      return "bg-gold/15 text-gold"
+    case "membership":
+      return "bg-purple-100 text-purple-700"
+    case "complimentary":
+      return "bg-green-100 text-green-700"
+    default:
+      return "bg-ember/12 text-ember"
+  }
 }
 
 export function StaffClassCard({ slot, attendees }: StaffClassCardProps) {
   const [open, setOpen] = useState(false)
+  const [localStatus, setLocalStatus] = useState<Record<string, AttendanceStatus | null>>({})
+  const [markingId, setMarkingId] = useState<string | null>(null)
   const cls = slot.classes
   const capacity = cls.capacity ?? 10
   const booked = attendees.length
+
+  async function handleToggle(att: StaffAttendee) {
+    const current = localStatus[att.id] ?? (att.attendance_status as AttendanceStatus | null)
+    const next = nextAttendanceStatus(current)
+    setMarkingId(att.id)
+    try {
+      await markAttendance(att.id, next)
+      setLocalStatus((prev) => ({ ...prev, [att.id]: next }))
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update attendance")
+    } finally {
+      setMarkingId(null)
+    }
+  }
+
+  function getStatusIcon(att: StaffAttendee) {
+    const status = localStatus[att.id] ?? (att.attendance_status as AttendanceStatus | null)
+    if (markingId === att.id) {
+      return <Loader2 className="h-3.5 w-3.5 animate-spin text-warm-grey" />
+    }
+    switch (status) {
+      case "attended":
+        return <Check className="h-3.5 w-3.5" />
+      case "no_show":
+        return <XCircle className="h-3.5 w-3.5" />
+      case "late_cancel":
+        return <Clock className="h-3.5 w-3.5" />
+      default:
+        return <Circle className="h-3.5 w-3.5" />
+    }
+  }
+
+  function getStatusColor(att: StaffAttendee) {
+    const status = localStatus[att.id] ?? (att.attendance_status as AttendanceStatus | null)
+    return attendanceColor(status)
+  }
+
+  function getStatusLabel(att: StaffAttendee) {
+    const status = localStatus[att.id] ?? (att.attendance_status as AttendanceStatus | null)
+    return attendanceLabel(status)
+  }
 
   return (
     <div
@@ -89,7 +169,7 @@ export function StaffClassCard({ slot, attendees }: StaffClassCardProps) {
         {/* Booked attendees */}
         {attendees.map((att, i) => (
           <div
-            key={i}
+            key={att.id}
             className="flex items-center gap-3 border-b border-sand/40 px-5 py-2 text-[0.82rem] last:border-b-0"
           >
             <span className="w-5 text-center text-[0.7rem] text-warm-grey">
@@ -101,14 +181,22 @@ export function StaffClassCard({ slot, attendees }: StaffClassCardProps) {
             <span className="flex-1 font-medium text-cocoa">
               {att.full_name ?? "Unknown"}
             </span>
-            <span
-              className={`inline-block rounded-full px-2 py-0.5 text-[0.62rem] font-semibold uppercase ${
-                att.payment_method === "pack_credit"
-                  ? "bg-gold/15 text-gold"
-                  : "bg-ember/12 text-ember"
-              }`}
+            <button
+              type="button"
+              disabled={markingId === att.id}
+              onClick={(e) => {
+                e.stopPropagation()
+                handleToggle(att)
+              }}
+              className={`shrink-0 rounded p-0.5 transition-colors hover:bg-cream ${getStatusColor(att)}`}
+              title={getStatusLabel(att)}
             >
-              {att.payment_method === "pack_credit" ? "Pack" : "Drop-in"}
+              {getStatusIcon(att)}
+            </button>
+            <span
+              className={`inline-block rounded-full px-2 py-0.5 text-[0.62rem] font-semibold uppercase ${paymentStyle(att.payment_method)}`}
+            >
+              {paymentLabel(att.payment_method)}
             </span>
           </div>
         ))}

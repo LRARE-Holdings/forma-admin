@@ -62,13 +62,13 @@ export default async function StaffPage() {
 
   const slotIds = slots.map((s: { id: string }) => s.id)
 
-  let weekBookings: { schedule_id: string; profile_id: string; date: string; payment_method: string }[] = []
+  let weekBookings: { id: string; schedule_id: string; profile_id: string; date: string; payment_method: string; attendance_status: string | null }[] = []
   let bookingProfiles: Record<string, { full_name: string | null }> = {}
 
   if (slotIds.length > 0) {
     const { data } = await supabase
       .from("bookings")
-      .select("schedule_id, profile_id, date, payment_method, profiles:profile_id(full_name)")
+      .select("id, schedule_id, profile_id, date, payment_method, attendance_status, profiles:profile_id(full_name)")
       .eq("studio_id", studioId)
       .eq("status", "confirmed")
       .gte("date", mondayStr)
@@ -119,13 +119,15 @@ export default async function StaffPage() {
     : null
 
   // Group bookings by schedule_id and date
-  const bookingsBySlotDate: Record<string, { full_name: string | null; payment_method: string }[]> = {}
+  const bookingsBySlotDate: Record<string, { id: string; full_name: string | null; payment_method: string; attendance_status: string | null }[]> = {}
   for (const b of weekBookings) {
     const key = `${b.schedule_id}:${b.date}`
     if (!bookingsBySlotDate[key]) bookingsBySlotDate[key] = []
     bookingsBySlotDate[key].push({
+      id: b.id,
       full_name: bookingProfiles[b.profile_id]?.full_name ?? null,
       payment_method: b.payment_method,
+      attendance_status: b.attendance_status ?? null,
     })
   }
 

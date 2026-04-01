@@ -38,7 +38,7 @@ export default async function AnalyticsPage() {
     getWeeklyRevenue(),
     supabase
       .from("bookings")
-      .select("date, payment_method, schedule:schedule_id(class_id, classes:class_id(name, price_pence))")
+      .select("date, payment_method, attendance_status, schedule:schedule_id(class_id, classes:class_id(name, price_pence))")
       .eq("studio_id", studioId)
       .eq("status", "confirmed")
       .gte("date", toDateStr(eightWeeksAgo))
@@ -56,6 +56,15 @@ export default async function AnalyticsPage() {
   const lastWeekBookings = allBookings.filter(
     (b) => b.date >= toDateStr(lastMonday) && b.date <= toDateStr(lastSunday)
   ).length
+
+  // --- Attendance rate ---
+  const today = toDateStr(now)
+  const pastBookings = allBookings.filter((b) => b.date < today)
+  const markedAttended = pastBookings.filter((b) => b.attendance_status === "attended").length
+  const markedTotal = pastBookings.filter((b) => b.attendance_status !== null).length
+  const attendanceRate = markedTotal > 0 ? Math.round((markedAttended / markedTotal) * 100) : null
+  const noShowCount = pastBookings.filter((b) => b.attendance_status === "no_show").length
+  const lateCancelCount = pastBookings.filter((b) => b.attendance_status === "late_cancel").length
 
   // --- Revenue by class (estimated from list prices) ---
   const classTotals: Record<string, number> = {}
@@ -79,7 +88,7 @@ export default async function AnalyticsPage() {
         description="Revenue and booking trends for the last 8 weeks."
       />
 
-      <div className="mb-7 grid grid-cols-2 gap-4 lg:grid-cols-3">
+      <div className="mb-7 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
           label="Total revenue (8 weeks)"
           value={stripeConnected ? `\u00A3${formatPence(totalRevenue)}` : "--"}
@@ -94,6 +103,15 @@ export default async function AnalyticsPage() {
           label="Avg. per week"
           value={stripeConnected ? `\u00A3${formatPence(Math.round(totalRevenue / 8))}` : "--"}
           subtitle={stripeConnected ? "Net revenue average" : "Connect Stripe to track"}
+        />
+        <StatCard
+          label="Attendance rate (8 wks)"
+          value={attendanceRate !== null ? `${attendanceRate}%` : "--"}
+          subtitle={
+            attendanceRate !== null
+              ? `${noShowCount} no-show${noShowCount !== 1 ? "s" : ""}, ${lateCancelCount} late cancel${lateCancelCount !== 1 ? "s" : ""}`
+              : "Start marking attendance to track"
+          }
         />
       </div>
 

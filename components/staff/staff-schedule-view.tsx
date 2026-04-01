@@ -23,7 +23,7 @@ interface StaffScheduleViewProps {
   slots: SlotData[]
   bookingsBySlotDate: Record<
     string,
-    { full_name: string | null; payment_method: string }[]
+    { id: string; full_name: string | null; payment_method: string; attendance_status: string | null }[]
   >
   weekStart: string
 }
