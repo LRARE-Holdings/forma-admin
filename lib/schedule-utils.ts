@@ -121,9 +121,16 @@ export async function getWeekData(
     bookingCounts.set(key, (bookingCounts.get(key) ?? 0) + 1)
   }
 
-  const now = new Date()
-  const today = toDateStr(now)
-  const nowTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`
+  // Vercel runs in UTC — convert to UK local time for isPast checks
+  const ukParts = new Date().toLocaleString("en-GB", {
+    timeZone: "Europe/London",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  }).split(", ")
+  // ukParts = ["01/04/2026", "18:15"]
+  const [dd, mm, yyyy] = ukParts[0].split("/")
+  const today = `${yyyy}-${mm}-${dd}`
+  const nowTime = ukParts[1]
 
   // Build slots
   const slots: WeekSlot[] = []
