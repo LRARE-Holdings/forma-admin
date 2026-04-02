@@ -76,13 +76,14 @@ export default async function OverviewPage() {
         .eq("role", "member"),
       // Revenue this month from Stripe
       getMonthlyRevenue(),
-      // Recent bookings for activity feed
+      // Recent bookings for activity feed (confirmed only, last 20)
       supabase
         .from("bookings")
         .select("*, profiles:profile_id(full_name), schedule:schedule_id(start_time, classes:class_id(name))")
         .eq("studio_id", studioId)
+        .eq("status", "confirmed")
         .order("created_at", { ascending: false })
-        .limit(7),
+        .limit(20),
       // Studio info for onboarding
       supabase
         .from("studios")
@@ -409,32 +410,27 @@ export default async function OverviewPage() {
               <EmptyState
                 icon="activity"
                 title="No activity yet"
-                description="Bookings and cancellations will appear here."
+                description="Bookings will appear here."
               />
             ) : (
-              recentBookings.map((booking: Record<string, unknown>) => {
+              recentBookings.slice(0, 10).map((booking: Record<string, unknown>) => {
                 const bookingProfile = booking.profiles as unknown as { full_name: string } | null
                 const schedule = booking.schedule as unknown as {
                   start_time: string
                   classes: { name: string }
                 } | null
-                const isCancelled = booking.status === "cancelled"
                 return (
                   <div
                     key={booking.id as string}
                     className="flex gap-3 border-b border-sand/40 px-5 py-2.5 last:border-b-0"
                   >
-                    <div
-                      className={`mt-1.5 h-2 w-2 flex-shrink-0 rounded-full ${
-                        isCancelled ? "bg-ember" : "bg-gold"
-                      }`}
-                    />
+                    <div className="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full bg-gold" />
                     <div>
                       <div className="text-[0.8rem] text-slate">
                         <strong className="text-cocoa">
                           {bookingProfile?.full_name ?? "Someone"}
                         </strong>{" "}
-                        {isCancelled ? "cancelled" : "booked"}{" "}
+                        booked{" "}
                         {schedule?.classes?.name ?? "a class"}
                         {booking.date
                           ? ` — ${new Date(booking.date as string).toLocaleDateString(

@@ -102,15 +102,15 @@ export async function createManualBooking(formData: FormData) {
 
   if (error) throw new Error(error.message)
 
-  // Send booking confirmation email to member (fire-and-forget)
-  sendBookingConfirmation(studioId, profile_id, schedule_id, date).catch((err) =>
-    console.error("[bookings] Confirmation email failed:", err)
-  )
-
-  // Notify instructor & admin about the new booking (fire-and-forget)
-  sendBookingNotification(studioId, profile_id, schedule_id, date, payment_method).catch((err) =>
-    console.error("[bookings] Booking notification failed:", err)
-  )
+  // Send booking emails — awaited to prevent serverless early termination
+  await Promise.allSettled([
+    sendBookingConfirmation(studioId, profile_id, schedule_id, date),
+    sendBookingNotification(studioId, profile_id, schedule_id, date, payment_method),
+  ]).then((results) => {
+    for (const r of results) {
+      if (r.status === "rejected") console.error("[bookings] Email failed:", r.reason)
+    }
+  })
 
   revalidatePath("/dashboard/bookings")
   revalidatePath("/dashboard/timetable")

@@ -924,9 +924,11 @@ export async function executeTool(
 
         if (error) return `Error: ${error.message}`
 
-        // Send confirmation to member + notification to instructor/admin (fire-and-forget)
-        sendBookingConfirmation(studioId, input.profile_id as string, input.schedule_id as string, input.date as string).catch(() => {})
-        sendBookingNotification(studioId, input.profile_id as string, input.schedule_id as string, input.date as string, input.payment_method as string).catch(() => {})
+        // Send confirmation to member + notification to instructor/admin
+        await Promise.allSettled([
+          sendBookingConfirmation(studioId, input.profile_id as string, input.schedule_id as string, input.date as string),
+          sendBookingNotification(studioId, input.profile_id as string, input.schedule_id as string, input.date as string, input.payment_method as string),
+        ])
 
         revalidatePath("/dashboard/bookings")
         revalidatePath("/dashboard")

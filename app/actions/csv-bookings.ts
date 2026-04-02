@@ -164,11 +164,13 @@ export async function importCsvBookings(
     const { error } = await supabase.from("bookings").insert(toCreate)
     if (error) throw new Error(error.message)
 
-    // Send confirmation + notification emails for each booking (fire-and-forget)
-    for (const booking of toCreate) {
-      sendBookingConfirmation(studioId, booking.profile_id, scheduleId, date).catch(() => {})
-      sendBookingNotification(studioId, booking.profile_id, scheduleId, date, "complimentary").catch(() => {})
-    }
+    // Send confirmation + notification emails for each booking
+    await Promise.allSettled(
+      toCreate.flatMap((booking) => [
+        sendBookingConfirmation(studioId, booking.profile_id, scheduleId, date),
+        sendBookingNotification(studioId, booking.profile_id, scheduleId, date, "complimentary"),
+      ])
+    )
   }
 
   revalidatePath("/dashboard/timetable")

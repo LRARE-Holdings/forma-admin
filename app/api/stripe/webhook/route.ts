@@ -189,15 +189,15 @@ async function handlePaymentIntentSucceeded(
       stripe_session_id: piId,
     })
 
-    // Send booking confirmation email (fire-and-forget)
-    sendBookingConfirmation(studioId, profileId, scheduleId, date).catch((err) =>
-      console.error("[webhook] Booking confirmation email failed:", err)
-    )
-
-    // Notify instructor & admin about the new booking (fire-and-forget)
-    sendBookingNotification(studioId, profileId, scheduleId, date, "stripe").catch((err) =>
-      console.error("[webhook] Booking notification failed:", err)
-    )
+    // Send booking emails — awaited to prevent serverless early termination
+    await Promise.allSettled([
+      sendBookingConfirmation(studioId, profileId, scheduleId, date),
+      sendBookingNotification(studioId, profileId, scheduleId, date, "stripe"),
+    ]).then((results) => {
+      for (const r of results) {
+        if (r.status === "rejected") console.error("[webhook] Email failed:", r.reason)
+      }
+    })
   }
 
   if (metadata.type === "waitlist_claim") {
@@ -232,15 +232,15 @@ async function handlePaymentIntentSucceeded(
       stripe_session_id: piId,
     })
 
-    // Send booking confirmation email (fire-and-forget)
-    sendBookingConfirmation(studioId, profileId, scheduleId, date).catch((err) =>
-      console.error("[webhook] Booking confirmation email failed:", err)
-    )
-
-    // Notify instructor & admin about the new booking (fire-and-forget)
-    sendBookingNotification(studioId, profileId, scheduleId, date, "stripe").catch((err) =>
-      console.error("[webhook] Booking notification failed:", err)
-    )
+    // Send booking emails — awaited to prevent serverless early termination
+    await Promise.allSettled([
+      sendBookingConfirmation(studioId, profileId, scheduleId, date),
+      sendBookingNotification(studioId, profileId, scheduleId, date, "stripe"),
+    ]).then((results) => {
+      for (const r of results) {
+        if (r.status === "rejected") console.error("[webhook] Email failed:", r.reason)
+      }
+    })
 
     if (claimToken) {
       await supabase
@@ -323,15 +323,15 @@ async function handleCheckoutCompleted(
       stripe_session_id: session.id,
     })
 
-    // Send booking confirmation email (fire-and-forget)
-    sendBookingConfirmation(studioId, profileId, scheduleId, date).catch((err) =>
-      console.error("[webhook] Booking confirmation email failed:", err)
-    )
-
-    // Notify instructor & admin about the new booking (fire-and-forget)
-    sendBookingNotification(studioId, profileId, scheduleId, date, "stripe").catch((err) =>
-      console.error("[webhook] Booking notification failed:", err)
-    )
+    // Send booking emails — awaited to prevent serverless early termination
+    await Promise.allSettled([
+      sendBookingConfirmation(studioId, profileId, scheduleId, date),
+      sendBookingNotification(studioId, profileId, scheduleId, date, "stripe"),
+    ]).then((results) => {
+      for (const r of results) {
+        if (r.status === "rejected") console.error("[webhook] Email failed:", r.reason)
+      }
+    })
   }
 
   if (metadata.type === "waitlist_claim") {
@@ -356,15 +356,15 @@ async function handleCheckoutCompleted(
       stripe_session_id: session.id,
     })
 
-    // Send booking confirmation email (fire-and-forget)
-    sendBookingConfirmation(studioId, profileId, scheduleId, date).catch((err) =>
-      console.error("[webhook] Booking confirmation email failed:", err)
-    )
-
-    // Notify instructor & admin about the new booking (fire-and-forget)
-    sendBookingNotification(studioId, profileId, scheduleId, date, "stripe").catch((err) =>
-      console.error("[webhook] Booking notification failed:", err)
-    )
+    // Send booking emails — awaited to prevent serverless early termination
+    await Promise.allSettled([
+      sendBookingConfirmation(studioId, profileId, scheduleId, date),
+      sendBookingNotification(studioId, profileId, scheduleId, date, "stripe"),
+    ]).then((results) => {
+      for (const r of results) {
+        if (r.status === "rejected") console.error("[webhook] Email failed:", r.reason)
+      }
+    })
 
     if (claimToken) {
       await supabase
