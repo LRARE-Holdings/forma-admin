@@ -705,8 +705,9 @@ export async function executeTool(
           }
         }
 
-        const cutoffDate = new Date()
-        cutoffDate.setDate(cutoffDate.getDate() - threshold)
+        const ukToday = new Date(localDateStr() + "T12:00:00Z")
+        const cutoffDate = new Date(ukToday)
+        cutoffDate.setDate(ukToday.getDate() - threshold)
         const cutoffStr = cutoffDate.toISOString().split("T")[0]
         const nowMs = Date.now()
 

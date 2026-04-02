@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/shared/page-header"
 import { HolidayBanner } from "@/components/dashboard/holiday-banner"
 import { TimetableShell } from "@/components/dashboard/timetable-shell"
 import { getWeekData } from "@/lib/schedule-utils"
-import { dateToDateStr } from "@/lib/utils"
+import { dateToDateStr, localDateStr } from "@/lib/utils"
 
 // Page is automatically dynamic (reads searchParams).
 // Cache invalidation is handled by revalidatePath() in server actions
@@ -34,7 +34,8 @@ export default async function TimetablePage({
   if (params.week) {
     weekStart = getMondayStr(new Date(params.week + "T00:00:00"))
   } else {
-    weekStart = getMondayStr(new Date())
+    // Use UK date to avoid UTC day-boundary issues during BST
+    weekStart = getMondayStr(new Date(localDateStr() + "T12:00:00Z"))
   }
 
   // Fetch week data and class/instructor options in parallel
@@ -66,7 +67,7 @@ export default async function TimetablePage({
     name: i.name as string,
   }))
 
-  const isCurrentWeek = weekStart === getMondayStr(new Date())
+  const isCurrentWeek = weekStart === getMondayStr(new Date(localDateStr() + "T12:00:00Z"))
 
   return (
     <>

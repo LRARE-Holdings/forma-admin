@@ -72,6 +72,7 @@ export async function sendBookingNotification(
     })
 
     const bookedAt = new Date().toLocaleString("en-GB", {
+      timeZone: "Europe/London",
       weekday: "short",
       day: "numeric",
       month: "short",

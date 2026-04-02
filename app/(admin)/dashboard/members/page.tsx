@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { getStudioId } from "@/lib/studio-context"
-import { dateToDateStr } from "@/lib/utils"
+import { dateToDateStr, localDateStr } from "@/lib/utils"
 import { PageHeader } from "@/components/shared/page-header"
 import { MembersTable } from "@/components/dashboard/members-table"
 
@@ -38,8 +38,8 @@ export default async function MembersPage() {
   let membershipByProfile: Record<string, { status: string; tierName: string }> = {}
 
   if (memberIds.length > 0) {
-    const now = new Date()
-    const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`
+    const todayStr = localDateStr()
+    const monthStart = todayStr.slice(0, 8) + "01"
 
     const [bookingsRes, allBookingsRes, lastBookingsRes, packsRes, membershipsRes] = await Promise.all([
       supabase
@@ -121,8 +121,9 @@ export default async function MembersPage() {
     }
   }
 
-  const thirtyDaysAgo = new Date()
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+  const ukToday = new Date(localDateStr() + "T12:00:00Z")
+  const thirtyDaysAgo = new Date(ukToday)
+  thirtyDaysAgo.setDate(ukToday.getDate() - 30)
   const thirtyDaysAgoStr = dateToDateStr(thirtyDaysAgo)
 
   const rows = members.map((m) => {

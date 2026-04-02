@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server"
 import { requireManager } from "@/lib/auth"
 import { getStudioId } from "@/lib/studio-context"
 import { notifyInstructorScheduleChange } from "@/lib/email/schedule-notifications"
-import { dateToDateStr } from "@/lib/utils"
+import { dateToDateStr, localDateStr } from "@/lib/utils"
 import type { Recurrence } from "@/lib/types"
 
 /**
@@ -313,8 +313,7 @@ function calculateDates(
   windowDays: number
 ): string[] {
   const dates: string[] = []
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
+  const today = new Date(localDateStr() + "T00:00:00")
 
   const start = new Date(startsOn + "T00:00:00")
   const windowEnd = new Date(today)

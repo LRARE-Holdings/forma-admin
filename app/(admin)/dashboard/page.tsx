@@ -186,8 +186,8 @@ export default async function OverviewPage() {
     }
   }
 
-  const thirtyDaysAgo = new Date()
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+  const thirtyDaysAgo = new Date(ukToday)
+  thirtyDaysAgo.setDate(ukToday.getDate() - 30)
   const thirtyDaysAgoStr = dateToDateStr(thirtyDaysAgo)
 
   const nowMs = Date.now()

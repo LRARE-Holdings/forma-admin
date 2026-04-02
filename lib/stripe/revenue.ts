@@ -54,8 +54,9 @@ export async function getMonthlyRevenue(): Promise<{
     return { revenuePence: 0, stripeConnected: false }
   }
 
-  const now = new Date()
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+  const todayStr = localDateStr()
+  const monthStartStr = todayStr.slice(0, 8) + "01"
+  const monthStart = new Date(monthStartStr + "T00:00:00Z")
   const createdGte = Math.floor(monthStart.getTime() / 1000)
 
   try {
@@ -76,16 +77,17 @@ export async function getPreviousMonthRevenue(): Promise<number> {
   const stripeAccountId = await getStudioStripeAccount()
   if (!stripeAccountId) return 0
 
-  const now = new Date()
-  const dayOfMonth = now.getDate()
+  const todayStr = localDateStr()
+  const ukToday = new Date(todayStr + "T12:00:00Z")
+  const dayOfMonth = ukToday.getDate()
 
   // Previous month start
-  const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+  const prevMonthStart = new Date(ukToday.getFullYear(), ukToday.getMonth() - 1, 1)
   // Same day offset in previous month (capped to last day of prev month)
-  const prevMonthLastDay = new Date(now.getFullYear(), now.getMonth(), 0).getDate()
+  const prevMonthLastDay = new Date(ukToday.getFullYear(), ukToday.getMonth(), 0).getDate()
   const prevMonthEnd = new Date(
-    now.getFullYear(),
-    now.getMonth() - 1,
+    ukToday.getFullYear(),
+    ukToday.getMonth() - 1,
     Math.min(dayOfMonth, prevMonthLastDay),
     23, 59, 59
   )

@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { getStudioId } from "@/lib/studio-context"
 import { getAssistRateLimit } from "./constants"
+import { localDateStr } from "@/lib/utils"
 import type { UserRole } from "@/lib/types"
 
 interface RateLimitResult {
@@ -27,7 +28,7 @@ export async function checkAndIncrementUsage(
 
   const studioId = await getStudioId()
   const supabase = await createClient()
-  const today = new Date().toISOString().split("T")[0]
+  const today = localDateStr()
 
   // Try to get existing usage for today
   const { data: existing } = await supabase
@@ -87,7 +88,7 @@ export async function getUsage(
 
   const studioId = await getStudioId()
   const supabase = await createClient()
-  const today = new Date().toISOString().split("T")[0]
+  const today = localDateStr()
 
   const { data } = await supabase
     .from("assist_usage")

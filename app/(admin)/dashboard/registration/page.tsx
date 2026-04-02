@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/shared/page-header"
 import { getWeekData } from "@/lib/schedule-utils"
 import { getDateAttendees } from "@/app/actions/bookings"
 import { RegistrationClassCard } from "@/components/dashboard/registration-class-card"
-import { dateToDateStr, formatTime } from "@/lib/utils"
+import { dateToDateStr, formatTime, localDateStr } from "@/lib/utils"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import type { AttendanceStatus } from "@/lib/types"
 
@@ -18,13 +18,14 @@ export default async function RegistrationPage({
   const params = await searchParams
   const studioId = await getStudioId()
 
-  // Resolve selected date (defaults to today)
-  const today = new Date()
+  // Resolve selected date (defaults to today in UK time)
+  const todayStr = localDateStr()
+  const todayDate = new Date(todayStr + "T12:00:00Z")
   let selectedDate: Date
   if (params.date) {
-    selectedDate = new Date(params.date + "T00:00:00")
+    selectedDate = new Date(params.date + "T12:00:00Z")
   } else {
-    selectedDate = today
+    selectedDate = todayDate
   }
   const dateStr = dateToDateStr(selectedDate)
 
@@ -52,9 +53,10 @@ export default async function RegistrationPage({
   const nextDate = new Date(selectedDate)
   nextDate.setDate(selectedDate.getDate() + 1)
 
-  const isToday = dateStr === dateToDateStr(today)
+  const isToday = dateStr === todayStr
 
   const formattedDate = selectedDate.toLocaleDateString("en-GB", {
+    timeZone: "UTC",
     weekday: "long",
     day: "numeric",
     month: "long",
