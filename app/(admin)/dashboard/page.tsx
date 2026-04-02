@@ -12,6 +12,8 @@ import { OnboardingChecklist } from "@/components/dashboard/onboarding-checklist
 import { TodayCancelButton } from "@/components/dashboard/today-cancel-button"
 import { RealtimeBookingListener } from "@/components/dashboard/realtime-booking-listener"
 
+export const dynamic = "force-dynamic"
+
 export default async function OverviewPage() {
   const supabase = await createClient()
   const studioId = await getStudioId()
