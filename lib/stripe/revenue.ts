@@ -1,5 +1,6 @@
 import { stripe } from "@/lib/stripe"
 import { getStudioStripeAccount } from "@/lib/stripe/account"
+import { localDateStr } from "@/lib/utils"
 
 /**
  * Sum net revenue from a paginated list of balance transactions.
@@ -115,11 +116,12 @@ export async function getWeeklyRevenue(): Promise<{
     return { weeklyData: [], totalRevenue: 0, stripeConnected: false }
   }
 
-  const now = new Date()
-  const jsDow = now.getDay()
+  const today = localDateStr()
+  const ukToday = new Date(today + "T12:00:00Z")
+  const jsDow = ukToday.getDay()
   const mondayOffset = jsDow === 0 ? -6 : 1 - jsDow
-  const thisMonday = new Date(now)
-  thisMonday.setDate(now.getDate() + mondayOffset)
+  const thisMonday = new Date(ukToday)
+  thisMonday.setDate(ukToday.getDate() + mondayOffset)
   thisMonday.setHours(0, 0, 0, 0)
 
   const thisSunday = new Date(thisMonday)

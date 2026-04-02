@@ -2,7 +2,7 @@ import type Anthropic from "@anthropic-ai/sdk"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getStudioId } from "@/lib/studio-context"
-import { formatPence, dayName, formatTime } from "@/lib/utils"
+import { formatPence, dayName, formatTime, localDateStr } from "@/lib/utils"
 import { getMonthlyRevenue } from "@/lib/stripe/revenue"
 import { revalidatePath } from "next/cache"
 import { sendBookingConfirmation } from "@/lib/email/booking-confirmation"
@@ -622,18 +622,18 @@ export async function executeTool(
       }
 
       case "get_studio_stats": {
-        const now = new Date()
-        const today = now.toISOString().split("T")[0]
+        const today = localDateStr()
+        const ukToday = new Date(today + "T12:00:00Z")
 
         // Start of week (Monday)
-        const dayOfWeek = now.getDay()
+        const dayOfWeek = ukToday.getDay()
         const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
-        const monday = new Date(now)
-        monday.setDate(now.getDate() + mondayOffset)
+        const monday = new Date(ukToday)
+        monday.setDate(ukToday.getDate() + mondayOffset)
         const weekStart = monday.toISOString().split("T")[0]
 
         // Start of month
-        const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`
+        const monthStart = today.slice(0, 8) + "01"
 
         const [todayBookings, weekBookings, monthBookings, activeMembers, revenue] =
           await Promise.all([
@@ -1160,11 +1160,12 @@ export async function executeTool(
         if (!ctx.instructorId)
           return "Your instructor profile hasn't been linked yet."
 
-        const now = new Date()
-        const dayOfWeekNum = now.getDay()
+        const todayStr = localDateStr()
+        const ukToday = new Date(todayStr + "T12:00:00Z")
+        const dayOfWeekNum = ukToday.getDay()
         const mondayOffset = dayOfWeekNum === 0 ? -6 : 1 - dayOfWeekNum
-        const monday = new Date(now)
-        monday.setDate(now.getDate() + mondayOffset)
+        const monday = new Date(ukToday)
+        monday.setDate(ukToday.getDate() + mondayOffset)
         const weekStart = monday.toISOString().split("T")[0]
         const sunday = new Date(monday)
         sunday.setDate(monday.getDate() + 6)

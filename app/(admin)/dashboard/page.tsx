@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { getUser, getUserRole } from "@/lib/auth"
 import { getStudioId } from "@/lib/studio-context"
-import { getGreeting, formatTime, formatPence, localDateStr, dateToDateStr } from "@/lib/utils"
+import { getGreeting, formatTime, formatPence, localDateStr, dateToDateStr, ukDayOfWeek } from "@/lib/utils"
 import { getMonthlyRevenue, getPreviousMonthRevenue } from "@/lib/stripe/revenue"
 import { ADMIN_ROLES } from "@/lib/types"
 import { StatCard } from "@/components/shared/stat-card"
@@ -27,22 +27,24 @@ export default async function OverviewPage() {
 
   const firstName = profile?.full_name?.split(" ")[0] ?? "there"
 
-  // Get current day of week (0 = Monday in our schema)
+  // Get current day of week in UK time (0 = Monday in our schema)
   const now = new Date()
-  const jsDow = now.getDay() // 0 = Sunday
-  const dow = jsDow === 0 ? 6 : jsDow - 1 // Convert to 0 = Monday
+  const dow = ukDayOfWeek(now)
+  const today = localDateStr(now) // YYYY-MM-DD in Europe/London
 
-  const today = localDateStr(now)
+  // Build a UK-correct Date for relative calculations by parsing today back
+  const ukToday = new Date(today + "T12:00:00Z") // noon UTC avoids edge cases
 
   // Date calculations for week-over-week comparisons
-  const lastWeekSameDay = new Date(now)
-  lastWeekSameDay.setDate(now.getDate() - 7)
+  const lastWeekSameDay = new Date(ukToday)
+  lastWeekSameDay.setDate(ukToday.getDate() - 7)
   const lastWeekSameDayStr = dateToDateStr(lastWeekSameDay)
 
   // This Monday and last Monday for new-member comparison
+  const jsDow = ukToday.getDay() // 0 = Sunday
   const mondayOffset = jsDow === 0 ? -6 : 1 - jsDow
-  const thisMonday = new Date(now)
-  thisMonday.setDate(now.getDate() + mondayOffset)
+  const thisMonday = new Date(ukToday)
+  thisMonday.setDate(ukToday.getDate() + mondayOffset)
   thisMonday.setHours(0, 0, 0, 0)
   const thisMondayISO = thisMonday.toISOString()
 
@@ -282,6 +284,7 @@ export default async function OverviewPage() {
           label="Classes today"
           value={todaySchedule.length}
           subtitle={now.toLocaleDateString("en-GB", {
+            timeZone: "Europe/London",
             weekday: "short",
             day: "numeric",
             month: "long",
@@ -447,6 +450,7 @@ export default async function OverviewPage() {
                         {new Date(booking.created_at as string).toLocaleDateString(
                           "en-GB",
                           {
+                            timeZone: "Europe/London",
                             day: "numeric",
                             month: "short",
                             hour: "2-digit",

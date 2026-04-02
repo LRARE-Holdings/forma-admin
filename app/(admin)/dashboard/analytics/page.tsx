@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { getStudioId } from "@/lib/studio-context"
-import { formatPence, dateToDateStr } from "@/lib/utils"
+import { formatPence, dateToDateStr, localDateStr } from "@/lib/utils"
 import { PageHeader } from "@/components/shared/page-header"
 import { StatCard } from "@/components/shared/stat-card"
 import { WeeklyRevenueChart } from "@/components/dashboard/analytics/weekly-revenue-chart"
@@ -12,12 +12,13 @@ export default async function AnalyticsPage() {
   const supabase = await createClient()
   const studioId = await getStudioId()
 
-  // Calculate date ranges for bookings query
-  const now = new Date()
-  const jsDow = now.getDay()
+  // Calculate date ranges for bookings query (UK time)
+  const today = localDateStr()
+  const ukToday = new Date(today + "T12:00:00Z")
+  const jsDow = ukToday.getDay()
   const mondayOffset = jsDow === 0 ? -6 : 1 - jsDow
-  const thisMonday = new Date(now)
-  thisMonday.setDate(now.getDate() + mondayOffset)
+  const thisMonday = new Date(ukToday)
+  thisMonday.setDate(ukToday.getDate() + mondayOffset)
 
   const lastMonday = new Date(thisMonday)
   lastMonday.setDate(thisMonday.getDate() - 7)
@@ -58,8 +59,8 @@ export default async function AnalyticsPage() {
   ).length
 
   // --- Attendance rate ---
-  const today = toDateStr(now)
-  const pastBookings = allBookings.filter((b) => b.date < today)
+  const todayForAttendance = today
+  const pastBookings = allBookings.filter((b) => b.date < todayForAttendance)
   const markedAttended = pastBookings.filter((b) => b.attendance_status === "attended").length
   const markedTotal = pastBookings.filter((b) => b.attendance_status !== null).length
   const attendanceRate = markedTotal > 0 ? Math.round((markedAttended / markedTotal) * 100) : null

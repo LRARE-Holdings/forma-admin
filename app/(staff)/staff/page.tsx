@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { getUser, getInstructorForUser } from "@/lib/auth"
 import { getStudioId } from "@/lib/studio-context"
-import { dateToDateStr } from "@/lib/utils"
+import { dateToDateStr, localDateStr, ukDayOfWeek, ukTimeStr } from "@/lib/utils"
 import { StatCard } from "@/components/shared/stat-card"
 import { StaffScheduleView } from "@/components/staff/staff-schedule-view"
 import { EditOwnProfile } from "@/components/staff/edit-own-profile"
@@ -49,11 +49,12 @@ export default async function StaffPage() {
   const slots = schedule ?? []
 
   // Get booking counts for this week
-  const now = new Date()
-  const jsDow = now.getDay()
+  const today = localDateStr() // UK time YYYY-MM-DD
+  const ukToday = new Date(today + "T12:00:00Z")
+  const jsDow = ukToday.getDay()
   const mondayOffset = jsDow === 0 ? -6 : 1 - jsDow
-  const monday = new Date(now)
-  monday.setDate(now.getDate() + mondayOffset)
+  const monday = new Date(ukToday)
+  monday.setDate(ukToday.getDate() + mondayOffset)
   const sunday = new Date(monday)
   sunday.setDate(monday.getDate() + 6)
 
@@ -90,8 +91,8 @@ export default async function StaffPage() {
   const totalAttendees = weekBookings.length
 
   // Find next class
-  const currentDow = jsDow === 0 ? 6 : jsDow - 1
-  const currentTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:00`
+  const currentDow = ukDayOfWeek()
+  const currentTime = ukTimeStr()
 
   let nextClass = slots.find(
     (s: { day_of_week: number; start_time: string }) =>

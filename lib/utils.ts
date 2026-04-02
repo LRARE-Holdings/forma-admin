@@ -32,21 +32,72 @@ export function dayShort(dayOfWeek: number): string {
   return names[dayOfWeek] ?? ""
 }
 
+const TZ = "Europe/London"
+
 /**
- * Return a YYYY-MM-DD string in the local timezone (not UTC).
- * `new Date().toISOString().split("T")[0]` returns UTC, which is wrong
- * during BST or any UTC+ offset — e.g. 11pm on 31 Mar BST is 1 Apr UTC.
+ * Parse the current UK date/time parts from a Date.
+ * Vercel runs in UTC so `date.getDate()` etc. are wrong during BST.
  */
-export function localDateStr(date: Date = new Date()): string {
-  const y = date.getFullYear()
-  const m = String(date.getMonth() + 1).padStart(2, "0")
-  const d = String(date.getDate()).padStart(2, "0")
-  return `${y}-${m}-${d}`
+function ukParts(date: Date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    weekday: "short",
+    hour12: false,
+  }).formatToParts(date)
+
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? ""
+  return {
+    year: get("year"),
+    month: get("month"),
+    day: get("day"),
+    hour: get("hour"),
+    minute: get("minute"),
+    weekday: get("weekday"),
+  }
 }
 
 /**
- * Same as localDateStr but for converting an existing Date that was
- * constructed from a local date string (e.g. via `new Date(str + "T00:00:00")`).
+ * Return a YYYY-MM-DD string in UK time (Europe/London).
+ * Vercel runs in UTC — during BST, midnight UK is 23:00 UTC the day before.
+ */
+export function localDateStr(date: Date = new Date()): string {
+  const { year, month, day } = ukParts(date)
+  return `${year}-${month}-${day}`
+}
+
+/**
+ * Return the UK day of week as 0 = Monday … 6 = Sunday (matching our schema).
+ */
+export function ukDayOfWeek(date: Date = new Date()): number {
+  const { weekday } = ukParts(date)
+  const map: Record<string, number> = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 }
+  return map[weekday] ?? 0
+}
+
+/**
+ * Return the current hour in UK time (0–23).
+ */
+export function ukHour(date: Date = new Date()): number {
+  return parseInt(ukParts(date).hour, 10)
+}
+
+/**
+ * Return the current time in UK as "HH:MM:00" (matching schedule start_time format).
+ */
+export function ukTimeStr(date: Date = new Date()): string {
+  const { hour, minute } = ukParts(date)
+  return `${hour}:${minute}:00`
+}
+
+/**
+ * Convert a Date to YYYY-MM-DD using its UTC-based components.
+ * Use this only for dates constructed from known local strings
+ * (e.g. `new Date(str + "T00:00:00")`), NOT for "what date is it now?".
  */
 export function dateToDateStr(date: Date): string {
   const y = date.getFullYear()
@@ -56,7 +107,7 @@ export function dateToDateStr(date: Date): string {
 }
 
 export function getGreeting(): string {
-  const hour = new Date().getHours()
+  const hour = ukHour()
   if (hour < 12) return "Good morning"
   if (hour < 17) return "Good afternoon"
   return "Good evening"
