@@ -52,7 +52,7 @@ export async function GET() {
         net: txn.net,
         created: new Date(txn.created * 1000).toISOString(),
         description: txn.description,
-        source: txn.source,
+        source: typeof txn.source === "string" ? txn.source : txn.source?.id ?? null,
       })
     }
 
