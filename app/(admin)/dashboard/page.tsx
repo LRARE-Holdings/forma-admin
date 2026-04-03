@@ -310,7 +310,7 @@ export default async function OverviewPage() {
               ? "Connect Stripe to track revenue"
               : revenuePence === 0
                 ? "No revenue yet"
-                : "Net after Stripe fees"
+                : "From Stripe this month"
           }
           change={revenueChange}
         />

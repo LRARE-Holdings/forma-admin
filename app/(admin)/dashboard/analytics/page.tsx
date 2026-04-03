@@ -93,7 +93,7 @@ export default async function AnalyticsPage() {
         <StatCard
           label="Total revenue (8 weeks)"
           value={stripeConnected ? `\u00A3${formatPence(totalRevenue)}` : "--"}
-          subtitle={stripeConnected ? "Net after fees & refunds" : "Connect Stripe to track"}
+          subtitle={stripeConnected ? "Net after refunds" : "Connect Stripe to track"}
         />
         <StatCard
           label="Total bookings (8 weeks)"
@@ -103,7 +103,7 @@ export default async function AnalyticsPage() {
         <StatCard
           label="Avg. per week"
           value={stripeConnected ? `\u00A3${formatPence(Math.round(totalRevenue / 8))}` : "--"}
-          subtitle={stripeConnected ? "Net revenue average" : "Connect Stripe to track"}
+          subtitle={stripeConnected ? "Average per week" : "Connect Stripe to track"}
         />
         <StatCard
           label="Attendance rate (8 wks)"

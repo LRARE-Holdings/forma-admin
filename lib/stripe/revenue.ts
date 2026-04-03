@@ -3,8 +3,25 @@ import { getStudioStripeAccount } from "@/lib/stripe/account"
 import { localDateStr } from "@/lib/utils"
 
 /**
+ * Revenue-relevant balance-transaction types.
+ * - `charge` / `refund`: card charges via the Charges API
+ * - `payment` / `payment_refund`: charges via PaymentIntents API
+ *
+ * Stripe may report the same charge under either `charge` or `payment`
+ * depending on the API path used. Both must be included or the total
+ * will silently miss transactions.
+ */
+const REVENUE_TXN_TYPES = new Set([
+  "charge",
+  "payment",
+  "refund",
+  "payment_refund",
+])
+
+/**
  * Sum net revenue from a paginated list of balance transactions.
- * Only processes `charge` (positive) and `refund` (negative) types.
+ * Processes all revenue-relevant transaction types (charges + refunds
+ * from both the Charges API and PaymentIntents API).
  */
 async function sumBalanceTransactions(
   stripeAccountId: string,
@@ -25,7 +42,7 @@ async function sumBalanceTransactions(
     )
 
     for (const txn of transactions.data) {
-      if (txn.type === "charge" || txn.type === "refund") {
+      if (REVENUE_TXN_TYPES.has(txn.type)) {
         revenuePence += txn.net
       }
     }
@@ -164,7 +181,7 @@ export async function getWeeklyRevenue(): Promise<{
       )
 
       for (const txn of transactions.data) {
-        if (txn.type !== "charge" && txn.type !== "refund") continue
+        if (!REVENUE_TXN_TYPES.has(txn.type)) continue
 
         const txnDate = new Date(txn.created * 1000)
         const txnDow = txnDate.getDay()
