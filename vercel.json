@@ -1,12 +1,8 @@
 {
   "crons": [
     {
-      "path": "/api/cron/waitlist",
+      "path": "/api/cron",
       "schedule": "*/5 * * * *"
-    },
-    {
-      "path": "/api/cron/stripe-sync",
-      "schedule": "*/10 * * * *"
     }
   ]
 }
