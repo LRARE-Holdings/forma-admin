@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server"
-import { expireUnclaimedOffers } from "@/lib/waitlist"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createStripeProduct, createStripePrice } from "@/lib/stripe/products"
 import { stripe } from "@/lib/stripe"
@@ -8,12 +7,8 @@ import type { BillingInterval } from "@/lib/types"
 /**
  * GET /api/cron
  *
- * Unified cron handler — runs all periodic jobs in a single invocation
- * to stay within the Vercel Hobby plan's cron limit.
- *
- * Jobs:
- *  1. Waitlist: expire unclaimed offers
- *  2. Stripe sync: retry product/price sync for any missing stripe_price_id
+ * Daily cron (Vercel Hobby plan) — handles Stripe product/price sync.
+ * Waitlist expiry runs separately via Supabase Edge Function + pg_cron (every 5 min).
  */
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization")
@@ -21,23 +16,11 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const results: Record<string, unknown> = {}
+  const supabase = createAdminClient()
+  let synced = 0
+  let failed = 0
 
-  // --- Job 1: Waitlist offer expiry ---
   try {
-    await expireUnclaimedOffers()
-    results.waitlist = { ok: true }
-  } catch (err) {
-    console.error("[cron] Waitlist error:", err)
-    results.waitlist = { ok: false, error: String(err) }
-  }
-
-  // --- Job 2: Stripe product/price sync ---
-  try {
-    const supabase = createAdminClient()
-    let synced = 0
-    let failed = 0
-
     const { data: studios } = await supabase
       .from("studios")
       .select("id, stripe_account_id")
@@ -177,11 +160,12 @@ export async function GET(request: Request) {
     }
 
     console.log(`[cron] Stripe sync — Synced: ${synced}, Failed: ${failed}`)
-    results.stripeSync = { ok: true, synced, failed }
+    return NextResponse.json({ ok: true, synced, failed })
   } catch (err) {
     console.error("[cron] Stripe sync error:", err)
-    results.stripeSync = { ok: false, error: String(err) }
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    )
   }
-
-  return NextResponse.json(results)
 }
