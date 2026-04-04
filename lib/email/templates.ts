@@ -153,6 +153,46 @@ export function classCancelledEmail(params: ClassCancelledParams) {
   }
 }
 
+// --- Individual booking cancellation email ---
+
+interface BookingCancelledParams {
+  memberName: string
+  className: string
+  date: string
+  time: string
+  creditRestored: boolean
+  studioName: string
+  branding?: StudioBranding | null
+}
+
+export function bookingCancelledEmail(params: BookingCancelledParams) {
+  const { memberName, className, date, time, creditRestored, studioName, branding } = params
+  const c = resolveColors(branding)
+
+  const creditLine = creditRestored
+    ? `<p style="margin:16px 0 0;font-size:14px;color:${c.cocoa};"><strong>Your class credit has been restored</strong> and is ready to use for another booking.</p>`
+    : ""
+
+  const body = `
+    <p style="margin:0 0 16px;font-size:15px;color:${c.cocoa};">Hi ${memberName},</p>
+    <p style="margin:0 0 24px;font-size:15px;color:${c.cocoa};">Your booking for the following class has been cancelled:</p>
+    <table cellpadding="0" cellspacing="0" style="background-color:${c.cream};border-radius:8px;padding:16px 20px;width:100%;">
+      <tr><td>
+        <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:${c.warmGrey};text-transform:uppercase;letter-spacing:0.05em;">Class</p>
+        <p style="margin:0 0 12px;font-size:15px;font-weight:600;color:${c.cocoa};">${className}</p>
+        <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:${c.warmGrey};text-transform:uppercase;letter-spacing:0.05em;">Date &amp; time</p>
+        <p style="margin:0;font-size:15px;color:${c.cocoa};">${date} at ${time}</p>
+      </td></tr>
+    </table>
+    ${creditLine}
+    <p style="margin:24px 0 0;font-size:14px;color:${c.warmGrey};">If you have any questions, please get in touch with us.</p>`
+
+  return {
+    subject: `Booking cancelled — ${className} on ${date}`,
+    html: layout(studioName, body, branding),
+  }
+}
+
 // --- Booking confirmation email ---
 
 interface BookingConfirmationParams {

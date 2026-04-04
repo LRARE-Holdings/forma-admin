@@ -5,6 +5,10 @@ import { createClient } from "@/lib/supabase/server"
 import { requireReception, requireManager, getUser, getUserRole } from "@/lib/auth"
 import { getStudioId } from "@/lib/studio-context"
 import { promoteNextInWaitlist } from "@/lib/waitlist"
+import { sendStudioEmail } from "@/lib/email/send"
+import { bookingCancelledEmail } from "@/lib/email/templates"
+import { formatTime } from "@/lib/utils"
+import type { StudioBranding } from "@/lib/types"
 import { getWeekData } from "@/lib/schedule-utils"
 import { sendBookingConfirmation } from "@/lib/email/booking-confirmation"
 import { sendBookingNotification } from "@/lib/email/booking-notification"
@@ -189,10 +193,10 @@ export async function cancelBooking(bookingId: string) {
   const studioId = await getStudioId()
   const supabase = await createClient()
 
-  // Get the booking to check payment method
+  // Get the booking with profile and class info for email
   const { data: booking } = await supabase
     .from("bookings")
-    .select("*")
+    .select("*, profiles:profile_id(full_name, email), schedule:schedule_id(start_time, classes:class_id(name))")
     .eq("id", bookingId)
     .eq("studio_id", studioId)
     .single()
@@ -236,6 +240,37 @@ export async function cancelBooking(bookingId: string) {
   promoteNextInWaitlist(studioId, booking.schedule_id, booking.date).catch((err) =>
     console.error("[bookings] Waitlist promotion failed:", err)
   )
+
+  // Send cancellation email (fire-and-forget)
+  const profile = booking.profiles as unknown as { full_name: string | null; email: string | null }
+  const schedule = booking.schedule as unknown as { start_time: string; classes: { name: string } } | null
+  if (profile?.email && schedule) {
+    const { data: studio } = await supabase
+      .from("studios")
+      .select("name, branding")
+      .eq("id", studioId)
+      .single()
+
+    const formattedDate = new Date(booking.date + "T00:00:00").toLocaleDateString("en-GB", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+    })
+
+    const { subject, html } = bookingCancelledEmail({
+      memberName: profile.full_name?.split(" ")[0] ?? "there",
+      className: schedule.classes?.name ?? "Class",
+      date: formattedDate,
+      time: formatTime(schedule.start_time),
+      creditRestored: booking.payment_method === "pack_credit",
+      studioName: studio?.name ?? "Your studio",
+      branding: studio?.branding as StudioBranding | null,
+    })
+
+    sendStudioEmail(studioId, { to: profile.email, subject, html }).catch((err) =>
+      console.error("[bookings] Cancellation email failed:", err)
+    )
+  }
 
   revalidatePath("/dashboard/bookings")
   revalidatePath("/dashboard/timetable")
