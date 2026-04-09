@@ -72,6 +72,16 @@ export function CalendarSlotPopover({
   // Track which child dialog to open after the parent fully closes
   const pendingDialog = useRef<"skip" | "cancel" | "csv" | "delete" | null>(null)
 
+  // Keep a stashed copy of slot data so child dialogs can render even after
+  // the parent nulls the slot prop on close
+  const stashedSlot = useRef<WeekSlot | null>(null)
+  if (slot) stashedSlot.current = slot
+
+  // The slot to use for child dialogs — survives parent clearing the prop
+  const childSlot = slot ?? stashedSlot.current
+
+  const anyChildOpen = skipOpen || cancelOpen || csvUploadOpen || deleteOpen
+
   function handleParentCloseComplete(isOpen: boolean) {
     if (isOpen || !pendingDialog.current) return
     const target = pendingDialog.current
@@ -90,10 +100,10 @@ export function CalendarSlotPopover({
 
   // Fetch attendees when dialog opens and slot has bookings
   useEffect(() => {
-    if (open && slot && slot.bookingCount > 0) {
+    if (open && slot && childSlot && childSlot.bookingCount > 0) {
       setAttendeesLoading(true)
       setShowAttendees(true)
-      getSlotAttendees(slot.scheduleId, slot.date)
+      getSlotAttendees(childSlot.scheduleId, childSlot.date)
         .then(setAttendees)
         .catch(() => {
           setAttendees([])
@@ -104,20 +114,21 @@ export function CalendarSlotPopover({
       setShowAttendees(false)
       setAttendees([])
     }
-  }, [open, slot?.scheduleId, slot?.date, slot?.bookingCount])
+  }, [open, slot, childSlot?.scheduleId, childSlot?.date, childSlot?.bookingCount])
 
-  if (!slot) return null
+  if (!slot && !anyChildOpen && !pendingDialog.current) return null
+  if (!childSlot) return null
 
-  const formattedDate = new Date(slot.date + "T00:00:00").toLocaleDateString(
+  const formattedDate = new Date(childSlot.date + "T00:00:00").toLocaleDateString(
     "en-GB",
     { weekday: "long", day: "numeric", month: "long" }
   )
 
   async function handleUnskip() {
-    if (!slot) return
+    if (!childSlot) return
     setUnskipLoading(true)
     try {
-      await unskipClassInstance(slot.scheduleId, slot.date)
+      await unskipClassInstance(childSlot.scheduleId, childSlot.date)
       toast.success("Class restored for this week")
       onOpenChange(false)
     } catch (e) {
@@ -128,10 +139,10 @@ export function CalendarSlotPopover({
   }
 
   async function handleDelete() {
-    if (!slot) return
+    if (!childSlot) return
     setDeleteLoading(true)
     try {
-      await deleteScheduleSlot(slot.scheduleId)
+      await deleteScheduleSlot(childSlot.scheduleId)
       toast.success("Schedule slot removed")
       setDeleteOpen(false)
       onOpenChange(false)
@@ -142,12 +153,12 @@ export function CalendarSlotPopover({
     }
   }
 
-  const canEdit = !slot.isPast && !slot.isHoliday
+  const canEdit = !childSlot.isPast && !childSlot.isHoliday
   const canSkip =
-    !slot.isPast && !slot.isHoliday && !slot.isSkipped && !!slot.ruleId
-  const canUnskip = !slot.isPast && slot.isSkipped
-  const canCancel = !slot.isPast && !slot.isHoliday && !slot.isSkipped
-  const canImport = !slot.isHoliday && !slot.isSkipped
+    !childSlot.isPast && !childSlot.isHoliday && !childSlot.isSkipped && !!childSlot.ruleId
+  const canUnskip = !childSlot.isPast && childSlot.isSkipped
+  const canCancel = !childSlot.isPast && !childSlot.isHoliday && !childSlot.isSkipped
+  const canImport = !childSlot.isHoliday && !childSlot.isSkipped
 
   return (
     <>
@@ -156,11 +167,11 @@ export function CalendarSlotPopover({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <ClassColorBar
-                classSlug={slot.classSlug}
+                classSlug={childSlot.classSlug}
                 className="w-[3px] h-5"
               />
-              {slot.className}
-              {slot.ruleId && (
+              {childSlot.className}
+              {childSlot.ruleId && (
                 <Repeat className="h-3.5 w-3.5 shrink-0 text-gold" />
               )}
             </DialogTitle>
@@ -176,27 +187,27 @@ export function CalendarSlotPopover({
               <div className="flex justify-between">
                 <span className="text-warm-grey">Time</span>
                 <span className="font-medium text-cocoa">
-                  {formatTime(slot.startTime)}–{formatTime(slot.endTime)}
+                  {formatTime(childSlot.startTime)}–{formatTime(childSlot.endTime)}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-warm-grey">Instructor</span>
                 <span className="font-medium text-cocoa">
-                  {slot.instructorName}
+                  {childSlot.instructorName}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-warm-grey">Price</span>
                 <span className="font-medium text-cocoa">
-                  &pound;{formatPence(slot.pricePence)}
+                  &pound;{formatPence(childSlot.pricePence)}
                 </span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-warm-grey">Bookings</span>
                 <CapacityBadge
-                  booked={slot.bookingCount}
-                  capacity={slot.capacity}
-                  isPast={slot.isPast}
+                  booked={childSlot.bookingCount}
+                  capacity={childSlot.capacity}
+                  isPast={childSlot.isPast}
                 />
               </div>
             </div>
@@ -207,8 +218,8 @@ export function CalendarSlotPopover({
                 <div className="flex items-center justify-between bg-cream px-3 py-2 text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-warm-grey">
                   <span className="flex items-center gap-1.5">
                     <Users className="h-3 w-3" />
-                    Attendees ({slot.bookingCount} of {slot.capacity})
-                    {slot.bookingCount >= slot.capacity ? " — FULL" : ""}
+                    Attendees ({childSlot.bookingCount} of {childSlot.capacity})
+                    {childSlot.bookingCount >= childSlot.capacity ? " — FULL" : ""}
                   </span>
                   <span>Payment</span>
                 </div>
@@ -250,7 +261,7 @@ export function CalendarSlotPopover({
                         >
                           {paymentLabel(att.payment_method)}
                         </span>
-                        {!slot.isPast && (
+                        {!childSlot.isPast && (
                           <button
                             type="button"
                             disabled={cancellingId === att.id}
@@ -283,7 +294,7 @@ export function CalendarSlotPopover({
 
                     {/* Empty spots */}
                     {Array.from(
-                      { length: slot.capacity - attendees.length },
+                      { length: childSlot.capacity - attendees.length },
                       (_, i) => (
                         <div
                           key={`empty-${i}`}
@@ -305,24 +316,24 @@ export function CalendarSlotPopover({
             )}
 
             {/* No bookings message */}
-            {slot.bookingCount === 0 && !slot.isSkipped && !slot.isHoliday && (
+            {childSlot.bookingCount === 0 && !childSlot.isSkipped && !childSlot.isHoliday && (
               <div className="rounded-lg bg-sand/30 px-3 py-2 text-center text-[0.78rem] text-warm-grey">
                 No bookings yet
               </div>
             )}
 
             {/* Status badges */}
-            {slot.isSkipped && (
+            {childSlot.isSkipped && (
               <div className="rounded-lg bg-sand/50 px-3 py-2 text-[0.78rem] text-warm-grey">
                 This class is <strong>skipped</strong> this week.
               </div>
             )}
-            {slot.isHoliday && (
+            {childSlot.isHoliday && (
               <div className="rounded-lg bg-ember/10 px-3 py-2 text-[0.78rem] text-cocoa">
                 Studio is on <strong>holiday</strong> this date.
               </div>
             )}
-            {slot.isPast && (
+            {childSlot.isPast && (
               <div className="rounded-lg bg-sand/50 px-3 py-2 text-[0.78rem] text-warm-grey">
                 This class has already passed.
               </div>
@@ -337,7 +348,7 @@ export function CalendarSlotPopover({
                     size="sm"
                     onClick={() => {
                       onOpenChange(false)
-                      onEdit(slot)
+                      onEdit(childSlot)
                     }}
                   >
                     <Pencil className="mr-1.5 h-3 w-3" />
@@ -418,34 +429,34 @@ export function CalendarSlotPopover({
       <SkipClassDialog
         open={skipOpen}
         onOpenChange={setSkipOpen}
-        scheduleId={slot.scheduleId}
-        date={slot.date}
-        className={slot.className}
-        startTime={formatTime(slot.startTime)}
-        bookingCount={slot.bookingCount}
+        scheduleId={childSlot.scheduleId}
+        date={childSlot.date}
+        className={childSlot.className}
+        startTime={formatTime(childSlot.startTime)}
+        bookingCount={childSlot.bookingCount}
       />
 
       {/* Cancel dialog */}
       <CancelClassDialog
         open={cancelOpen}
         onOpenChange={setCancelOpen}
-        scheduleId={slot.scheduleId}
-        date={slot.date}
-        className={slot.className}
-        startTime={formatTime(slot.startTime)}
-        bookingCount={slot.bookingCount}
+        scheduleId={childSlot.scheduleId}
+        date={childSlot.date}
+        className={childSlot.className}
+        startTime={formatTime(childSlot.startTime)}
+        bookingCount={childSlot.bookingCount}
       />
 
       {/* CSV upload */}
       <CsvUploadDialog
         open={csvUploadOpen}
         onOpenChange={setCsvUploadOpen}
-        scheduleId={slot.scheduleId}
-        date={slot.date}
-        className={slot.className}
-        startTime={formatTime(slot.startTime)}
-        capacity={slot.capacity}
-        bookingCount={slot.bookingCount}
+        scheduleId={childSlot.scheduleId}
+        date={childSlot.date}
+        className={childSlot.className}
+        startTime={formatTime(childSlot.startTime)}
+        capacity={childSlot.capacity}
+        bookingCount={childSlot.bookingCount}
       />
 
       {/* Delete confirmation */}
@@ -453,7 +464,7 @@ export function CalendarSlotPopover({
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
         title="Remove slot"
-        description={`Remove this ${slot.className} slot from the timetable permanently?`}
+        description={`Remove this ${childSlot.className} slot from the timetable permanently?`}
         onConfirm={handleDelete}
         loading={deleteLoading}
         actionLabel="Remove"
