@@ -337,7 +337,7 @@ export function CalendarSlotPopover({
                     size="sm"
                     onClick={() => {
                       onOpenChange(false)
-                      setSkipOpen(true)
+                      setTimeout(() => setSkipOpen(true), 150)
                     }}
                   >
                     <SkipForward className="mr-1.5 h-3 w-3" />
@@ -361,7 +361,7 @@ export function CalendarSlotPopover({
                     size="sm"
                     onClick={() => {
                       onOpenChange(false)
-                      setCancelOpen(true)
+                      setTimeout(() => setCancelOpen(true), 150)
                     }}
                   >
                     <Ban className="mr-1.5 h-3 w-3" />
@@ -374,7 +374,7 @@ export function CalendarSlotPopover({
                     size="sm"
                     onClick={() => {
                       onOpenChange(false)
-                      setCsvUploadOpen(true)
+                      setTimeout(() => setCsvUploadOpen(true), 150)
                     }}
                   >
                     <Upload className="mr-1.5 h-3 w-3" />
@@ -387,7 +387,7 @@ export function CalendarSlotPopover({
                     size="sm"
                     onClick={() => {
                       onOpenChange(false)
-                      setDeleteOpen(true)
+                      setTimeout(() => setDeleteOpen(true), 150)
                     }}
                     className="text-warm-grey hover:text-red-600"
                   >
