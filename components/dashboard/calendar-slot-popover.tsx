@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { formatTime, formatPence, getInitial } from "@/lib/utils"
 import { unskipClassInstance } from "@/app/actions/schedule-exceptions"
 import { deleteScheduleSlot } from "@/app/actions/schedule"
@@ -68,6 +68,19 @@ export function CalendarSlotPopover({
   const [csvUploadOpen, setCsvUploadOpen] = useState(false)
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [unskipLoading, setUnskipLoading] = useState(false)
+
+  // Track which child dialog to open after the parent fully closes
+  const pendingDialog = useRef<"skip" | "cancel" | "csv" | "delete" | null>(null)
+
+  function handleParentCloseComplete(isOpen: boolean) {
+    if (isOpen || !pendingDialog.current) return
+    const target = pendingDialog.current
+    pendingDialog.current = null
+    if (target === "skip") setSkipOpen(true)
+    else if (target === "cancel") setCancelOpen(true)
+    else if (target === "csv") setCsvUploadOpen(true)
+    else if (target === "delete") setDeleteOpen(true)
+  }
 
   // Attendee state
   const [attendees, setAttendees] = useState<SlotAttendee[]>([])
@@ -138,7 +151,7 @@ export function CalendarSlotPopover({
 
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog open={open} onOpenChange={onOpenChange} onOpenChangeComplete={handleParentCloseComplete}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -336,8 +349,8 @@ export function CalendarSlotPopover({
                     variant="outline"
                     size="sm"
                     onClick={() => {
+                      pendingDialog.current = "skip"
                       onOpenChange(false)
-                      setTimeout(() => setSkipOpen(true), 150)
                     }}
                   >
                     <SkipForward className="mr-1.5 h-3 w-3" />
@@ -360,8 +373,8 @@ export function CalendarSlotPopover({
                     variant="outline"
                     size="sm"
                     onClick={() => {
+                      pendingDialog.current = "cancel"
                       onOpenChange(false)
-                      setTimeout(() => setCancelOpen(true), 150)
                     }}
                   >
                     <Ban className="mr-1.5 h-3 w-3" />
@@ -373,8 +386,8 @@ export function CalendarSlotPopover({
                     variant="outline"
                     size="sm"
                     onClick={() => {
+                      pendingDialog.current = "csv"
                       onOpenChange(false)
-                      setTimeout(() => setCsvUploadOpen(true), 150)
                     }}
                   >
                     <Upload className="mr-1.5 h-3 w-3" />
@@ -386,8 +399,8 @@ export function CalendarSlotPopover({
                     variant="ghost"
                     size="sm"
                     onClick={() => {
+                      pendingDialog.current = "delete"
                       onOpenChange(false)
-                      setTimeout(() => setDeleteOpen(true), 150)
                     }}
                     className="text-warm-grey hover:text-red-600"
                   >
