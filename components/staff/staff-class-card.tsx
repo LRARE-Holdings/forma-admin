@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import { ChevronDown } from "lucide-react"
 import { CapacityRing } from "@/components/shared/capacity-ring"
 import { ClassColorBar } from "@/components/shared/class-color-bar"
@@ -30,6 +31,7 @@ interface StaffAttendee {
 
 interface StaffClassCardProps {
   slot: SlotData
+  date: string
   attendees: StaffAttendee[]
 }
 
@@ -59,7 +61,7 @@ function paymentStyle(method: string) {
   }
 }
 
-export function StaffClassCard({ slot, attendees }: StaffClassCardProps) {
+export function StaffClassCard({ slot, date, attendees }: StaffClassCardProps) {
   const [open, setOpen] = useState(false)
   const cls = slot.classes
   const capacity = cls.capacity ?? 10
@@ -113,12 +115,18 @@ export function StaffClassCard({ slot, attendees }: StaffClassCardProps) {
           open ? "max-h-[600px]" : "max-h-0 border-t-0"
         }`}
       >
-        <div className="flex justify-between bg-cream px-5 py-2.5 text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-warm-grey">
+        <div className="flex items-center justify-between bg-cream px-5 py-2.5 text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-warm-grey">
           <span>
             Attendees ({booked} of {capacity})
             {booked >= capacity ? " \u2014 FULL" : ""}
           </span>
-          <span>Payment</span>
+          <Link
+            href={`/staff/register/${slot.id}/${date}`}
+            className="text-[0.65rem] font-semibold tracking-[0.06em] text-gold hover:text-cocoa transition-colors normal-case"
+            onClick={(e) => e.stopPropagation()}
+          >
+            View full register &rarr;
+          </Link>
         </div>
 
         {/* Booked attendees */}

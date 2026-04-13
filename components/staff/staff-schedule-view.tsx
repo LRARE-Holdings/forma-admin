@@ -96,6 +96,7 @@ export function StaffScheduleView({
             <StaffClassCard
               key={slot.id}
               slot={slot}
+              date={dateStr}
               attendees={attendees}
             />
           )
