@@ -17,6 +17,7 @@ interface SlotData {
     duration_mins: number
     capacity: number
   }
+  rule_window: { starts_on: string; ends_on: string | null } | null
 }
 
 interface StaffScheduleViewProps {
@@ -47,10 +48,18 @@ export function StaffScheduleView({
     return d.getDate()
   })
 
-  const daySlots = slots.filter((s) => s.day_of_week === selectedDay)
   const selectedDate = new Date(monday)
   selectedDate.setDate(monday.getDate() + selectedDay)
   const dateStr = dateToDateStr(selectedDate)
+
+  const daySlots = slots.filter((s) => {
+    if (s.day_of_week !== selectedDay) return false
+    const w = s.rule_window
+    if (!w) return true
+    if (dateStr < w.starts_on) return false
+    if (w.ends_on && dateStr > w.ends_on) return false
+    return true
+  })
 
   return (
     <>

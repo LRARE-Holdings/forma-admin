@@ -292,13 +292,23 @@ async function materialiseSlots(ruleId: string) {
 async function rematerialiseSlots(ruleId: string) {
   const supabase = await createClient()
 
-  // Deactivate existing slots from this rule
+  // Look up the rule's studio_id so the deactivate is explicitly scoped.
+  // RLS would normally protect this, but a missing filter once burned us
+  // (Apr 2026: rule re-materialise produced cross-period duplicates).
+  const { data: rule } = await supabase
+    .from("schedule_rules")
+    .select("studio_id")
+    .eq("id", ruleId)
+    .single()
+
+  if (!rule) return
+
   await supabase
     .from("schedule")
     .update({ is_active: false })
     .eq("rule_id", ruleId)
+    .eq("studio_id", rule.studio_id)
 
-  // Re-materialise
   await materialiseSlots(ruleId)
 }
 

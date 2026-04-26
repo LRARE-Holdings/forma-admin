@@ -36,10 +36,11 @@ export default async function StaffPage() {
     )
   }
 
-  // Fetch this instructor's schedule
+  // Fetch this instructor's schedule, including the parent rule's date window
+  // so the client can drop occurrences whose date falls outside it.
   const { data: schedule } = await supabase
     .from("schedule")
-    .select("*, classes(*)")
+    .select("*, classes(*), schedule_rules(starts_on, ends_on)")
     .eq("studio_id", studioId)
     .eq("instructor_id", instructor.id)
     .eq("is_active", true)
@@ -133,13 +134,20 @@ export default async function StaffPage() {
   }
 
   // Serialize for client component
-  const serializedSlots = slots.map((s: Record<string, unknown>) => ({
-    id: s.id as string,
-    day_of_week: s.day_of_week as number,
-    start_time: s.start_time as string,
-    end_time: s.end_time as string,
-    classes: s.classes as unknown as { name: string; slug: string; price_pence: number; duration_mins: number; capacity: number },
-  }))
+  const serializedSlots = slots.map((s: Record<string, unknown>) => {
+    const ruleRel = s.schedule_rules
+    const rule = Array.isArray(ruleRel) ? ruleRel[0] ?? null : (ruleRel as { starts_on: string; ends_on: string | null } | null) ?? null
+    return {
+      id: s.id as string,
+      day_of_week: s.day_of_week as number,
+      start_time: s.start_time as string,
+      end_time: s.end_time as string,
+      classes: s.classes as unknown as { name: string; slug: string; price_pence: number; duration_mins: number; capacity: number },
+      rule_window: rule
+        ? { starts_on: rule.starts_on as string, ends_on: (rule.ends_on as string | null) ?? null }
+        : null,
+    }
+  })
 
   return (
     <>

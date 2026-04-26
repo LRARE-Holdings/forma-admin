@@ -57,10 +57,10 @@ export default async function OverviewPage() {
   // Fetch data in parallel
   const [scheduleRes, bookingsTodayRes, membersRes, revenue, recentBookingsRes, studioRes, classesCountRes, scheduleCountRes, teamCountRes, allBookingsRes, bookingsLastWeekRes, newMembersThisWeekRes, newMembersLastWeekRes, prevMonthRevenue] =
     await Promise.all([
-      // Today's schedule
+      // Today's schedule (rule date window applied below)
       supabase
         .from("schedule")
-        .select("*, classes(*), instructors(*)")
+        .select("*, classes(*), instructors(*), schedule_rules(starts_on, ends_on)")
         .eq("studio_id", studioId)
         .eq("day_of_week", dow)
         .eq("is_active", true)
@@ -145,7 +145,16 @@ export default async function OverviewPage() {
       getPreviousMonthRevenue(),
     ])
 
-  const todaySchedule = scheduleRes.data ?? []
+  // Drop today's slots whose parent rule's date window doesn't cover today.
+  // Rows with rule_id=NULL (legacy/manual) bypass the filter.
+  const todaySchedule = (scheduleRes.data ?? []).filter((slot: Record<string, unknown>) => {
+    const ruleRel = slot.schedule_rules
+    const rule = Array.isArray(ruleRel) ? ruleRel[0] ?? null : (ruleRel as { starts_on: string; ends_on: string | null } | null) ?? null
+    if (!rule) return true
+    if (today < rule.starts_on) return false
+    if (rule.ends_on && today > rule.ends_on) return false
+    return true
+  })
   const bookingsTodayCount = bookingsTodayRes.data?.length ?? 0
   const membersCount = membersRes.data?.length ?? 0
   const recentBookings = recentBookingsRes.data ?? []
