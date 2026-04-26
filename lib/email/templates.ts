@@ -286,6 +286,7 @@ const PAYMENT_LABELS: Record<string, string> = {
   pack_credit: "Class pack credit",
   membership: "Membership",
   complimentary: "Complimentary",
+  birthday: "Birthday treat",
 }
 
 export function bookingNotificationEmail(params: BookingNotificationParams) {
