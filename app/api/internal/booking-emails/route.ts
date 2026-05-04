@@ -2,22 +2,25 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { sendBookingConfirmation } from "@/lib/email/booking-confirmation"
 import { sendBookingNotification } from "@/lib/email/booking-notification"
+import { sendBookingCancellationNotification } from "@/lib/email/booking-cancellation-notification"
 
 const schema = z.object({
+  event: z.enum(["created", "cancelled"]).default("created"),
   studioId: z.string().uuid(),
   profileId: z.string().uuid(),
   scheduleId: z.string().uuid(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  paymentMethod: z.enum(["pack_credit", "membership", "complimentary", "birthday"]),
+  paymentMethod: z.enum(["stripe", "pack_credit", "membership", "complimentary", "birthday"]),
+  cancelledBy: z.enum(["member", "admin"]).optional(),
 })
 
 /**
  * POST /api/internal/booking-emails
  *
- * Internal endpoint called by burn-public after a non-Stripe booking is created
- * (pack credit, membership, complimentary, birthday). Sends both the member
- * confirmation and the instructor/admin notification — mirroring what the
- * Stripe webhook does for paid bookings.
+ * Internal endpoint called by burn-public when a non-Stripe booking is created
+ * or cancelled. For "created", sends member confirmation + instructor/admin
+ * notification. For "cancelled", sends instructor/admin cancellation notification
+ * (member email is sent locally by the caller).
  *
  * Authenticated with a shared secret (INTERNAL_EMAIL_SECRET) via Authorization
  * bearer header.
@@ -49,12 +52,26 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const { studioId, profileId, scheduleId, date, paymentMethod } = parsed.data
+  const { event, studioId, profileId, scheduleId, date, paymentMethod, cancelledBy } = parsed.data
 
-  const results = await Promise.allSettled([
-    sendBookingConfirmation(studioId, profileId, scheduleId, date),
-    sendBookingNotification(studioId, profileId, scheduleId, date, paymentMethod),
-  ])
+  const tasks =
+    event === "cancelled"
+      ? [
+          sendBookingCancellationNotification(
+            studioId,
+            profileId,
+            scheduleId,
+            date,
+            paymentMethod,
+            cancelledBy ?? "member",
+          ),
+        ]
+      : [
+          sendBookingConfirmation(studioId, profileId, scheduleId, date),
+          sendBookingNotification(studioId, profileId, scheduleId, date, paymentMethod),
+        ]
+
+  const results = await Promise.allSettled(tasks)
 
   for (const r of results) {
     if (r.status === "rejected") {

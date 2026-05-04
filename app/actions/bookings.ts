@@ -12,6 +12,7 @@ import type { StudioBranding } from "@/lib/types"
 import { getWeekData } from "@/lib/schedule-utils"
 import { sendBookingConfirmation } from "@/lib/email/booking-confirmation"
 import { sendBookingNotification } from "@/lib/email/booking-notification"
+import { sendBookingCancellationNotification } from "@/lib/email/booking-cancellation-notification"
 import type { AttendanceStatus } from "@/lib/types"
 
 export interface SessionOption {
@@ -230,7 +231,7 @@ export async function cancelBooking(bookingId: string) {
 
   const { error } = await supabase
     .from("bookings")
-    .update({ status: "cancelled", cancelled_by: "member" })
+    .update({ status: "cancelled", cancelled_by: "admin" })
     .eq("id", bookingId)
     .eq("studio_id", studioId)
 
@@ -271,6 +272,17 @@ export async function cancelBooking(bookingId: string) {
       console.error("[bookings] Cancellation email failed:", err)
     )
   }
+
+  sendBookingCancellationNotification(
+    studioId,
+    booking.profile_id,
+    booking.schedule_id,
+    booking.date,
+    booking.payment_method,
+    "admin",
+  ).catch((err) =>
+    console.error("[bookings] Cancellation notification failed:", err)
+  )
 
   revalidatePath("/dashboard/bookings")
   revalidatePath("/dashboard/timetable")

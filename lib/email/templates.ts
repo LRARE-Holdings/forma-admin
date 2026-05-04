@@ -322,6 +322,58 @@ export function bookingNotificationEmail(params: BookingNotificationParams) {
   }
 }
 
+// --- Booking cancellation notification email (for instructors & admins) ---
+
+interface BookingCancellationNotificationParams {
+  recipientName: string
+  memberName: string
+  memberEmail: string
+  className: string
+  date: string
+  time: string
+  paymentMethod: string
+  cancelledAt: string
+  cancelledBy: "member" | "admin"
+  studioName: string
+  branding?: StudioBranding | null
+}
+
+export function bookingCancellationNotificationEmail(
+  params: BookingCancellationNotificationParams
+) {
+  const {
+    recipientName, memberName, memberEmail, className,
+    date, time, paymentMethod, cancelledAt, cancelledBy, studioName, branding,
+  } = params
+  const c = resolveColors(branding)
+  const paymentLabel = PAYMENT_LABELS[paymentMethod] ?? paymentMethod
+  const cancelledByLabel = cancelledBy === "admin" ? "the studio" : "the member"
+
+  const body = `
+    <p style="margin:0 0 16px;font-size:15px;color:${c.cocoa};">Hi ${recipientName},</p>
+    <p style="margin:0 0 24px;font-size:15px;color:${c.cocoa};">A booking has been cancelled by ${cancelledByLabel}.</p>
+    <table cellpadding="0" cellspacing="0" style="background-color:${c.cream};border-radius:8px;padding:16px 20px;width:100%;">
+      <tr><td>
+        <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:${c.warmGrey};text-transform:uppercase;letter-spacing:0.05em;">Member</p>
+        <p style="margin:0 0 2px;font-size:15px;font-weight:600;color:${c.cocoa};">${memberName}</p>
+        <p style="margin:0 0 12px;font-size:14px;color:${c.warmGrey};">${memberEmail}</p>
+        <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:${c.warmGrey};text-transform:uppercase;letter-spacing:0.05em;">Class</p>
+        <p style="margin:0 0 12px;font-size:15px;font-weight:600;color:${c.cocoa};">${className}</p>
+        <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:${c.warmGrey};text-transform:uppercase;letter-spacing:0.05em;">Date &amp; time</p>
+        <p style="margin:0 0 12px;font-size:15px;color:${c.cocoa};">${date} at ${time}</p>
+        <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:${c.warmGrey};text-transform:uppercase;letter-spacing:0.05em;">Original payment</p>
+        <p style="margin:0 0 12px;font-size:15px;color:${c.cocoa};">${paymentLabel}</p>
+        <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:${c.warmGrey};text-transform:uppercase;letter-spacing:0.05em;">Cancelled at</p>
+        <p style="margin:0;font-size:15px;color:${c.cocoa};">${cancelledAt}</p>
+      </td></tr>
+    </table>`
+
+  return {
+    subject: `Cancellation — ${memberName} for ${className} on ${date}`,
+    html: layout(studioName, body, branding),
+  }
+}
+
 // --- Waitlist offer email ---
 
 interface WaitlistOfferParams {
