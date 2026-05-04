@@ -156,7 +156,7 @@ export default async function OverviewPage() {
     return true
   })
   const bookingsTodayCount = bookingsTodayRes.data?.length ?? 0
-  const membersCount = membersRes.data?.length ?? 0
+  const totalMembersCount = membersRes.data?.length ?? 0
   const recentBookings = recentBookingsRes.data ?? []
   const { revenuePence, stripeConnected } = revenue
 
@@ -245,6 +245,7 @@ export default async function OverviewPage() {
   })
 
   const atRiskCount = atRiskMembers.length
+  const activeMembersCount = totalMembersCount - atRiskCount
 
   // Get booking counts per schedule slot for today
   const { data: todayBookings } = await supabase
@@ -307,8 +308,14 @@ export default async function OverviewPage() {
         />
         <StatCard
           label="Active members"
-          value={membersCount}
-          subtitle={membersCount === 0 ? "No members yet" : undefined}
+          value={activeMembersCount}
+          subtitle={
+            totalMembersCount === 0
+              ? "No members yet"
+              : atRiskCount > 0
+                ? `${atRiskCount} at risk excluded`
+                : undefined
+          }
           change={membersChange}
         />
         <StatCard

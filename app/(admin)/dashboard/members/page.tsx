@@ -159,11 +159,13 @@ export default async function MembersPage() {
     }
   })
 
+  const activeCount = rows.filter((r) => !r.atRisk).length
+
   return (
     <>
       <PageHeader
         title="Members"
-        description={`${members.length} active member${members.length !== 1 ? "s" : ""}.`}
+        description={`${activeCount} active member${activeCount !== 1 ? "s" : ""}.`}
       />
       <MembersTable members={rows} />
     </>
