@@ -3,10 +3,12 @@
 import { useState, useMemo } from "react"
 import { Search, Download, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown } from "lucide-react"
 import { localDateStr } from "@/lib/utils"
+import { formatUKPhoneDisplay } from "@/lib/phone-utils"
 import { EmptyState } from "@/components/shared/empty-state"
 import { MemberPacksDialog } from "./member-packs-dialog"
 import { EditMemberDialog } from "./edit-member-dialog"
 import { DeleteConfirmDialog } from "@/components/shared/delete-confirm-dialog"
+import { MemberNameButton } from "@/components/member-profile/member-name-button"
 import { deleteMember } from "@/app/actions/members"
 import { toast } from "sonner"
 
@@ -23,6 +25,7 @@ interface MemberRow {
   name: string
   email: string
   phone: string
+  dateOfBirth: string | null
   credits: number
   totalClasses: number
   classesThisMonth: number
@@ -33,6 +36,25 @@ interface MemberRow {
   membershipStatus: string | null
   membershipTier: string | null
   atRisk: boolean
+}
+
+function formatDOB(dob: string | null): string {
+  if (!dob) return "—"
+  return new Date(dob).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  })
+}
+
+function calculateAge(dob: string | null): number | null {
+  if (!dob) return null
+  const birth = new Date(dob)
+  const today = new Date()
+  let age = today.getFullYear() - birth.getFullYear()
+  const m = today.getMonth() - birth.getMonth()
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--
+  return age
 }
 
 type SortKey = "name" | "email" | "credits" | "totalClasses" | "classesThisMonth" | "joinedRaw"
@@ -74,7 +96,8 @@ export function MembersTable({ members }: MembersTableProps) {
       result = result.filter(
         (m) =>
           m.name.toLowerCase().includes(term) ||
-          m.email.toLowerCase().includes(term)
+          m.email.toLowerCase().includes(term) ||
+          m.phone.toLowerCase().includes(term)
       )
     }
     if (sortKey) {
@@ -110,6 +133,7 @@ export function MembersTable({ members }: MembersTableProps) {
       "Name",
       "Email",
       "Phone",
+      "Date of birth",
       "Joined",
       "Total classes",
       "Classes this month",
@@ -128,6 +152,7 @@ export function MembersTable({ members }: MembersTableProps) {
         escape(m.name),
         escape(m.email),
         escape(m.phone),
+        m.dateOfBirth ?? "",
         escape(m.joinedAt),
         String(m.totalClasses),
         String(m.classesThisMonth),
@@ -195,7 +220,7 @@ export function MembersTable({ members }: MembersTableProps) {
                 <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-warm-grey" />
                 <input
                   type="text"
-                  placeholder="Search by name or email…"
+                  placeholder="Search by name, email, or phone…"
                   value={searchTerm}
                   onChange={(e) => { setSearchTerm(e.target.value); setPage(0) }}
                   className="h-9 w-full max-w-sm rounded-lg border border-sand bg-cream/50 pl-9 pr-3 text-[0.82rem] text-cocoa placeholder:text-warm-grey/60 outline-none transition-colors focus:border-gold focus:bg-white"
@@ -224,6 +249,8 @@ export function MembersTable({ members }: MembersTableProps) {
                       {([
                         { label: "Name", key: "name" as SortKey },
                         { label: "Email", key: "email" as SortKey },
+                        { label: "Phone", key: null },
+                        { label: "DOB", key: null },
                         { label: "Pack credits", key: "credits" as SortKey },
                         { label: "Total classes", key: "totalClasses" as SortKey },
                         { label: "This month", key: "classesThisMonth" as SortKey },
@@ -256,14 +283,18 @@ export function MembersTable({ members }: MembersTableProps) {
                     </tr>
                   </thead>
                   <tbody>
-                    {paginatedMembers.map((m) => (
+                    {paginatedMembers.map((m) => {
+                      const age = calculateAge(m.dateOfBirth)
+                      return (
                       <tr
                         key={m.id}
                         className="border-b border-sand/50 transition-colors last:border-b-0 hover:bg-cream/50"
                       >
                         <td className="px-5 py-3 text-[0.82rem]">
                           <div className="flex items-center gap-2">
-                            <strong className="text-cocoa">{m.name}</strong>
+                            <MemberNameButton profileId={m.id}>
+                              <strong className="text-cocoa">{m.name}</strong>
+                            </MemberNameButton>
                             {m.atRisk && (
                               <span className="inline-block rounded-full bg-ember/15 px-2 py-0.5 text-[0.6rem] font-semibold uppercase tracking-[0.04em] text-ember">
                                 At risk
@@ -273,6 +304,21 @@ export function MembersTable({ members }: MembersTableProps) {
                         </td>
                         <td className="px-5 py-3 text-[0.82rem] text-slate">
                           {m.email}
+                        </td>
+                        <td className="px-5 py-3 text-[0.82rem] text-slate">
+                          {m.phone ? (
+                            formatUKPhoneDisplay(m.phone)
+                          ) : (
+                            <span className="text-ember/70">Missing</span>
+                          )}
+                        </td>
+                        <td className="px-5 py-3 text-[0.82rem] text-slate">
+                          {formatDOB(m.dateOfBirth)}
+                          {age !== null && (
+                            <span className="ml-1.5 text-warm-grey/70">
+                              · {age}
+                            </span>
+                          )}
                         </td>
                         <td className="px-5 py-3">
                           <span
@@ -317,7 +363,8 @@ export function MembersTable({ members }: MembersTableProps) {
                           </div>
                         </td>
                       </tr>
-                    ))}
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>

@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/shared/empty-state"
 import { BookingFormDialog, type MemberOption } from "./booking-form-dialog"
 import { cancelBooking } from "@/app/actions/bookings"
 import { Button } from "@/components/ui/button"
+import { MemberNameButton } from "@/components/member-profile/member-name-button"
 import { Plus } from "lucide-react"
 import { toast } from "sonner"
 
@@ -14,6 +15,7 @@ interface BookingRow {
   date: string
   status: string
   payment_method: string
+  profile_id: string
   profile_name: string
   class_name: string
   start_time: string | null
@@ -101,9 +103,11 @@ export function BookingsTable({ bookings, members }: BookingsTableProps) {
                       className="border-b border-sand/50 transition-colors last:border-b-0 hover:bg-cream/50"
                     >
                       <td className="px-5 py-3 text-[0.82rem]">
-                        <strong className="text-cocoa">
-                          {booking.profile_name}
-                        </strong>
+                        <MemberNameButton profileId={booking.profile_id}>
+                          <strong className="text-cocoa">
+                            {booking.profile_name}
+                          </strong>
+                        </MemberNameButton>
                       </td>
                       <td className="px-5 py-3 text-[0.82rem] text-slate">
                         {booking.class_name}

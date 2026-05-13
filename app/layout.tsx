@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import { Cormorant_Garamond, DM_Sans } from "next/font/google"
 import { Toaster } from "@/components/ui/sonner"
 import { BrandingProvider } from "@/components/branding-provider"
+import { MemberProfileProvider } from "@/components/member-profile/member-profile-provider"
 import "./globals.css"
 
 const cormorant = Cormorant_Garamond({
@@ -36,7 +37,9 @@ export default function RootLayout({
       <body
         className={`${cormorant.variable} ${dmSans.variable} min-h-screen antialiased`}
       >
-        {children}
+        <MemberProfileProvider>
+          {children}
+        </MemberProfileProvider>
         <Toaster />
       </body>
     </html>

@@ -7,8 +7,33 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
 
-function Dialog({ ...props }: DialogPrimitive.Root.Props) {
-  return <DialogPrimitive.Root data-slot="dialog" {...props} />
+export const CLOSE_DIALOGS_EVENT = "forma:close-dialogs"
+
+function Dialog({
+  dominant = false,
+  open,
+  onOpenChange,
+  ...props
+}: DialogPrimitive.Root.Props & { dominant?: boolean }) {
+  React.useEffect(() => {
+    if (dominant) return
+    if (!onOpenChange) return
+    const close = onOpenChange as (open: boolean) => void
+    const handler = () => {
+      if (open) close(false)
+    }
+    window.addEventListener(CLOSE_DIALOGS_EVENT, handler)
+    return () => window.removeEventListener(CLOSE_DIALOGS_EVENT, handler)
+  }, [dominant, open, onOpenChange])
+
+  return (
+    <DialogPrimitive.Root
+      data-slot="dialog"
+      open={open}
+      onOpenChange={onOpenChange}
+      {...props}
+    />
+  )
 }
 
 function DialogTrigger({ ...props }: DialogPrimitive.Trigger.Props) {

@@ -11,7 +11,9 @@ export default async function MembersPage() {
   // Get all members for this studio
   const { data: memberships } = await supabase
     .from("studio_memberships")
-    .select("profile_id, created_at, profiles:profile_id(id, full_name, email, phone)")
+    .select(
+      "profile_id, created_at, profiles:profile_id(id, full_name, email, phone, date_of_birth)",
+    )
     .eq("studio_id", studioId)
     .eq("role", "member")
 
@@ -132,6 +134,7 @@ export default async function MembersPage() {
       full_name: string | null
       email: string | null
       phone: string | null
+      date_of_birth: string | null
     }
     const lastBooking = lastBookingByProfile[profile.id] ?? null
     const membership = membershipByProfile[profile.id] ?? null
@@ -140,6 +143,7 @@ export default async function MembersPage() {
       name: profile.full_name ?? "Unknown",
       email: profile.email ?? "",
       phone: profile.phone ?? "",
+      dateOfBirth: profile.date_of_birth ?? null,
       credits: creditsByProfile[profile.id] ?? 0,
       totalClasses: totalAttendance[profile.id] ?? 0,
       classesThisMonth: bookingCounts[profile.id] ?? 0,

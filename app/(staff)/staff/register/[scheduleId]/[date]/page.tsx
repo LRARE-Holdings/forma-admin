@@ -3,41 +3,15 @@ import { notFound } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import { getUser, getInstructorForUser } from "@/lib/auth"
 import { getStudioId } from "@/lib/studio-context"
-import { formatTime, getInitial } from "@/lib/utils"
+import { formatTime } from "@/lib/utils"
 import { DAY_NAMES } from "@/lib/constants"
 import { ClassColorBar } from "@/components/shared/class-color-bar"
 import { CapacityRing } from "@/components/shared/capacity-ring"
-import { AttendanceDropdown } from "@/components/shared/attendance-dropdown"
+import { RegisterAttendees } from "@/components/staff/register-attendees"
 import type { AttendanceStatus } from "@/lib/types"
 
 interface Props {
   params: Promise<{ scheduleId: string; date: string }>
-}
-
-function paymentLabel(method: string) {
-  switch (method) {
-    case "pack_credit":
-      return "Pack"
-    case "membership":
-      return "Membership"
-    case "complimentary":
-      return "Comp"
-    default:
-      return "Drop-in"
-  }
-}
-
-function paymentStyle(method: string) {
-  switch (method) {
-    case "pack_credit":
-      return "bg-gold/15 text-gold"
-    case "membership":
-      return "bg-purple-100 text-purple-700"
-    case "complimentary":
-      return "bg-green-100 text-green-700"
-    default:
-      return "bg-ember/12 text-ember"
-  }
 }
 
 export default async function RegisterPage({ params }: Props) {
@@ -75,9 +49,10 @@ export default async function RegisterPage({ params }: Props) {
   const attendees = (bookings ?? []).map((b) => {
     const profile = (b as Record<string, unknown>).profiles as { full_name: string | null } | null
     return {
-      id: b.id,
+      id: b.id as string,
+      profile_id: b.profile_id as string,
       full_name: profile?.full_name ?? null,
-      payment_method: b.payment_method,
+      payment_method: b.payment_method as string,
       attendance_status: b.attendance_status as AttendanceStatus | null,
     }
   })
@@ -159,31 +134,7 @@ export default async function RegisterPage({ params }: Props) {
         </div>
 
         {/* Booked attendees */}
-        {attendees.map((att, i) => (
-          <div
-            key={att.id}
-            className="flex items-center gap-3 border-b border-sand/40 px-6 py-3 last:border-b-0"
-          >
-            <span className="w-5 text-center text-[0.72rem] font-medium text-warm-grey">
-              {i + 1}
-            </span>
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-sand font-heading text-[0.75rem] font-semibold text-cocoa">
-              {getInitial(att.full_name)}
-            </div>
-            <span className="flex-1 text-[0.88rem] font-medium text-cocoa">
-              {att.full_name ?? "Unknown"}
-            </span>
-            <span
-              className={`inline-block rounded-full px-2.5 py-0.5 text-[0.65rem] font-semibold uppercase ${paymentStyle(att.payment_method)}`}
-            >
-              {paymentLabel(att.payment_method)}
-            </span>
-            <AttendanceDropdown
-              bookingId={att.id}
-              currentStatus={att.attendance_status}
-            />
-          </div>
-        ))}
+        <RegisterAttendees attendees={attendees} />
 
         {/* Empty spots */}
         {Array.from({ length: capacity - booked }, (_, i) => (

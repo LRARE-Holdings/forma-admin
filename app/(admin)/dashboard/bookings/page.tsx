@@ -12,7 +12,7 @@ export default async function BookingsPage() {
   const { data: bookings } = await supabase
     .from("bookings")
     .select(
-      "*, profiles:profile_id(full_name, email), schedule:schedule_id(start_time, day_of_week, classes:class_id(name))"
+      "*, profile_id, profiles:profile_id(full_name, email), schedule:schedule_id(start_time, day_of_week, classes:class_id(name))"
     )
     .eq("studio_id", studioId)
     .order("created_at", { ascending: false })
@@ -86,6 +86,7 @@ export default async function BookingsPage() {
       date: booking.date as string,
       status: booking.status as string,
       payment_method: booking.payment_method as string,
+      profile_id: booking.profile_id as string,
       profile_name: bookingProfile?.full_name ?? "Unknown",
       class_name: schedule?.classes?.name ?? "—",
       start_time: schedule?.start_time ?? null,
