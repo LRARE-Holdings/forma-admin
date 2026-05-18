@@ -16,9 +16,10 @@ export const createClient = cache(async () => {
           return cookieStore.getAll()
         },
         setAll(cookiesToSet) {
+          const domain = process.env.NEXT_PUBLIC_AUTH_COOKIE_DOMAIN
           try {
             cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
+              cookieStore.set(name, value, domain ? { ...options, domain } : options)
             )
           } catch {
             // The `setAll` method was called from a Server Component.
