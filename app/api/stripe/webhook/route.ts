@@ -474,6 +474,19 @@ async function handleChargeRefunded(
   const fullyRefunded = charge.refunded
   const amountRefundedPounds = (charge.amount_refunded / 100).toFixed(2)
 
+  // If any refund on this charge was issued by the admin app (cancel flow,
+  // skip flow, holiday flow), the cancellation email already told the member
+  // about the refund — don't send a duplicate refund email from the webhook.
+  const adminInitiatedReasons = new Set([
+    "class_cancel",
+    "booking_cancel",
+    "holiday_cancel",
+  ])
+  const refundList = charge.refunds?.data ?? []
+  const skipRefundEmail = refundList.some(
+    (r) => adminInitiatedReasons.has((r.metadata?.initiated_by as string) ?? "")
+  )
+
   // Fetch studio branding once for the email
   const { data: studio } = await supabase
     .from("studios")
@@ -506,15 +519,16 @@ async function handleChargeRefunded(
         .eq("stripe_session_id", paymentIntentId)
         .eq("studio_id", studioId)
 
-      // Send refund email for the booking
-      sendRefundEmailForBooking({
-        supabase, studioId, studioName, branding,
-        profileId: bookingByPi.profile_id,
-        scheduleId: bookingByPi.schedule_id,
-        date: bookingByPi.date,
-        amountRefundedPounds,
-        fullyRefunded,
-      }).catch((err) => console.error("[webhook] Refund email failed:", err))
+      if (!skipRefundEmail) {
+        sendRefundEmailForBooking({
+          supabase, studioId, studioName, branding,
+          profileId: bookingByPi.profile_id,
+          scheduleId: bookingByPi.schedule_id,
+          date: bookingByPi.date,
+          amountRefundedPounds,
+          fullyRefunded,
+        }).catch((err) => console.error("[webhook] Refund email failed:", err))
+      }
     }
 
     if (fullyRefunded && packByPi) {
@@ -524,14 +538,15 @@ async function handleChargeRefunded(
         .eq("stripe_session_id", paymentIntentId)
         .eq("studio_id", studioId)
 
-      // Send refund email for the pack
-      sendRefundEmailForPack({
-        supabase, studioId, studioName, branding,
-        profileId: packByPi.profile_id,
-        creditsTotal: packByPi.credits_total,
-        amountRefundedPounds,
-        fullyRefunded,
-      }).catch((err) => console.error("[webhook] Refund email failed:", err))
+      if (!skipRefundEmail) {
+        sendRefundEmailForPack({
+          supabase, studioId, studioName, branding,
+          profileId: packByPi.profile_id,
+          creditsTotal: packByPi.credits_total,
+          amountRefundedPounds,
+          fullyRefunded,
+        }).catch((err) => console.error("[webhook] Refund email failed:", err))
+      }
     }
 
     return
@@ -565,7 +580,7 @@ async function handleChargeRefunded(
     .eq("stripe_session_id", session.id)
     .eq("studio_id", studioId)
 
-  if (legacyBooking) {
+  if (legacyBooking && !skipRefundEmail) {
     sendRefundEmailForBooking({
       supabase, studioId, studioName, branding,
       profileId: legacyBooking.profile_id,
@@ -583,7 +598,7 @@ async function handleChargeRefunded(
       .eq("stripe_session_id", session.id)
       .eq("studio_id", studioId)
 
-    if (legacyPack) {
+    if (legacyPack && !skipRefundEmail) {
       sendRefundEmailForPack({
         supabase, studioId, studioName, branding,
         profileId: legacyPack.profile_id,

@@ -14,7 +14,7 @@ export async function skipClassInstance(
   scheduleId: string,
   date: string,
   reason?: string
-): Promise<{ cancelledCount: number; error?: string }> {
+): Promise<{ cancelledCount: number; refundedCount: number; refundFailedCount: number; error?: string }> {
   await requireManager()
   const studioId = await getStudioId()
   const supabase = await createClient()
@@ -30,7 +30,12 @@ export async function skipClassInstance(
 
   if (error) {
     if (error.code === "23505") {
-      return { cancelledCount: 0, error: "This class is already skipped for this date" }
+      return {
+        cancelledCount: 0,
+        refundedCount: 0,
+        refundFailedCount: 0,
+        error: "This class is already skipped for this date",
+      }
     }
     throw new Error(error.message)
   }

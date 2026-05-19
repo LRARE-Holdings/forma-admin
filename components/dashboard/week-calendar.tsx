@@ -6,6 +6,9 @@ import { CalendarSlotBlock } from "./calendar-slot-block"
 import { CalendarSlotPopover } from "./calendar-slot-popover"
 import { AddClassDialog } from "./add-class-dialog"
 import { ScheduleFormDialog } from "./schedule-form-dialog"
+import { ScheduleRuleDialog } from "./schedule-rule-dialog"
+import { getScheduleRule } from "@/app/actions/schedule-rules"
+import { toast } from "sonner"
 import { EmptyState } from "@/components/shared/empty-state"
 import { DAY_SHORT } from "@/lib/constants"
 import { formatTime, localDateStr, dateToDateStr } from "@/lib/utils"
@@ -139,9 +142,6 @@ export function WeekCalendar({
     end_time: string
     starts_on: string
     ends_on: string | null
-    is_active: boolean
-    className: string
-    instructorName: string
   } | null>(null)
 
   // Mobile
@@ -188,19 +188,27 @@ export function WeekCalendar({
     setAddOpen(true)
   }
 
-  function handleEditSlot(slot: WeekSlot) {
+  async function handleEditSlot(slot: WeekSlot) {
     if (slot.ruleId) {
-      // For recurring slots, open the rule editor
-      // We don't have full rule data from WeekSlot, so open the form editor instead
-      setEditingSlot({
-        id: slot.scheduleId,
-        class_id: slot.classId,
-        instructor_id: slot.instructorId,
-        day_of_week: slot.dayOfWeek,
-        start_time: slot.startTime,
-        end_time: slot.endTime,
+      // Recurring class — fetch the rule and open the rule editor so the user
+      // can apply changes from a future date without disturbing past weeks
+      const rule = await getScheduleRule(slot.ruleId)
+      if (!rule) {
+        toast.error("Couldn't load this recurring class")
+        return
+      }
+      setEditingRule({
+        id: rule.id,
+        class_id: rule.class_id,
+        instructor_id: rule.instructor_id,
+        recurrence: rule.recurrence,
+        day_of_week: rule.day_of_week,
+        start_time: rule.start_time,
+        end_time: rule.end_time,
+        starts_on: rule.starts_on,
+        ends_on: rule.ends_on,
       })
-      setEditFormOpen(true)
+      setEditRuleOpen(true)
     } else {
       setEditingSlot({
         id: slot.scheduleId,
@@ -214,8 +222,18 @@ export function WeekCalendar({
     }
   }
 
-  function isHolidayDate(dateStr: string): boolean {
+  function isAllDayHoliday(dateStr: string): boolean {
     return holidays.some(
+      (h) =>
+        dateStr >= h.start_date &&
+        dateStr <= h.end_date &&
+        !h.start_time &&
+        !h.end_time
+    )
+  }
+
+  function holidaysOnDate(dateStr: string) {
+    return holidays.filter(
       (h) => dateStr >= h.start_date && dateStr <= h.end_date
     )
   }
@@ -271,6 +289,21 @@ export function WeekCalendar({
                 Today
               </button>
             )}
+            <div className="flex overflow-hidden rounded-full border border-sand">
+              <button
+                className="bg-cocoa px-3 py-1 text-[0.72rem] font-semibold text-wheat"
+                disabled
+              >
+                Week
+              </button>
+              <button
+                onClick={() => navigateToWeek("/dashboard/timetable?view=month")}
+                disabled={isPending}
+                className="px-3 py-1 text-[0.72rem] font-semibold text-warm-grey transition-colors hover:bg-cream disabled:opacity-50"
+              >
+                Month
+              </button>
+            </div>
           </div>
         </div>
 
@@ -324,9 +357,9 @@ export function WeekCalendar({
               .filter((s) => s.dayOfWeek === dayOfWeek)
               .sort((a, b) => a.startTime.localeCompare(b.startTime))
 
-            const holidayForDay = holidays.find(
-              (h) => dateStr >= h.start_date && dateStr <= h.end_date
-            )
+            const dayHolidays = holidaysOnDate(dateStr)
+            const allDay = dayHolidays.find((h) => !h.start_time && !h.end_time)
+            const partials = dayHolidays.filter((h) => h.start_time && h.end_time)
 
             return (
               <div
@@ -348,14 +381,31 @@ export function WeekCalendar({
                   />
                 ))}
 
-                {/* Holiday overlay */}
-                {holidayForDay && (
+                {/* Full-day holiday overlay */}
+                {allDay && (
                   <div className="pointer-events-none absolute inset-0 z-10 flex items-start justify-center bg-ember/6 pt-3">
                     <span className="rounded-full bg-ember/15 px-2.5 py-0.5 text-[0.62rem] font-semibold text-ember">
-                      {holidayForDay.name}
+                      {allDay.name}
                     </span>
                   </div>
                 )}
+
+                {/* Partial-day holiday bands */}
+                {!allDay &&
+                  partials.map((h) => {
+                    const pos = getSlotPosition(h.start_time!, h.end_time!)
+                    return (
+                      <div
+                        key={h.id}
+                        className="pointer-events-none absolute left-0 right-0 z-[5] flex items-start justify-center bg-ember/8"
+                        style={{ top: `${pos.top}px`, height: `${pos.height}px` }}
+                      >
+                        <span className="mt-1 rounded-full bg-ember/15 px-2 py-0.5 text-[0.6rem] font-semibold text-ember">
+                          {h.name}
+                        </span>
+                      </div>
+                    )
+                  })}
 
                 {/* Slot blocks */}
                 {daySlots.map((slot) => (
@@ -439,12 +489,18 @@ export function WeekCalendar({
           ))}
         </div>
 
-        {/* Holiday indicator */}
-        {isHolidayDate(mobileDayDate) && (
-          <div className="mb-3 rounded-xl bg-ember/10 px-4 py-2.5 text-center text-[0.82rem] font-medium text-cocoa">
-            🏖️ Studio holiday
+        {/* Holiday indicator(s) */}
+        {holidaysOnDate(mobileDayDate).map((h) => (
+          <div
+            key={h.id}
+            className="mb-3 rounded-xl bg-ember/10 px-4 py-2.5 text-center text-[0.82rem] font-medium text-cocoa"
+          >
+            🏖️ {h.name}
+            {h.start_time && h.end_time
+              ? ` (${formatTime(h.start_time)}–${formatTime(h.end_time)})`
+              : ""}
           </div>
-        )}
+        ))}
 
         {/* Day slots */}
         <div className="space-y-2">
@@ -508,8 +564,8 @@ export function WeekCalendar({
           )}
         </div>
 
-        {/* Add button */}
-        {!mobileDayIsPast && !isHolidayDate(mobileDayDate) && (
+        {/* Add button — hidden on full-day holidays only */}
+        {!mobileDayIsPast && !isAllDayHoliday(mobileDayDate) && (
           <button
             onClick={() => {
               setAddDefaults({
@@ -555,7 +611,7 @@ export function WeekCalendar({
         defaultStartTime={addDefaults.startTime}
       />
 
-      {/* Edit slot dialog */}
+      {/* Edit slot dialog (one-off slots) */}
       <ScheduleFormDialog
         open={editFormOpen}
         onOpenChange={setEditFormOpen}
@@ -566,6 +622,19 @@ export function WeekCalendar({
         }))}
         instructors={instructors}
         editingSlot={editingSlot}
+      />
+
+      {/* Edit recurring rule dialog */}
+      <ScheduleRuleDialog
+        open={editRuleOpen}
+        onOpenChange={setEditRuleOpen}
+        classes={classes.map((c) => ({
+          id: c.id,
+          name: c.name,
+          duration_mins: c.duration_mins,
+        }))}
+        instructors={instructors}
+        editingRule={editingRule}
       />
     </>
   )

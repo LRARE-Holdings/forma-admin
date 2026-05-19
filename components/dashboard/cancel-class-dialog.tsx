@@ -48,12 +48,21 @@ export function CancelClassDialog({
       const result = await cancelClassInstance(scheduleId, date, reason || undefined)
       if (result.error) {
         toast.error(result.error)
-      } else {
+      } else if (result.cancelledCount > 0) {
+        const refundPart =
+          result.refundedCount > 0
+            ? `, ${result.refundedCount} refund${result.refundedCount !== 1 ? "s" : ""} issued`
+            : ""
         toast.success(
-          result.cancelledCount > 0
-            ? `Class cancelled \u2014 ${result.cancelledCount} booking${result.cancelledCount !== 1 ? "s" : ""} cancelled and members notified`
-            : "Class cancelled \u2014 no bookings to cancel"
+          `Class cancelled \u2014 ${result.cancelledCount} booking${result.cancelledCount !== 1 ? "s" : ""} cancelled${refundPart}`
         )
+        if (result.refundFailedCount > 0) {
+          toast.error(
+            `${result.refundFailedCount} refund${result.refundFailedCount !== 1 ? "s" : ""} couldn't be processed \u2014 refund manually in Stripe`
+          )
+        }
+      } else {
+        toast.success("Class cancelled")
       }
       onOpenChange(false)
       setReason("")

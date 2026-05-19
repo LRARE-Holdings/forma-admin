@@ -3,7 +3,8 @@ import { getStudioId } from "@/lib/studio-context"
 import { PageHeader } from "@/components/shared/page-header"
 import { HolidayBanner } from "@/components/dashboard/holiday-banner"
 import { TimetableShell } from "@/components/dashboard/timetable-shell"
-import { getWeekData } from "@/lib/schedule-utils"
+import { MonthCalendar } from "@/components/dashboard/month-calendar"
+import { getWeekData, getMonthData } from "@/lib/schedule-utils"
 import { dateToDateStr, localDateStr } from "@/lib/utils"
 
 // Page is automatically dynamic (reads searchParams).
@@ -11,7 +12,7 @@ import { dateToDateStr, localDateStr } from "@/lib/utils"
 // and by staleTimes.dynamic = 0 in next.config.ts.
 
 interface TimetablePageProps {
-  searchParams: Promise<{ week?: string }>
+  searchParams: Promise<{ week?: string; view?: string; month?: string }>
 }
 
 export default async function TimetablePage({
@@ -20,6 +21,7 @@ export default async function TimetablePage({
   const params = await searchParams
   const studioId = await getStudioId()
   const supabase = await createClient()
+  const view = params.view === "month" ? "month" : "week"
 
   // Resolve week start (always a Monday)
   function getMondayStr(date: Date): string {
@@ -30,17 +32,8 @@ export default async function TimetablePage({
     return dateToDateStr(monday)
   }
 
-  let weekStart: string
-  if (params.week) {
-    weekStart = getMondayStr(new Date(params.week + "T00:00:00"))
-  } else {
-    // Use UK date to avoid UTC day-boundary issues during BST
-    weekStart = getMondayStr(new Date(localDateStr() + "T12:00:00Z"))
-  }
-
-  // Fetch week data and class/instructor options in parallel
-  const [weekData, classesRes, instructorsRes] = await Promise.all([
-    getWeekData(studioId, weekStart),
+  // Fetch class/instructor options once
+  const [classesRes, instructorsRes] = await Promise.all([
     supabase
       .from("classes")
       .select("id, name, slug, price_pence, capacity, duration_mins")
@@ -66,6 +59,47 @@ export default async function TimetablePage({
     id: i.id as string,
     name: i.name as string,
   }))
+
+  if (view === "month") {
+    // YYYY-MM, default to current UK month
+    const todayStr = localDateStr()
+    const monthStr =
+      params.month && /^\d{4}-\d{2}$/.test(params.month)
+        ? params.month
+        : todayStr.slice(0, 7)
+
+    const monthData = await getMonthData(studioId, monthStr)
+
+    return (
+      <>
+        <PageHeader
+          title="Timetable"
+          description="Plan your month at a glance."
+        />
+        <HolidayBanner holidays={monthData.holidays} />
+        <MonthCalendar
+          slots={monthData.slots}
+          holidays={monthData.holidays}
+          monthStart={monthData.monthStart}
+          monthEnd={monthData.monthEnd}
+          gridStart={monthData.gridStart}
+          gridEnd={monthData.gridEnd}
+          classes={classes}
+          instructors={instructors}
+        />
+      </>
+    )
+  }
+
+  // Week view (default)
+  let weekStart: string
+  if (params.week) {
+    weekStart = getMondayStr(new Date(params.week + "T00:00:00"))
+  } else {
+    weekStart = getMondayStr(new Date(localDateStr() + "T12:00:00Z"))
+  }
+
+  const weekData = await getWeekData(studioId, weekStart)
 
   const isCurrentWeek = weekStart === getMondayStr(new Date(localDateStr() + "T12:00:00Z"))
 

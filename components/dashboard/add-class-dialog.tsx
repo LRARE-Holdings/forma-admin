@@ -60,7 +60,7 @@ const RECURRENCE_OPTIONS = [
   { value: "monthly", label: "Monthly" },
 ]
 
-type EndMode = "forever" | "until_date" | "after_weeks"
+type EndMode = "forever" | "until_date" | "after_weeks" | "this_month"
 
 function addMinutes(time: string, minutes: number): string {
   const [h, m] = time.split(":").map(Number)
@@ -74,6 +74,18 @@ function addWeeks(dateStr: string, weeks: number): string {
   const d = new Date(dateStr + "T00:00:00")
   d.setDate(d.getDate() + weeks * 7)
   return dateToDateStr(d)
+}
+
+function endOfMonth(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00")
+  return dateToDateStr(new Date(d.getFullYear(), d.getMonth() + 1, 0))
+}
+
+function monthName(dateStr: string): string {
+  if (!dateStr) return ""
+  return new Date(dateStr + "T00:00:00").toLocaleDateString("en-GB", {
+    month: "long",
+  })
 }
 
 export function AddClassDialog({
@@ -144,6 +156,8 @@ export function AddClassDialog({
           formData.set("ends_on", endsOn)
         } else if (endMode === "after_weeks" && afterWeeks > 0) {
           formData.set("ends_on", addWeeks(defaultDate, afterWeeks))
+        } else if (endMode === "this_month") {
+          formData.set("ends_on", endOfMonth(defaultDate))
         }
         // "forever" → no ends_on
 
@@ -311,6 +325,12 @@ export function AddClassDialog({
                   {(
                     [
                       { value: "forever", label: "Runs forever" },
+                      {
+                        value: "this_month",
+                        label: defaultDate
+                          ? `Just for ${monthName(defaultDate)}`
+                          : "Just this month",
+                      },
                       { value: "until_date", label: "Until date" },
                       { value: "after_weeks", label: "After X weeks" },
                     ] as const
@@ -329,6 +349,21 @@ export function AddClassDialog({
                     </button>
                   ))}
                 </div>
+                {endMode === "this_month" && defaultDate && (
+                  <p className="mt-2 text-[0.7rem] text-warm-grey">
+                    This class will only appear from{" "}
+                    {new Date(defaultDate + "T00:00:00").toLocaleDateString("en-GB", {
+                      day: "numeric",
+                      month: "short",
+                    })}{" "}
+                    to{" "}
+                    {new Date(endOfMonth(defaultDate) + "T00:00:00").toLocaleDateString("en-GB", {
+                      day: "numeric",
+                      month: "short",
+                    })}
+                    .
+                  </p>
+                )}
                 {endMode === "until_date" && (
                   <div className="mt-2">
                     <Input

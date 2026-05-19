@@ -116,17 +116,25 @@ interface ClassCancelledParams {
   time: string
   reason?: string
   creditRestored: boolean
+  refundPence?: number | null
+  refundFailed?: boolean
   studioName: string
   branding?: StudioBranding | null
 }
 
 export function classCancelledEmail(params: ClassCancelledParams) {
-  const { memberName, className, date, time, reason, creditRestored, studioName, branding } = params
+  const { memberName, className, date, time, reason, creditRestored, refundPence, refundFailed, studioName, branding } = params
   const c = resolveColors(branding)
 
   const creditLine = creditRestored
     ? `<p style="margin:16px 0 0;font-size:14px;color:${c.cocoa};"><strong>Your class credit has been restored</strong> and is ready to use for another booking.</p>`
     : ""
+
+  const refundLine = refundPence && refundPence > 0
+    ? `<p style="margin:16px 0 0;font-size:14px;color:${c.cocoa};"><strong>A refund of £${(refundPence / 100).toFixed(2)}</strong> has been issued to the card you paid with. It usually takes 5–10 business days to appear on your statement.</p>`
+    : refundFailed
+      ? `<p style="margin:16px 0 0;font-size:14px;color:${c.cocoa};">A refund will be arranged for you shortly. If you don't see it within a few days, please contact the studio.</p>`
+      : ""
 
   const reasonLine = reason
     ? `<p style="margin:16px 0 0;font-size:14px;color:${c.warmGrey};"><strong>Reason:</strong> ${reason}</p>`
@@ -145,6 +153,7 @@ export function classCancelledEmail(params: ClassCancelledParams) {
     </table>
     ${reasonLine}
     ${creditLine}
+    ${refundLine}
     <p style="margin:24px 0 0;font-size:14px;color:${c.warmGrey};">We apologise for the inconvenience. We look forward to seeing you at another class soon.</p>`
 
   return {
@@ -161,17 +170,25 @@ interface BookingCancelledParams {
   date: string
   time: string
   creditRestored: boolean
+  refundPence?: number | null
+  refundFailed?: boolean
   studioName: string
   branding?: StudioBranding | null
 }
 
 export function bookingCancelledEmail(params: BookingCancelledParams) {
-  const { memberName, className, date, time, creditRestored, studioName, branding } = params
+  const { memberName, className, date, time, creditRestored, refundPence, refundFailed, studioName, branding } = params
   const c = resolveColors(branding)
 
   const creditLine = creditRestored
     ? `<p style="margin:16px 0 0;font-size:14px;color:${c.cocoa};"><strong>Your class credit has been restored</strong> and is ready to use for another booking.</p>`
     : ""
+
+  const refundLine = refundPence && refundPence > 0
+    ? `<p style="margin:16px 0 0;font-size:14px;color:${c.cocoa};"><strong>A refund of £${(refundPence / 100).toFixed(2)}</strong> has been issued to the card you paid with. It usually takes 5–10 business days to appear on your statement.</p>`
+    : refundFailed
+      ? `<p style="margin:16px 0 0;font-size:14px;color:${c.cocoa};">A refund will be arranged for you shortly. If you don't see it within a few days, please contact the studio.</p>`
+      : ""
 
   const body = `
     <p style="margin:0 0 16px;font-size:15px;color:${c.cocoa};">Hi ${memberName},</p>
@@ -185,6 +202,7 @@ export function bookingCancelledEmail(params: BookingCancelledParams) {
       </td></tr>
     </table>
     ${creditLine}
+    ${refundLine}
     <p style="margin:24px 0 0;font-size:14px;color:${c.warmGrey};">If you have any questions, please get in touch with us.</p>`
 
   return {

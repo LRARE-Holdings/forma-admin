@@ -26,6 +26,7 @@ interface HolidayBannerProps {
 
 export function HolidayBanner({ holidays }: HolidayBannerProps) {
   const [addOpen, setAddOpen] = useState(false)
+  const [partial, setPartial] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deletingHoliday, setDeletingHoliday] = useState<StudioHoliday | null>(
     null
@@ -37,14 +38,30 @@ export function HolidayBanner({ holidays }: HolidayBannerProps) {
   const relevantHolidays = holidays.filter((h) => h.end_date >= today)
 
   async function handleAddHoliday(formData: FormData) {
+    if (!partial) {
+      formData.delete("start_time")
+      formData.delete("end_time")
+    }
     try {
       const result = await createStudioHoliday(formData)
-      toast.success(
-        result.totalCancelled > 0
-          ? `Holiday created — ${result.totalCancelled} booking${result.totalCancelled !== 1 ? "s" : ""} cancelled and members notified`
-          : "Holiday created"
-      )
+      if (result.totalCancelled > 0) {
+        const refundPart =
+          result.totalRefunded > 0
+            ? `, ${result.totalRefunded} refund${result.totalRefunded !== 1 ? "s" : ""} issued`
+            : ""
+        toast.success(
+          `Holiday created — ${result.totalCancelled} booking${result.totalCancelled !== 1 ? "s" : ""} cancelled${refundPart}`
+        )
+        if (result.totalRefundFailed > 0) {
+          toast.error(
+            `${result.totalRefundFailed} refund${result.totalRefundFailed !== 1 ? "s" : ""} couldn't be processed — refund manually in Stripe`
+          )
+        }
+      } else {
+        toast.success("Holiday created")
+      }
       setAddOpen(false)
+      setPartial(false)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to create holiday")
     }
@@ -70,6 +87,11 @@ export function HolidayBanner({ holidays }: HolidayBannerProps) {
       day: "numeric",
       month: "short",
     })
+  }
+
+  function formatTime(t: string) {
+    // Accept "HH:MM" or "HH:MM:SS" — drop seconds for display
+    return t.slice(0, 5)
   }
 
   return (
@@ -113,6 +135,9 @@ export function HolidayBanner({ holidays }: HolidayBannerProps) {
                       </span>
                       <span className="ml-2 text-[0.72rem] text-warm-grey">
                         {formatDate(h.start_date)}–{formatDate(h.end_date)}
+                        {h.start_time && h.end_time
+                          ? ` · ${formatTime(h.start_time)}–${formatTime(h.end_time)}`
+                          : ""}
                       </span>
                     </div>
                   </div>
@@ -166,10 +191,61 @@ export function HolidayBanner({ holidays }: HolidayBannerProps) {
                 <Input id="holiday-end" name="end_date" type="date" required />
               </div>
             </div>
+
+            {/* Scope: all-day vs partial-day */}
+            <div>
+              <Label>Scope</Label>
+              <div className="mt-1.5 flex gap-1.5">
+                {(
+                  [
+                    { value: false, label: "All day" },
+                    { value: true, label: "Specific hours" },
+                  ] as const
+                ).map((opt) => (
+                  <button
+                    key={String(opt.value)}
+                    type="button"
+                    onClick={() => setPartial(opt.value)}
+                    className={`rounded-full border px-3.5 py-1.5 text-[0.78rem] font-semibold transition-all ${
+                      partial === opt.value
+                        ? "border-cocoa bg-cocoa text-wheat"
+                        : "border-sand bg-white text-slate hover:border-gold"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              {partial && (
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <div>
+                    <Label htmlFor="holiday-start-time">From</Label>
+                    <Input
+                      id="holiday-start-time"
+                      name="start_time"
+                      type="time"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="holiday-end-time">Until</Label>
+                    <Input
+                      id="holiday-end-time"
+                      name="end_time"
+                      type="time"
+                      required
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="rounded-lg bg-ember/10 px-4 py-3 text-[0.78rem] text-cocoa">
-              All confirmed bookings in this date range will be automatically
-              cancelled. Members will receive a cancellation email and any pack
-              credits will be restored.
+              {partial
+                ? "Only classes that start inside this time window on the chosen dates will be cancelled."
+                : "All classes during this period will be cancelled."}{" "}
+              Members will receive a cancellation email, pack credits will be
+              restored, and drop-in payers will be refunded.
             </div>
             <DialogFooter>
               <SubmitButton>Create holiday</SubmitButton>

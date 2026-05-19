@@ -47,12 +47,21 @@ export function SkipClassDialog({
       const result = await skipClassInstance(scheduleId, date, reason || undefined)
       if (result.error) {
         toast.error(result.error)
-      } else {
+      } else if (result.cancelledCount > 0) {
+        const refundPart =
+          result.refundedCount > 0
+            ? `, ${result.refundedCount} refund${result.refundedCount !== 1 ? "s" : ""} issued`
+            : ""
         toast.success(
-          result.cancelledCount > 0
-            ? `Class skipped — ${result.cancelledCount} booking${result.cancelledCount !== 1 ? "s" : ""} cancelled and members notified`
-            : "Class skipped for this week"
+          `Class skipped — ${result.cancelledCount} booking${result.cancelledCount !== 1 ? "s" : ""} cancelled${refundPart}`
         )
+        if (result.refundFailedCount > 0) {
+          toast.error(
+            `${result.refundFailedCount} refund${result.refundFailedCount !== 1 ? "s" : ""} couldn't be processed — refund manually in Stripe`
+          )
+        }
+      } else {
+        toast.success("Class skipped for this week")
       }
       onOpenChange(false)
       setReason("")

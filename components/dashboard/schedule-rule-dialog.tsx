@@ -18,8 +18,12 @@ import {
   SelectItem,
 } from "@/components/ui/select"
 import { SubmitButton } from "@/components/shared/submit-button"
-import { createScheduleRule, updateScheduleRule } from "@/app/actions/schedule-rules"
-import { dateToDateStr } from "@/lib/utils"
+import {
+  createScheduleRule,
+  splitScheduleRule,
+  updateScheduleRule,
+} from "@/app/actions/schedule-rules"
+import { dateToDateStr, localDateStr } from "@/lib/utils"
 import { toast } from "sonner"
 
 interface ClassOption {
@@ -93,6 +97,22 @@ function getDuration(startTime: string, endTime: string): string {
 }
 
 type EndMode = "forever" | "until_date" | "after_weeks"
+type ApplyMode = "immediate" | "future_date"
+
+/**
+ * Suggest a sensible "apply from" date for edits: if we're within ~2 weeks of
+ * a month boundary, push changes to the 1st of next month so admins can plan
+ * the next month without disturbing the current one (Lucy's TeamUp workflow).
+ * Otherwise just default to today.
+ */
+function suggestApplyFromDate(): string {
+  const today = new Date(localDateStr() + "T00:00:00")
+  const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1)
+  const daysUntilNext = Math.round(
+    (nextMonth.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+  )
+  return daysUntilNext <= 14 ? dateToDateStr(nextMonth) : dateToDateStr(today)
+}
 
 export function ScheduleRuleDialog({
   open,
@@ -112,6 +132,8 @@ export function ScheduleRuleDialog({
   const [endMode, setEndMode] = useState<EndMode>("forever")
   const [endsOn, setEndsOn] = useState("")
   const [afterWeeks, setAfterWeeks] = useState("12")
+  const [applyMode, setApplyMode] = useState<ApplyMode>("immediate")
+  const [applyFrom, setApplyFrom] = useState("")
 
   // Calculate default start date (next occurrence of selected day)
   function getDefaultStartDate(dow: number): string {
@@ -146,6 +168,17 @@ export function ScheduleRuleDialog({
         setEndMode("forever")
         setEndsOn("")
       }
+      const suggested = suggestApplyFromDate()
+      const today = localDateStr()
+      // If today is "soon to be new month," start out on the future_date mode
+      // pre-filled with the suggestion; otherwise default to immediate
+      if (suggested !== today) {
+        setApplyMode("future_date")
+        setApplyFrom(suggested)
+      } else {
+        setApplyMode("immediate")
+        setApplyFrom(suggested)
+      }
     } else if (!open) {
       setClassId("")
       setInstructorId("")
@@ -155,6 +188,8 @@ export function ScheduleRuleDialog({
       setEndMode("forever")
       setEndsOn("")
       setAfterWeeks("12")
+      setApplyMode("immediate")
+      setApplyFrom("")
       formRef.current?.reset()
     }
   }, [open, editingRule])
@@ -165,8 +200,19 @@ export function ScheduleRuleDialog({
       return
     }
 
-    // Calculate the actual ends_on value
-    const startsOn = formData.get("starts_on") as string
+    // When creating, the user picked starts_on; when editing and splitting,
+    // applyFrom acts as the new rule's starts_on
+    const startsOn = isEditing
+      ? applyMode === "future_date"
+        ? applyFrom
+        : editingRule!.starts_on
+      : (formData.get("starts_on") as string)
+
+    if (!startsOn) {
+      toast.error("Please pick a start date")
+      return
+    }
+
     let finalEndsOn: string | null = null
     if (endMode === "until_date") {
       finalEndsOn = endsOn || null
@@ -196,8 +242,13 @@ export function ScheduleRuleDialog({
 
     try {
       if (isEditing) {
-        await updateScheduleRule(editingRule!.id, fd)
-        toast.success("Schedule rule updated")
+        if (applyMode === "future_date" && applyFrom > editingRule!.starts_on) {
+          await splitScheduleRule(editingRule!.id, applyFrom, fd)
+          toast.success(`Changes applied from ${applyFrom}`)
+        } else {
+          await updateScheduleRule(editingRule!.id, fd)
+          toast.success("Schedule rule updated")
+        }
       } else {
         await createScheduleRule(fd)
         toast.success("Recurring class added")
@@ -331,18 +382,62 @@ export function ScheduleRuleDialog({
             </div>
           </div>
 
-          {/* Starts on */}
-          <div>
-            <Label htmlFor="starts_on">Starts</Label>
-            <Input
-              id="starts_on"
-              name="starts_on"
-              type="date"
-              required
-              defaultValue={editingRule?.starts_on ?? defaultStartDate}
-              key={`start-${dayOfWeek}-${editingRule?.id ?? "new"}`}
-            />
-          </div>
+          {/* Starts on — only when creating a brand new rule */}
+          {!isEditing && (
+            <div>
+              <Label htmlFor="starts_on">Starts</Label>
+              <Input
+                id="starts_on"
+                name="starts_on"
+                type="date"
+                required
+                defaultValue={defaultStartDate}
+                key={`start-${dayOfWeek}-new`}
+              />
+            </div>
+          )}
+
+          {/* Apply changes from — only when editing */}
+          {isEditing && (
+            <div>
+              <Label>Apply changes from</Label>
+              <div className="mt-1.5 flex gap-1.5">
+                {(
+                  [
+                    { value: "immediate", label: "Right away" },
+                    { value: "future_date", label: "A future date" },
+                  ] as const
+                ).map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setApplyMode(opt.value)}
+                    className={`rounded-full border px-3.5 py-1.5 text-[0.78rem] font-semibold transition-all ${
+                      applyMode === opt.value
+                        ? "border-cocoa bg-cocoa text-wheat"
+                        : "border-sand bg-white text-slate hover:border-gold"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              {applyMode === "future_date" && (
+                <div className="mt-2">
+                  <Input
+                    type="date"
+                    value={applyFrom}
+                    min={localDateStr()}
+                    onChange={(e) => setApplyFrom(e.target.value)}
+                  />
+                  <p className="mt-1 text-[0.68rem] text-warm-grey">
+                    Classes before this date keep the current setup. The new
+                    settings take effect from this date onwards.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Ends */}
           <div>

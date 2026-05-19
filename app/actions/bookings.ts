@@ -13,6 +13,7 @@ import { getWeekData } from "@/lib/schedule-utils"
 import { sendBookingConfirmation } from "@/lib/email/booking-confirmation"
 import { sendBookingNotification } from "@/lib/email/booking-notification"
 import { sendBookingCancellationNotification } from "@/lib/email/booking-cancellation-notification"
+import { issueAdminRefund } from "@/lib/stripe/refunds"
 import type { AttendanceStatus } from "@/lib/types"
 
 export interface SessionOption {
@@ -229,6 +230,44 @@ export async function cancelBooking(bookingId: string) {
     }
   }
 
+  // Issue Stripe refund for drop-in payers
+  let refundPence: number | null = null
+  let refundFailed = false
+  if (booking.payment_method === "stripe" && booking.stripe_session_id) {
+    const { data: studio } = await supabase
+      .from("studios")
+      .select("stripe_account_id, stripe_onboarding_complete")
+      .eq("id", studioId)
+      .single()
+
+    const connectedAccountId =
+      studio?.stripe_onboarding_complete && studio?.stripe_account_id
+        ? (studio.stripe_account_id as string)
+        : null
+
+    if (connectedAccountId) {
+      const refund = await issueAdminRefund({
+        stripeId: booking.stripe_session_id as string,
+        connectedAccountId,
+        initiatedBy: "booking_cancel",
+        bookingId: booking.id,
+      })
+      if (refund.ok) {
+        refundPence = refund.amountPence
+      } else {
+        refundFailed = true
+        console.error("[bookings] Refund failed for booking", booking.id, "—", refund.reason)
+      }
+    } else {
+      refundFailed = true
+      console.error(
+        "[bookings] Cannot refund booking",
+        booking.id,
+        "— studio has no connected Stripe account"
+      )
+    }
+  }
+
   const { error } = await supabase
     .from("bookings")
     .update({ status: "cancelled", cancelled_by: "admin" })
@@ -264,6 +303,8 @@ export async function cancelBooking(bookingId: string) {
       date: formattedDate,
       time: formatTime(schedule.start_time),
       creditRestored: booking.payment_method === "pack_credit",
+      refundPence,
+      refundFailed,
       studioName: studio?.name ?? "Your studio",
       branding: studio?.branding as StudioBranding | null,
     })

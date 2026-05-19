@@ -325,7 +325,8 @@ export function CalendarSlotPopover({
             {/* Status badges */}
             {childSlot.isSkipped && (
               <div className="rounded-lg bg-sand/50 px-3 py-2 text-[0.78rem] text-warm-grey">
-                This class is <strong>skipped</strong> this week.
+                This class is <strong>cancelled</strong>
+                {childSlot.ruleId ? " this week" : ""}.
               </div>
             )}
             {childSlot.isHoliday && (

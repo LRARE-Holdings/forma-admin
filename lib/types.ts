@@ -278,13 +278,18 @@ export interface ScheduleException {
   created_at: string
 }
 
-// Studio holidays (closure periods)
+// Studio holidays (closure periods).
+// start_time/end_time are NULL for all-day closures; when set, only classes
+// whose start_time falls inside that window on dates in [start_date, end_date]
+// are affected.
 export interface StudioHoliday {
   id: string
   studio_id: string
   name: string
   start_date: string
   end_date: string
+  start_time: string | null
+  end_time: string | null
   created_at: string
 }
 
@@ -315,4 +320,13 @@ export interface WeekData {
   holidays: StudioHoliday[]
   weekStart: string
   weekEnd: string
+}
+
+export interface MonthData {
+  slots: WeekSlot[]
+  holidays: StudioHoliday[]
+  monthStart: string // YYYY-MM-DD (1st of month)
+  monthEnd: string // YYYY-MM-DD (last of month)
+  gridStart: string // YYYY-MM-DD (Mon ≤ monthStart)
+  gridEnd: string // YYYY-MM-DD (Sun ≥ monthEnd)
 }
