@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,7 +8,6 @@ import { Label } from "@/components/ui/label"
 import { Mail, Lock, Loader2, CheckCircle, ArrowLeft } from "lucide-react"
 
 export function LoginForm() {
-  const router = useRouter()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
@@ -34,9 +32,11 @@ export function LoginForm() {
       return
     }
 
-    // Supabase session is now set in cookies — let the server
-    // resolve the user's role and redirect appropriately
-    router.refresh()
+    // Hard-navigate to the root so the proxy sees the freshly-set auth
+    // cookies and routes by role. router.refresh() is unreliable on mobile
+    // Safari — cookies just written via document.cookie aren't always
+    // included in the RSC fetch, leaving the user stuck on /login.
+    window.location.assign("/")
   }
 
   async function handleForgotPassword(e: React.FormEvent) {
