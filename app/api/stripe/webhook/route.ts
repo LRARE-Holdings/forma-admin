@@ -149,6 +149,7 @@ async function handlePaymentIntentSucceeded(
     await supabase.from("class_packs").insert({
       studio_id: studioId,
       profile_id: profileId,
+      pack_tier_id: packTierId,
       pack_type: String(tier.credits),
       credits_total: tier.credits,
       credits_remaining: tier.credits,
@@ -293,6 +294,7 @@ async function handleCheckoutCompleted(
     await supabase.from("class_packs").insert({
       studio_id: studioId,
       profile_id: profileId,
+      pack_tier_id: packTierId,
       pack_type: String(tier.credits),
       credits_total: tier.credits,
       credits_remaining: tier.credits,

@@ -206,6 +206,7 @@ export interface ClassPack {
   id: string
   studio_id: string
   profile_id: string
+  pack_tier_id: string | null
   pack_type: PackType
   credits_total: number
   credits_remaining: number
@@ -225,6 +226,12 @@ export interface PackTier {
   is_active: boolean
   stripe_product_id: string | null
   stripe_price_id: string | null
+  created_at: string
+}
+
+export interface PackTierExcludedClass {
+  pack_tier_id: string
+  class_id: string
   created_at: string
 }
 

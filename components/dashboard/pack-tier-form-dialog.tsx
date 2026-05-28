@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import {
   Dialog,
   DialogContent,
@@ -14,33 +14,68 @@ import { SubmitButton } from "@/components/shared/submit-button"
 import { createPackTier, updatePackTier } from "@/app/actions/packs"
 import { toast } from "sonner"
 
+interface ClassOption {
+  id: string
+  name: string
+  slug: string
+}
+
 interface TierData {
   id: string
   name: string
   credits: number
   price_pence: number
   validity_days: number
+  excluded_class_ids: string[]
 }
 
 interface PackTierFormDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   editingTier?: TierData | null
+  classes: ClassOption[]
 }
 
 export function PackTierFormDialog({
   open,
   onOpenChange,
   editingTier,
+  classes,
 }: PackTierFormDialogProps) {
   const formRef = useRef<HTMLFormElement>(null)
   const isEditing = !!editingTier
+
+  // Re-sync the excluded-class set when the caller switches which tier the
+  // dialog is editing. Uses the "derive state during render" pattern so we
+  // don't trigger a cascading render from an effect.
+  const tierKey = editingTier?.id ?? "new"
+  const [lastTierKey, setLastTierKey] = useState(tierKey)
+  const [excludedIds, setExcludedIds] = useState<Set<string>>(
+    () => new Set(editingTier?.excluded_class_ids ?? []),
+  )
+  if (tierKey !== lastTierKey) {
+    setLastTierKey(tierKey)
+    setExcludedIds(new Set(editingTier?.excluded_class_ids ?? []))
+  }
 
   useEffect(() => {
     if (!open) formRef.current?.reset()
   }, [open])
 
+  function toggleClass(classId: string) {
+    setExcludedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(classId)) next.delete(classId)
+      else next.add(classId)
+      return next
+    })
+  }
+
   async function handleSubmit(formData: FormData) {
+    formData.delete("excluded_class_ids")
+    for (const id of excludedIds) {
+      formData.append("excluded_class_ids", id)
+    }
     try {
       if (isEditing) {
         await updatePackTier(editingTier!.id, formData)
@@ -113,6 +148,39 @@ export function PackTierFormDialog({
               />
             </div>
           </div>
+
+          <div className="space-y-2">
+            <Label>Excluded classes</Label>
+            <p className="text-[0.72rem] text-warm-grey">
+              Tick any classes that cannot be booked with credits from this pack.
+            </p>
+            {classes.length === 0 ? (
+              <p className="rounded-md border border-dashed border-sand px-3 py-2 text-[0.78rem] text-warm-grey">
+                No classes yet.
+              </p>
+            ) : (
+              <div className="max-h-44 overflow-y-auto rounded-md border border-sand">
+                {classes.map((cls) => {
+                  const checked = excludedIds.has(cls.id)
+                  return (
+                    <label
+                      key={cls.id}
+                      className="flex cursor-pointer items-center gap-2.5 border-b border-sand/50 px-3 py-2 text-[0.82rem] text-cocoa last:border-b-0 hover:bg-cream/60"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleClass(cls.id)}
+                        className="h-4 w-4 rounded border-sand accent-gold"
+                      />
+                      <span>{cls.name}</span>
+                    </label>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
           <DialogFooter>
             <SubmitButton>{isEditing ? "Save changes" : "Create tier"}</SubmitButton>
           </DialogFooter>

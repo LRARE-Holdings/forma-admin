@@ -10,6 +10,12 @@ import { Button } from "@/components/ui/button"
 import { Plus } from "lucide-react"
 import { toast } from "sonner"
 
+interface ClassOption {
+  id: string
+  name: string
+  slug: string
+}
+
 interface TierRow {
   id: string
   name: string
@@ -17,18 +23,22 @@ interface TierRow {
   price_pence: number
   validity_days: number
   is_active: boolean
+  excluded_class_ids: string[]
 }
 
 interface PackTiersTableProps {
   tiers: TierRow[]
+  classes: ClassOption[]
 }
 
-export function PackTiersTable({ tiers }: PackTiersTableProps) {
+export function PackTiersTable({ tiers, classes }: PackTiersTableProps) {
   const [formOpen, setFormOpen] = useState(false)
   const [editingTier, setEditingTier] = useState<TierRow | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deletingTier, setDeletingTier] = useState<TierRow | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
+
+  const classNameById = new Map(classes.map((c) => [c.id, c.name]))
 
   function openCreate() {
     setEditingTier(null)
@@ -88,7 +98,7 @@ export function PackTiersTable({ tiers }: PackTiersTableProps) {
             <table className="w-full border-collapse">
               <thead>
                 <tr>
-                  {["Name", "Credits", "Price", "Validity", "Status", ""].map(
+                  {["Name", "Credits", "Price", "Validity", "Excluded classes", "Status", ""].map(
                     (h) => (
                       <th
                         key={h}
@@ -117,6 +127,17 @@ export function PackTiersTable({ tiers }: PackTiersTableProps) {
                     </td>
                     <td className="px-5 py-3 text-[0.82rem] text-slate">
                       {tier.validity_days} days
+                    </td>
+                    <td className="px-5 py-3 text-[0.78rem] text-slate">
+                      {tier.excluded_class_ids.length === 0 ? (
+                        <span className="text-warm-grey">&mdash;</span>
+                      ) : (
+                        <span>
+                          {tier.excluded_class_ids
+                            .map((id) => classNameById.get(id) ?? "Unknown")
+                            .join(", ")}
+                        </span>
+                      )}
                     </td>
                     <td className="px-5 py-3">
                       <span
@@ -159,6 +180,7 @@ export function PackTiersTable({ tiers }: PackTiersTableProps) {
         open={formOpen}
         onOpenChange={setFormOpen}
         editingTier={editingTier}
+        classes={classes}
       />
 
       <DeleteConfirmDialog

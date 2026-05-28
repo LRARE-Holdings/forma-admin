@@ -13,6 +13,41 @@ import {
   archiveStripeProduct,
 } from "@/lib/stripe/products"
 
+/** Replace the set of excluded classes for a tier. Validates that the class IDs belong to the studio. */
+async function syncTierExclusions(
+  tierId: string,
+  studioId: string,
+  classIds: string[],
+) {
+  const supabase = await createClient()
+
+  // Clear existing exclusions first so a tier with none ends up empty.
+  const { error: delError } = await supabase
+    .from("pack_tier_excluded_classes")
+    .delete()
+    .eq("pack_tier_id", tierId)
+
+  if (delError) throw new Error(delError.message)
+
+  if (classIds.length === 0) return
+
+  // Only keep IDs that belong to this studio (defends against tampered form data).
+  const { data: validClasses } = await supabase
+    .from("classes")
+    .select("id")
+    .eq("studio_id", studioId)
+    .in("id", classIds)
+
+  const validIds = (validClasses ?? []).map((c) => c.id as string)
+  if (validIds.length === 0) return
+
+  const { error: insError } = await supabase
+    .from("pack_tier_excluded_classes")
+    .insert(validIds.map((classId) => ({ pack_tier_id: tierId, class_id: classId })))
+
+  if (insError) throw new Error(insError.message)
+}
+
 // --- Pack Tier CRUD ---
 
 export async function createPackTier(formData: FormData) {
@@ -24,6 +59,7 @@ export async function createPackTier(formData: FormData) {
   const credits = parseInt(formData.get("credits") as string)
   const price_pence = Math.round(parseFloat(formData.get("price") as string) * 100)
   const validity_days = parseInt(formData.get("validity_days") as string)
+  const excludedClassIds = formData.getAll("excluded_class_ids") as string[]
 
   if (!name || !credits || !price_pence || !validity_days) {
     throw new Error("All fields are required")
@@ -44,6 +80,8 @@ export async function createPackTier(formData: FormData) {
     .single()
 
   if (error || !tier) throw new Error(error?.message ?? "Failed to create pack tier")
+
+  await syncTierExclusions(tier.id as string, studioId, excludedClassIds)
 
   // Sync to Stripe if connected
   const stripeAccountId = await getStudioStripeAccount()
@@ -80,6 +118,7 @@ export async function updatePackTier(tierId: string, formData: FormData) {
   const credits = parseInt(formData.get("credits") as string)
   const price_pence = Math.round(parseFloat(formData.get("price") as string) * 100)
   const validity_days = parseInt(formData.get("validity_days") as string)
+  const excludedClassIds = formData.getAll("excluded_class_ids") as string[]
 
   // Fetch current tier to detect price changes
   const { data: current } = await supabase
@@ -97,6 +136,8 @@ export async function updatePackTier(tierId: string, formData: FormData) {
     .eq("studio_id", studioId)
 
   if (error) throw new Error(error.message)
+
+  await syncTierExclusions(tierId, studioId, excludedClassIds)
 
   // Sync to Stripe if connected and has Stripe IDs
   const stripeAccountId = await getStudioStripeAccount()
