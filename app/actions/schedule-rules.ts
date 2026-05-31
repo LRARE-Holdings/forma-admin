@@ -29,6 +29,35 @@ export async function createScheduleRule(formData: FormData) {
     throw new Error("All fields are required")
   }
 
+  // Pre-flight: check for overlapping active rules to give a precise error.
+  // Two date ranges [S, E] and [S', E'] overlap iff S <= E'_eff AND S' <= E_eff
+  // (where _eff means substitute '9999-12-31' for null).
+  const { data: conflicts } = await supabase
+    .from("schedule_rules")
+    .select("id, ends_on")
+    .eq("studio_id", studioId)
+    .eq("class_id", class_id)
+    .eq("day_of_week", day_of_week)
+    .eq("start_time", start_time)
+    .eq("is_active", true)
+    .lte("starts_on", ends_on ?? "9999-12-31")        // existing starts before/on new end
+    .or(`ends_on.gte.${starts_on},ends_on.is.null`)    // existing ends on/after new start (or never)
+
+  if (conflicts && conflicts.length > 0) {
+    const blocking = conflicts[0]
+    if (blocking.ends_on) {
+      const d = new Date(blocking.ends_on + "T00:00:00")
+      d.setDate(d.getDate() + 1)
+      const suggestedStart = dateToDateStr(d)
+      throw new Error(
+        `There's already an active rule for this class at this time that runs until ${blocking.ends_on}. Set the start date to ${suggestedStart} (the day after it ends).`
+      )
+    }
+    throw new Error(
+      "There's already a permanent active rule for this class at this time on this day. Edit or end-date that rule before creating a new one."
+    )
+  }
+
   const { data: rule, error } = await supabase
     .from("schedule_rules")
     .insert({
