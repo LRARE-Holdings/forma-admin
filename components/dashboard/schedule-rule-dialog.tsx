@@ -240,23 +240,24 @@ export function ScheduleRuleDialog({
     fd.set("starts_on", startsOn)
     if (finalEndsOn) fd.set("ends_on", finalEndsOn)
 
-    try {
-      if (isEditing) {
-        if (applyMode === "future_date" && applyFrom > editingRule!.starts_on) {
-          await splitScheduleRule(editingRule!.id, applyFrom, fd)
-          toast.success(`Changes applied from ${applyFrom}`)
-        } else {
-          await updateScheduleRule(editingRule!.id, fd)
-          toast.success("Schedule rule updated")
-        }
+    let result: { error: string } | undefined
+    if (isEditing) {
+      if (applyMode === "future_date" && applyFrom > editingRule!.starts_on) {
+        result = await splitScheduleRule(editingRule!.id, applyFrom, fd)
       } else {
-        await createScheduleRule(fd)
-        toast.success("Recurring class added")
+        result = await updateScheduleRule(editingRule!.id, fd)
       }
-      onOpenChange(false)
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Something went wrong")
+    } else {
+      result = await createScheduleRule(fd)
     }
+
+    if (result?.error) {
+      toast.error(result.error)
+      return
+    }
+
+    toast.success(isEditing ? (applyMode === "future_date" ? `Changes applied from ${applyFrom}` : "Schedule rule updated") : "Recurring class added")
+    onOpenChange(false)
   }
 
   const defaultStartDate = dayOfWeek !== null ? getDefaultStartDate(dayOfWeek) : ""

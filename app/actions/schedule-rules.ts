@@ -10,8 +10,10 @@ import type { Recurrence } from "@/lib/types"
 
 /**
  * Create a schedule rule and materialise the first 4 weeks of slots.
+ * Returns { error } on validation/conflict failures so the message
+ * reaches the client in production (Next.js strips thrown errors).
  */
-export async function createScheduleRule(formData: FormData) {
+export async function createScheduleRule(formData: FormData): Promise<{ error: string } | undefined> {
   await requireManager()
   const studioId = await getStudioId()
   const supabase = await createClient()
@@ -26,10 +28,10 @@ export async function createScheduleRule(formData: FormData) {
   const ends_on = (formData.get("ends_on") as string) || null
 
   if (!class_id || !instructor_id || isNaN(day_of_week) || !start_time || !end_time || !starts_on) {
-    throw new Error("All fields are required")
+    return { error: "All fields are required" }
   }
 
-  // Pre-flight: check for overlapping active rules to give a precise error.
+  // Pre-flight: check for overlapping active rules.
   // Two date ranges [S, E] and [S', E'] overlap iff S <= E'_eff AND S' <= E_eff
   // (where _eff means substitute '9999-12-31' for null).
   const { data: conflicts } = await supabase
@@ -40,8 +42,8 @@ export async function createScheduleRule(formData: FormData) {
     .eq("day_of_week", day_of_week)
     .eq("start_time", start_time)
     .eq("is_active", true)
-    .lte("starts_on", ends_on ?? "9999-12-31")        // existing starts before/on new end
-    .or(`ends_on.gte.${starts_on},ends_on.is.null`)    // existing ends on/after new start (or never)
+    .lte("starts_on", ends_on ?? "9999-12-31")
+    .or(`ends_on.gte.${starts_on},ends_on.is.null`)
 
   if (conflicts && conflicts.length > 0) {
     const blocking = conflicts[0]
@@ -49,13 +51,9 @@ export async function createScheduleRule(formData: FormData) {
       const d = new Date(blocking.ends_on + "T00:00:00")
       d.setDate(d.getDate() + 1)
       const suggestedStart = dateToDateStr(d)
-      throw new Error(
-        `There's already an active rule for this class at this time that runs until ${blocking.ends_on}. Set the start date to ${suggestedStart} (the day after it ends).`
-      )
+      return { error: `There's already an active rule for this class at this time that runs until ${blocking.ends_on}. Set the start date to ${suggestedStart} (the day after it ends).` }
     }
-    throw new Error(
-      "There's already a permanent active rule for this class at this time on this day. Edit or end-date that rule before creating a new one."
-    )
+    return { error: "There's already a permanent active rule for this class at this time on this day. Edit or end-date that rule before creating a new one." }
   }
 
   const { data: rule, error } = await supabase
@@ -76,11 +74,9 @@ export async function createScheduleRule(formData: FormData) {
 
   if (error) {
     if (error.message.includes("schedule_rules_no_overlap")) {
-      throw new Error(
-        "There's already an active recurring rule for this class at this time on this day. Edit the existing rule instead, or choose a different time slot."
-      )
+      return { error: "There's already an active recurring rule for this class at this time on this day. Edit the existing rule instead, or choose a different time slot." }
     }
-    throw new Error(error.message)
+    return { error: error.message }
   }
 
   // Materialise slots for the next 4 weeks
@@ -146,7 +142,7 @@ export async function splitScheduleRule(
   ruleId: string,
   effectiveFrom: string,
   formData: FormData
-) {
+): Promise<{ error: string } | undefined> {
   await requireManager()
   const studioId = await getStudioId()
   const supabase = await createClient()
@@ -159,13 +155,12 @@ export async function splitScheduleRule(
     .eq("studio_id", studioId)
     .single()
 
-  if (!oldRule) throw new Error("Rule not found")
+  if (!oldRule) return { error: "Rule not found" }
   if (effectiveFrom <= (oldRule.starts_on as string)) {
-    // No split needed — just update the existing rule in place
     return updateScheduleRule(ruleId, formData)
   }
   if (oldRule.ends_on && effectiveFrom > (oldRule.ends_on as string)) {
-    throw new Error("That date is after this rule already ends")
+    return { error: "That date is after this rule already ends" }
   }
 
   // End the old rule one day before the split
@@ -181,7 +176,7 @@ export async function splitScheduleRule(
     .eq("id", ruleId)
     .eq("studio_id", studioId)
 
-  if (updateOldError) throw new Error(updateOldError.message)
+  if (updateOldError) return { error: updateOldError.message }
 
   // Build new rule from the form
   const class_id = formData.get("class_id") as string
@@ -193,10 +188,10 @@ export async function splitScheduleRule(
   const ends_on = (formData.get("ends_on") as string) || null
 
   if (!class_id || !instructor_id || isNaN(day_of_week) || !start_time || !end_time) {
-    throw new Error("All fields are required")
+    return { error: "All fields are required" }
   }
   if (ends_on && ends_on < effectiveFrom) {
-    throw new Error("End date must be on or after the start of this change")
+    return { error: "End date must be on or after the start of this change" }
   }
 
   const { data: newRule, error: insertError } = await supabase
@@ -217,11 +212,9 @@ export async function splitScheduleRule(
 
   if (insertError) {
     if (insertError.message.includes("schedule_rules_no_overlap")) {
-      throw new Error(
-        "There's already an active recurring rule for this class at this time on this day. Edit the existing rule instead, or choose a different time slot."
-      )
+      return { error: "There's already an active recurring rule for this class at this time on this day. Edit the existing rule instead, or choose a different time slot." }
     }
-    throw new Error(insertError.message)
+    return { error: insertError.message }
   }
 
   // Materialise the new rule's schedule slot for the next 4 weeks
@@ -265,7 +258,7 @@ export async function splitScheduleRule(
 /**
  * Update an existing schedule rule. Re-materialise future slots.
  */
-export async function updateScheduleRule(ruleId: string, formData: FormData) {
+export async function updateScheduleRule(ruleId: string, formData: FormData): Promise<{ error: string } | undefined> {
   await requireManager()
   const studioId = await getStudioId()
   const supabase = await createClient()
@@ -304,11 +297,9 @@ export async function updateScheduleRule(ruleId: string, formData: FormData) {
 
   if (error) {
     if (error.message.includes("schedule_rules_no_overlap")) {
-      throw new Error(
-        "There's already an active recurring rule for this class at this time on this day. Edit the existing rule instead, or choose a different time slot."
-      )
+      return { error: "There's already an active recurring rule for this class at this time on this day. Edit the existing rule instead, or choose a different time slot." }
     }
-    throw new Error(error.message)
+    return { error: error.message }
   }
 
   // Re-materialise: remove future unmutated slots and regenerate
