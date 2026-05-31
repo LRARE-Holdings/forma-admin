@@ -42,14 +42,12 @@ export default async function BookingsPage() {
         .from("class_packs")
         .select("profile_id, credits_remaining")
         .eq("studio_id", studioId)
-        .gt("credits_remaining", 0)
-        .in("profile_id", memberIds),
+        .gt("credits_remaining", 0),
       supabase
         .from("memberships")
         .select("profile_id")
         .eq("studio_id", studioId)
-        .eq("status", "active")
-        .in("profile_id", memberIds),
+        .eq("status", "active"),
     ])
 
     for (const p of packsRes.data ?? []) {

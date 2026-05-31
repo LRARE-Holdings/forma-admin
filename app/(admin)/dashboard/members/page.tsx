@@ -49,36 +49,31 @@ export default async function MembersPage() {
         .select("profile_id")
         .eq("studio_id", studioId)
         .eq("status", "confirmed")
-        .gte("date", monthStart)
-        .in("profile_id", memberIds),
+        .gte("date", monthStart),
       // All-time confirmed bookings per member (total attendance)
       supabase
         .from("bookings")
         .select("profile_id")
         .eq("studio_id", studioId)
-        .eq("status", "confirmed")
-        .in("profile_id", memberIds),
+        .eq("status", "confirmed"),
       // Most recent confirmed booking per member (for at-risk calculation)
       supabase
         .from("bookings")
         .select("profile_id, date")
         .eq("studio_id", studioId)
         .eq("status", "confirmed")
-        .in("profile_id", memberIds)
         .order("date", { ascending: false }),
       // All packs for member balance management
       supabase
         .from("class_packs")
         .select("id, profile_id, pack_type, credits_total, credits_remaining, expires_at")
         .eq("studio_id", studioId)
-        .in("profile_id", memberIds)
         .order("expires_at", { ascending: false }),
       // Active memberships with tier names
       supabase
         .from("memberships")
         .select("profile_id, status, membership_tiers:membership_tier_id(name)")
-        .eq("studio_id", studioId)
-        .in("profile_id", memberIds),
+        .eq("studio_id", studioId),
     ])
 
     for (const b of bookingsRes.data ?? []) {
