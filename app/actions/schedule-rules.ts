@@ -45,7 +45,14 @@ export async function createScheduleRule(formData: FormData) {
     .select("id")
     .single()
 
-  if (error) throw new Error(error.message)
+  if (error) {
+    if (error.message.includes("schedule_rules_no_overlap")) {
+      throw new Error(
+        "There's already an active recurring rule for this class at this time on this day. Edit the existing rule instead, or choose a different time slot."
+      )
+    }
+    throw new Error(error.message)
+  }
 
   // Materialise slots for the next 4 weeks
   await materialiseSlots(rule.id)
@@ -179,7 +186,14 @@ export async function splitScheduleRule(
     .select("id")
     .single()
 
-  if (insertError) throw new Error(insertError.message)
+  if (insertError) {
+    if (insertError.message.includes("schedule_rules_no_overlap")) {
+      throw new Error(
+        "There's already an active recurring rule for this class at this time on this day. Edit the existing rule instead, or choose a different time slot."
+      )
+    }
+    throw new Error(insertError.message)
+  }
 
   // Materialise the new rule's schedule slot for the next 4 weeks
   await materialiseSlots(newRule.id)
@@ -259,7 +273,14 @@ export async function updateScheduleRule(ruleId: string, formData: FormData) {
     .eq("id", ruleId)
     .eq("studio_id", studioId)
 
-  if (error) throw new Error(error.message)
+  if (error) {
+    if (error.message.includes("schedule_rules_no_overlap")) {
+      throw new Error(
+        "There's already an active recurring rule for this class at this time on this day. Edit the existing rule instead, or choose a different time slot."
+      )
+    }
+    throw new Error(error.message)
+  }
 
   // Re-materialise: remove future unmutated slots and regenerate
   await rematerialiseSlots(ruleId)
