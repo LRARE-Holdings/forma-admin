@@ -1,8 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
+import { setPassword as setPasswordAction } from "@/app/actions/auth"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -13,7 +12,6 @@ interface SetPasswordFormProps {
 }
 
 export function SetPasswordForm({ redirectTo }: SetPasswordFormProps) {
-  const router = useRouter()
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [loading, setLoading] = useState(false)
@@ -35,16 +33,19 @@ export function SetPasswordForm({ redirectTo }: SetPasswordFormProps) {
 
     setLoading(true)
 
-    const supabase = createClient()
-    const { error } = await supabase.auth.updateUser({ password })
+    const { error } = await setPasswordAction(password)
 
     if (error) {
       setLoading(false)
-      setError(error.message)
+      setError(error)
       return
     }
 
-    router.push(redirectTo)
+    // The server action rotated the auth cookies. Hard-navigate so the proxy
+    // re-reads them and routes by role — router.push()/refresh() is unreliable
+    // on mobile Safari, which doesn't always include just-set cookies in the
+    // RSC fetch (same footgun the login form avoids).
+    window.location.assign(redirectTo)
   }
 
   return (
