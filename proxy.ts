@@ -37,6 +37,35 @@ async function resolveStudioId(host: string): Promise<string | null> {
   return studio?.id ?? null
 }
 
+// Matches the cookies @supabase/ssr writes: the base auth token, its numbered
+// chunks (…-auth-token.0/.1), and the PKCE code verifier.
+const AUTH_COOKIE_PATTERN = /^sb-.*-auth-token/
+
+/**
+ * Names of auth cookies that arrive duplicated in the raw Cookie header.
+ *
+ * When NEXT_PUBLIC_AUTH_COOKIE_DOMAIN is set we write the session cookies
+ * scoped to the shared parent domain (e.g. .burnmatstudio.co.uk). Browsers
+ * that still hold a *host-only* copy from before that change send BOTH copies
+ * under the same name, which corrupts @supabase/ssr's chunked-session
+ * reconstruction and bounces the user to /login. A name appearing more than
+ * once in the header is the tell-tale of that stale duplicate.
+ */
+function duplicateAuthCookieNames(request: NextRequest): string[] {
+  const raw = request.headers.get("cookie")
+  if (!raw) return []
+  const counts = new Map<string, number>()
+  for (const part of raw.split(";")) {
+    const eq = part.indexOf("=")
+    if (eq === -1) continue
+    const name = part.slice(0, eq).trim()
+    if (AUTH_COOKIE_PATTERN.test(name)) {
+      counts.set(name, (counts.get(name) ?? 0) + 1)
+    }
+  }
+  return [...counts.entries()].filter(([, n]) => n > 1).map(([name]) => name)
+}
+
 export async function proxy(request: NextRequest) {
   const host = request.headers.get("host") || ""
   const { pathname } = request.nextUrl
@@ -62,6 +91,30 @@ export async function proxy(request: NextRequest) {
     request: { headers: requestHeaders },
   })
 
+  const cookieDomain = process.env.NEXT_PUBLIC_AUTH_COOKIE_DOMAIN
+  const staleAuthCookies = cookieDomain ? duplicateAuthCookieNames(request) : []
+
+  // Whatever response we ultimately return must carry the cookies Supabase
+  // wrote during getUser() (a rotated or cleared session) AND purge any stale
+  // host-only duplicates. The Supabase SSR docs are explicit: if you return a
+  // response other than the one the client wrote cookies to, you must copy
+  // those cookies over — otherwise the refreshed session is silently dropped,
+  // which is the classic login-loop footgun on the redirect branches below.
+  const finalize = (res: NextResponse): NextResponse => {
+    if (res !== supabaseResponse) {
+      supabaseResponse.cookies
+        .getAll()
+        .forEach((cookie) => res.cookies.set(cookie))
+    }
+    for (const name of staleAuthCookies) {
+      // A deletion with no Domain attribute targets only the host-only copy
+      // and leaves the domain-scoped session cookie intact. Append the raw
+      // header so it can't clobber a same-named domain cookie in the map.
+      res.headers.append("set-cookie", `${name}=; Path=/; Max-Age=0; Secure; SameSite=Lax`)
+    }
+    return res
+  }
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -71,7 +124,6 @@ export async function proxy(request: NextRequest) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          const domain = process.env.NEXT_PUBLIC_AUTH_COOKIE_DOMAIN
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
           )
@@ -79,7 +131,7 @@ export async function proxy(request: NextRequest) {
             request: { headers: requestHeaders },
           })
           cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, domain ? { ...options, domain } : options)
+            supabaseResponse.cookies.set(name, value, cookieDomain ? { ...options, domain: cookieDomain } : options)
           )
         },
       },
@@ -97,24 +149,24 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith("/auth") ||
     pathname.startsWith("/api")
   ) {
-    return supabaseResponse
+    return finalize(supabaseResponse)
   }
 
   // Not logged in — redirect to login
   if (!user) {
     const url = request.nextUrl.clone()
     url.pathname = "/login"
-    return NextResponse.redirect(url)
+    return finalize(NextResponse.redirect(url))
   }
 
   // Root page — redirect to dashboard (layout will handle role check)
   if (pathname === "/") {
     const url = request.nextUrl.clone()
     url.pathname = "/dashboard"
-    return NextResponse.redirect(url)
+    return finalize(NextResponse.redirect(url))
   }
 
-  return supabaseResponse
+  return finalize(supabaseResponse)
 }
 
 export const config = {
