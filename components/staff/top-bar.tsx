@@ -3,7 +3,6 @@
 import type { Studio, Profile } from "@/lib/types"
 import { getInitial } from "@/lib/utils"
 import { StaffSignOut } from "./staff-sign-out"
-import { AssistTrigger } from "@/components/assist/assist-trigger"
 
 interface TopBarProps {
   studio: Studio
@@ -22,12 +21,6 @@ export function TopBar({ studio, profile }: TopBarProps) {
         </span>
       </div>
       <div className="flex items-center gap-2.5">
-        <AssistTrigger
-          studioName={studio.name ?? "Studio"}
-          planTier={studio.plan_tier}
-          userName={profile.full_name ?? "Instructor"}
-          variant="topbar"
-        />
         <span className="text-[0.8rem] font-medium text-wheat">
           {profile.full_name ?? "Instructor"}
         </span>

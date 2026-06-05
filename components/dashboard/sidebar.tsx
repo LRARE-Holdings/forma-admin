@@ -4,7 +4,6 @@ import type { Studio, Profile, UserRole } from "@/lib/types"
 import { ADMIN_ROLES, MANAGER_ROLES, RECEPTION_ROLES } from "@/lib/types"
 import { SidebarNavItem } from "./sidebar-nav-item"
 import { SidebarSignOut } from "./sidebar-sign-out"
-import { AssistTrigger } from "@/components/assist/assist-trigger"
 import { getInitial } from "@/lib/utils"
 import {
   LayoutGrid,
@@ -69,16 +68,6 @@ export function Sidebar({ studio, profile, role, onNavigate }: SidebarProps) {
         <span className="text-[0.6rem] font-semibold uppercase tracking-[0.15em] text-warm-grey">
           {ROLE_LABELS[role] ?? "Admin"} Dashboard
         </span>
-      </div>
-
-      {/* Forma Assist */}
-      <div className="px-0 pt-4 pb-2">
-        <AssistTrigger
-          studioName={studio.name ?? "Studio"}
-          planTier={studio.plan_tier}
-          userName={profile.full_name ?? "Admin"}
-          variant="sidebar"
-        />
       </div>
 
       {/* Navigation */}
