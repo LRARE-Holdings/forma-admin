@@ -40,30 +40,68 @@ async function resolveStudioId(host: string): Promise<string | null> {
 // Matches the cookies @supabase/ssr writes: the base auth token, its numbered
 // chunks (…-auth-token.0/.1), and the PKCE code verifier.
 const AUTH_COOKIE_PATTERN = /^sb-.*-auth-token/
+// The *base* session cookie only — excludes the .0/.1 chunks and the
+// -code-verifier cookie (both have extra suffixes after "-auth-token").
+const AUTH_BASE_COOKIE_PATTERN = /^sb-.*-auth-token$/
 
-/**
- * Names of auth cookies that arrive duplicated in the raw Cookie header.
- *
- * When NEXT_PUBLIC_AUTH_COOKIE_DOMAIN is set we write the session cookies
- * scoped to the shared parent domain (e.g. .burnmatstudio.co.uk). Browsers
- * that still hold a *host-only* copy from before that change send BOTH copies
- * under the same name, which corrupts @supabase/ssr's chunked-session
- * reconstruction and bounces the user to /login. A name appearing more than
- * once in the header is the tell-tale of that stale duplicate.
- */
-function duplicateAuthCookieNames(request: NextRequest): string[] {
+function rawCookieNames(request: NextRequest): string[] {
   const raw = request.headers.get("cookie")
   if (!raw) return []
-  const counts = new Map<string, number>()
+  const names: string[] = []
   for (const part of raw.split(";")) {
     const eq = part.indexOf("=")
     if (eq === -1) continue
-    const name = part.slice(0, eq).trim()
+    names.push(part.slice(0, eq).trim())
+  }
+  return names
+}
+
+/**
+ * Names of stale host-only auth cookies that should be purged from the browser.
+ *
+ * When NEXT_PUBLIC_AUTH_COOKIE_DOMAIN is set we write the session cookies
+ * scoped to the shared parent domain (e.g. .burnmatstudio.co.uk). Browsers that
+ * still hold a *host-only* copy from before that change keep sending it, which
+ * corrupts @supabase/ssr's chunked-session reconstruction and bounces the user
+ * to /login. Two shapes of leftover survive the migration:
+ *
+ *  1. Same name twice — a host-only and a domain-scoped copy of the same cookie
+ *     name both arrive in the header (count > 1).
+ *  2. Base + chunks — a host-only base `sb-…-auth-token` arrives alongside the
+ *     new domain-scoped `…-auth-token.0/.1` chunks. @supabase/ssr writes EITHER
+ *     a single base cookie OR chunks for a given session, never both, so when
+ *     both are present the base is the stale host-only leftover and it shadows
+ *     the valid chunks.
+ *
+ * Both are purged with a Domain-less deletion in finalize(), which targets only
+ * the host-only copy and leaves the domain-scoped session intact.
+ */
+function staleAuthCookieNames(request: NextRequest): string[] {
+  const names = rawCookieNames(request)
+  const stale = new Set<string>()
+
+  // Case 1: an auth cookie name appearing more than once in the header.
+  const counts = new Map<string, number>()
+  for (const name of names) {
     if (AUTH_COOKIE_PATTERN.test(name)) {
       counts.set(name, (counts.get(name) ?? 0) + 1)
     }
   }
-  return [...counts.entries()].filter(([, n]) => n > 1).map(([name]) => name)
+  for (const [name, n] of counts) {
+    if (n > 1) stale.add(name)
+  }
+
+  // Case 2: a base session cookie present alongside its own numbered chunks.
+  for (const name of names) {
+    if (
+      AUTH_BASE_COOKIE_PATTERN.test(name) &&
+      names.some((other) => other.startsWith(`${name}.`))
+    ) {
+      stale.add(name)
+    }
+  }
+
+  return [...stale]
 }
 
 export async function proxy(request: NextRequest) {
@@ -92,7 +130,7 @@ export async function proxy(request: NextRequest) {
   })
 
   const cookieDomain = process.env.NEXT_PUBLIC_AUTH_COOKIE_DOMAIN
-  const staleAuthCookies = cookieDomain ? duplicateAuthCookieNames(request) : []
+  const staleAuthCookies = cookieDomain ? staleAuthCookieNames(request) : []
 
   // Whatever response we ultimately return must carry the cookies Supabase
   // wrote during getUser() (a rotated or cleared session) AND purge any stale
