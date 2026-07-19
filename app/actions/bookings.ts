@@ -32,6 +32,14 @@ export async function getSessionsForDate(
   dateStr: string
 ): Promise<SessionOption[]> {
   await requireReception()
+
+  // The date picker fires on each keystroke, so we can receive partial strings
+  // ("2026-07-2") that would build "NaN-NaN-NaN" queries. Ignore anything that
+  // isn't a complete YYYY-MM-DD date.
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    return []
+  }
+
   const studioId = await getStudioId()
 
   // getWeekData expects a Monday. Compute the Monday of the week containing dateStr.
@@ -72,7 +80,11 @@ export async function createManualBooking(formData: FormData) {
     throw new Error("All fields are required")
   }
 
-  // If paying with pack credit, decrement the member's credits
+  // If paying with pack credit, locate an available pack up front — but don't
+  // decrement it yet. We charge the credit only after the booking insert
+  // succeeds, so a failed insert (e.g. a duplicate booking) never silently
+  // burns a credit.
+  let packToCharge: { id: string; credits_remaining: number } | null = null
   if (payment_method === "pack_credit") {
     const { data: packs } = await supabase
       .from("class_packs")
@@ -88,13 +100,7 @@ export async function createManualBooking(formData: FormData) {
       throw new Error("This member has no available pack credits")
     }
 
-    const pack = packs[0]
-    const { error: creditError } = await supabase
-      .from("class_packs")
-      .update({ credits_remaining: pack.credits_remaining - 1 })
-      .eq("id", pack.id)
-
-    if (creditError) throw new Error(creditError.message)
+    packToCharge = packs[0]
   }
 
   const { error } = await supabase.from("bookings").insert({
@@ -106,7 +112,33 @@ export async function createManualBooking(formData: FormData) {
     payment_method,
   })
 
-  if (error) throw new Error(error.message)
+  if (error) {
+    // 23505 = unique_violation on bookings_unique_confirmed: this member already
+    // has a confirmed booking for this session on this date.
+    if (error.code === "23505") {
+      throw new Error("This member is already booked into this session.")
+    }
+    throw new Error(error.message)
+  }
+
+  // Booking is in — now charge the pack credit.
+  if (packToCharge) {
+    const { error: creditError } = await supabase
+      .from("class_packs")
+      .update({ credits_remaining: packToCharge.credits_remaining - 1 })
+      .eq("id", packToCharge.id)
+
+    if (creditError) {
+      // The booking exists; don't fail the whole action over the credit. Surface
+      // it in logs so the balance can be reconciled.
+      console.error(
+        "[bookings] Booking created but pack credit decrement failed for pack",
+        packToCharge.id,
+        "—",
+        creditError.message
+      )
+    }
+  }
 
   // Send booking emails — awaited to prevent serverless early termination
   await Promise.allSettled([
