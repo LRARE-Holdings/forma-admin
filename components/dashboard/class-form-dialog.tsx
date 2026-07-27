@@ -48,7 +48,11 @@ export function ClassFormDialog({
         await updateClass(editingClass!.id, formData)
         toast.success("Class updated")
       } else {
-        await createClass(formData)
+        const result = await createClass(formData)
+        if (result?.error) {
+          toast.error(result.error)
+          return
+        }
         toast.success("Class created")
       }
       onOpenChange(false)

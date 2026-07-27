@@ -13,7 +13,14 @@ import {
   archiveStripeProduct,
 } from "@/lib/stripe/products"
 
-export async function createClass(formData: FormData) {
+/**
+ * Returns { error } rather than throwing — Next.js strips thrown error messages
+ * in production, so a duplicate-name collision would otherwise reach the admin
+ * as an opaque digest instead of something they can act on.
+ */
+export async function createClass(
+  formData: FormData
+): Promise<{ error: string } | undefined> {
   await requireAdmin()
   const studioId = await getStudioId()
   const supabase = await createClient()
@@ -39,7 +46,14 @@ export async function createClass(formData: FormData) {
     .select("id")
     .single()
 
-  if (error || !cls) throw new Error(error?.message ?? "Failed to create class")
+  if (error) {
+    // UNIQUE (studio_id, slug) — two names can slugify to the same value
+    if (error.code === "23505") {
+      return { error: `You already have a class named "${name}". Pick a different name.` }
+    }
+    return { error: error.message }
+  }
+  if (!cls) return { error: "Failed to create class" }
 
   // Sync to Stripe if connected
   const stripeAccountId = await getStudioStripeAccount()

@@ -121,7 +121,7 @@ export async function deleteScheduleSlot(slotId: string) {
   // Fetch slot data before soft-delete for notification
   const { data: slot } = await supabase
     .from("schedule")
-    .select("instructor_id, day_of_week, start_time, classes:class_id(name)")
+    .select("instructor_id, day_of_week, start_time, rule_id, classes:class_id(name)")
     .eq("id", slotId)
     .eq("studio_id", studioId)
     .single()
@@ -133,6 +133,21 @@ export async function deleteScheduleSlot(slotId: string) {
     .eq("studio_id", studioId)
 
   if (error) throw new Error(error.message)
+
+  // Retire the backing rule too. There is exactly one schedule row per rule, so
+  // removing the slot means removing the whole recurring class — and a rule left
+  // active with no live slot renders nothing while still occupying the
+  // schedule_rules_no_overlap exclusion, silently blocking that class/day/time
+  // from ever being scheduled again.
+  if (slot?.rule_id) {
+    const { error: ruleError } = await supabase
+      .from("schedule_rules")
+      .update({ is_active: false })
+      .eq("id", slot.rule_id)
+      .eq("studio_id", studioId)
+
+    if (ruleError) throw new Error(ruleError.message)
+  }
 
   // Notify instructor (fire-and-forget)
   if (slot) {

@@ -93,7 +93,11 @@ export function EditInstructorDialog({
     if (!newRole || !instructor?.membershipId || newRole === role) return
     setRoleLoading(true)
     try {
-      await updateStaffRole(instructor.membershipId, newRole)
+      const result = await updateStaffRole(instructor.membershipId, newRole)
+      if (result?.error) {
+        toast.error(result.error)
+        return
+      }
       setRole(newRole)
       const label = ROLE_OPTIONS.find((r) => r.value === newRole)?.label ?? newRole
       toast.success(`Role changed to ${label}`)

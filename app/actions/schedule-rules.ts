@@ -475,7 +475,10 @@ async function materialiseSlots(ruleId: string) {
   })
 
   if (insertError) {
-    console.error("Failed to materialise slot:", insertError.message)
+    // Must not be swallowed: a rule with no live slot renders nothing yet still
+    // holds its schedule_rules_no_overlap exclusion, so the class silently
+    // vanishes from the timetable and can never be re-added at that time.
+    throw new Error(`Failed to materialise slot: ${insertError.message}`)
   }
 }
 
@@ -567,7 +570,12 @@ export async function materialiseAllRules() {
 
   if (!rules) return
 
+  // One bad rule must not abort the whole cron sweep
   for (const rule of rules) {
-    await materialiseSlots(rule.id)
+    try {
+      await materialiseSlots(rule.id)
+    } catch (err) {
+      console.error(`[schedule-rules] Materialise failed for rule ${rule.id}:`, err)
+    }
   }
 }

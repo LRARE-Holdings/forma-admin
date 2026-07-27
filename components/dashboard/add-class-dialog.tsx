@@ -161,7 +161,13 @@ export function AddClassDialog({
         }
         // "forever" → no ends_on
 
-        await createScheduleRule(formData)
+        // createScheduleRule returns { error } rather than throwing — Next.js
+        // strips thrown errors in production, so the catch below never sees them.
+        const result = await createScheduleRule(formData)
+        if (result?.error) {
+          toast.error(result.error)
+          return
+        }
         toast.success("Recurring class added")
       }
       onOpenChange(false)

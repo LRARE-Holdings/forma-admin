@@ -9,6 +9,49 @@ import { getStudioId } from "@/lib/studio-context"
 const VALID_INVITE_ROLES = ["staff", "reception", "manager", "admin"]
 const INSTRUCTOR_ROLES = ["staff"]
 
+type AnySupabaseClient =
+  | Awaited<ReturnType<typeof createClient>>
+  | ReturnType<typeof createAdminClient>
+
+/**
+ * Create an instructor record, resolving slug collisions.
+ *
+ * `instructors` has UNIQUE (studio_id, slug) and the slug is derived from the
+ * person's name, so a second "Sarah Smith" collides. Previously the insert
+ * error was discarded, which left a staff member with a membership but no
+ * instructor row — they could never be assigned to the timetable, and nothing
+ * surfaced the failure.
+ */
+async function insertInstructorRecord(
+  client: AnySupabaseClient,
+  studioId: string,
+  profileId: string,
+  name: string
+): Promise<{ error?: string }> {
+  const base =
+    name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") ||
+    "instructor"
+
+  for (let attempt = 1; attempt <= 10; attempt++) {
+    const slug = attempt === 1 ? base : `${base}-${attempt}`
+    const { error } = await client.from("instructors").insert({
+      studio_id: studioId,
+      profile_id: profileId,
+      name,
+      slug,
+      bio: "",
+    })
+
+    if (!error) return {}
+    // 23505 = unique violation → slug taken, try the next suffix
+    if (error.code !== "23505") return { error: error.message }
+  }
+
+  return {
+    error: `Could not create an instructor record for ${name} — too many similar names`,
+  }
+}
+
 export async function inviteStaffMember(
   formData: FormData
 ): Promise<{ error?: string }> {
@@ -77,14 +120,13 @@ export async function inviteStaffMember(
   // Create instructor record for instructor roles, or if "also instructor" was checked
   const alsoInstructor = formData.get("alsoInstructor") === "true"
   if (INSTRUCTOR_ROLES.includes(role) || alsoInstructor) {
-    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
-    await adminClient.from("instructors").insert({
-      studio_id: studioId,
-      profile_id: userId,
-      name,
-      slug,
-      bio: "",
-    })
+    const { error: instructorError } = await insertInstructorRecord(
+      adminClient,
+      studioId,
+      userId,
+      name
+    )
+    if (instructorError) return { error: instructorError }
   }
 
   // Track the invite so the admin can see pending/accepted status
@@ -142,7 +184,10 @@ export async function removeStaffMember(membershipId: string) {
   revalidatePath("/dashboard/team")
 }
 
-export async function updateStaffRole(membershipId: string, newRole: string) {
+export async function updateStaffRole(
+  membershipId: string,
+  newRole: string
+): Promise<{ error: string } | undefined> {
   await requireAdmin()
   const studioId = await getStudioId()
 
@@ -190,15 +235,14 @@ export async function updateStaffRole(membershipId: string, newRole: string) {
         .single()
 
       const name = profile?.full_name ?? "Instructor"
-      const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
 
-      await supabase.from("instructors").insert({
-        studio_id: studioId,
-        profile_id: membership.profile_id,
-        name,
-        slug,
-        bio: "",
-      })
+      const { error: instructorError } = await insertInstructorRecord(
+        supabase,
+        studioId,
+        membership.profile_id,
+        name
+      )
+      if (instructorError) return { error: instructorError }
     }
   }
 
@@ -423,18 +467,14 @@ export async function toggleInstructorRecord(
         .single()
 
       const name = profile?.full_name ?? "Instructor"
-      const slug = name
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "")
 
-      await supabase.from("instructors").insert({
-        studio_id: studioId,
-        profile_id: membership.profile_id,
-        name,
-        slug,
-        bio: "",
-      })
+      const { error: instructorError } = await insertInstructorRecord(
+        supabase,
+        studioId,
+        membership.profile_id,
+        name
+      )
+      if (instructorError) return { error: instructorError }
     }
   } else {
     // Staff members are always instructors — don't allow removal
