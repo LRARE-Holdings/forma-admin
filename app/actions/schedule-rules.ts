@@ -8,6 +8,54 @@ import { notifyInstructorScheduleChange } from "@/lib/email/schedule-notificatio
 import { dateToDateStr, localDateStr } from "@/lib/utils"
 import type { Recurrence } from "@/lib/types"
 
+/** "15 Aug" — short enough for a toast, specific enough to find on the timetable. */
+function shortDate(dateStr: string): string {
+  return new Date(dateStr + "T00:00:00").toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+  })
+}
+
+function shiftDate(dateStr: string, days: number): string {
+  const d = new Date(dateStr + "T00:00:00")
+  d.setDate(d.getDate() + days)
+  return dateToDateStr(d)
+}
+
+/**
+ * Explain which rule is blocking and what to do about it.
+ *
+ * The blocker is usually invisible: it's the same class at the same time on the
+ * same day, but taught by someone else and/or dated outside the week the admin
+ * is looking at, so the slot they clicked looks empty. The message therefore has
+ * to name the instructor and the date range — "there's already a rule" sends
+ * them hunting through a timetable that isn't showing it.
+ */
+function describeRuleConflict(
+  blocking: { starts_on: string; ends_on: string | null; instructors: unknown },
+  startsOn: string
+): string {
+  const who = (blocking.instructors as { name: string } | null)?.name
+  const subject = who ? `${who} already teaches this class` : "This class is already scheduled"
+  const runs = blocking.ends_on
+    ? `${shortDate(blocking.starts_on)} to ${shortDate(blocking.ends_on)}`
+    : `${shortDate(blocking.starts_on)} onwards`
+  const clash = `${subject} at this time, ${runs}.`
+
+  // A blocker that starts *after* the requested start leaves a usable gap in
+  // front of it. Offer that gap: telling someone to wait until the blocker ends
+  // is wrong advice when the date they actually asked for is free.
+  if (blocking.starts_on > startsOn) {
+    return `${clash} Set this one to end on ${shortDate(shiftDate(blocking.starts_on, -1))} to run it up to then, or edit that rule if you meant to change its instructor.`
+  }
+
+  if (blocking.ends_on) {
+    return `${clash} Start this one on ${shortDate(shiftDate(blocking.ends_on, 1))}, the day after it ends, or edit that rule.`
+  }
+
+  return `${clash} It has no end date, so edit or end-date that rule before adding another.`
+}
+
 /**
  * Create a schedule rule and materialise the first 4 weeks of slots.
  * Returns { error } on validation/conflict failures so the message
@@ -34,9 +82,11 @@ export async function createScheduleRule(formData: FormData): Promise<{ error: s
   // Pre-flight: check for overlapping active rules.
   // Two date ranges [S, E] and [S', E'] overlap iff S <= E'_eff AND S' <= E_eff
   // (where _eff means substitute '9999-12-31' for null).
+  // Ordered by starts_on so the message describes the *earliest* blocker rather
+  // than an arbitrary one when several overlap.
   const { data: conflicts } = await supabase
     .from("schedule_rules")
-    .select("id, ends_on")
+    .select("id, starts_on, ends_on, instructors:instructor_id(name)")
     .eq("studio_id", studioId)
     .eq("class_id", class_id)
     .eq("day_of_week", day_of_week)
@@ -44,16 +94,10 @@ export async function createScheduleRule(formData: FormData): Promise<{ error: s
     .eq("is_active", true)
     .lte("starts_on", ends_on ?? "9999-12-31")
     .or(`ends_on.gte.${starts_on},ends_on.is.null`)
+    .order("starts_on")
 
   if (conflicts && conflicts.length > 0) {
-    const blocking = conflicts[0]
-    if (blocking.ends_on) {
-      const d = new Date(blocking.ends_on + "T00:00:00")
-      d.setDate(d.getDate() + 1)
-      const suggestedStart = dateToDateStr(d)
-      return { error: `There's already an active rule for this class at this time that runs until ${blocking.ends_on}. Set the start date to ${suggestedStart} (the day after it ends).` }
-    }
-    return { error: "There's already a permanent active rule for this class at this time on this day. Edit or end-date that rule before creating a new one." }
+    return { error: describeRuleConflict(conflicts[0], starts_on) }
   }
 
   const { data: rule, error } = await supabase
