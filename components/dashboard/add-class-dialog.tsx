@@ -152,14 +152,29 @@ export function AddClassDialog({
         formData.set("recurrence", recurrence)
         formData.set("starts_on", defaultDate)
 
-        if (endMode === "until_date" && endsOn) {
+        // An incomplete end date must not fall through to "no ends_on" — that
+        // silently creates a permanent rule, which then collides with anything
+        // later in the year and reports a conflict the admin can't account for.
+        if (endMode === "until_date") {
+          if (!endsOn) {
+            toast.error("Pick the date this class runs until")
+            return
+          }
+          if (endsOn < defaultDate) {
+            toast.error("The end date can't be before the first class")
+            return
+          }
           formData.set("ends_on", endsOn)
-        } else if (endMode === "after_weeks" && afterWeeks > 0) {
+        } else if (endMode === "after_weeks") {
+          if (!(afterWeeks > 0)) {
+            toast.error("Enter how many weeks this class runs for")
+            return
+          }
           formData.set("ends_on", addWeeks(defaultDate, afterWeeks))
         } else if (endMode === "this_month") {
           formData.set("ends_on", endOfMonth(defaultDate))
         }
-        // "forever" → no ends_on
+        // "forever" → no ends_on, deliberately
 
         // createScheduleRule returns { error } rather than throwing — Next.js
         // strips thrown errors in production, so the catch below never sees them.
