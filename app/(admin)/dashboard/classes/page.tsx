@@ -40,6 +40,9 @@ export default async function ClassesPage() {
     duration_mins: cls.duration_mins as number,
     price_pence: cls.price_pence as number,
     capacity: (cls.capacity as number) ?? 10,
+    discount_percent: (cls.discount_percent as number) ?? null,
+    discount_starts_on: (cls.discount_starts_on as string) ?? null,
+    discount_ends_on: (cls.discount_ends_on as string) ?? null,
   }))
 
   return (

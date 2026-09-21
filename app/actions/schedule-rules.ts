@@ -6,62 +6,16 @@ import { requireManager } from "@/lib/auth"
 import { getStudioId } from "@/lib/studio-context"
 import { notifyInstructorScheduleChange } from "@/lib/email/schedule-notifications"
 import { dateToDateStr, localDateStr } from "@/lib/utils"
+import { findRuleConflicts, describeConflict } from "@/lib/schedule-conflicts"
+import type { ScheduleRuleResult } from "@/lib/schedule-conflicts"
 import type { Recurrence } from "@/lib/types"
-
-/** "15 Aug" — short enough for a toast, specific enough to find on the timetable. */
-function shortDate(dateStr: string): string {
-  return new Date(dateStr + "T00:00:00").toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-  })
-}
-
-function shiftDate(dateStr: string, days: number): string {
-  const d = new Date(dateStr + "T00:00:00")
-  d.setDate(d.getDate() + days)
-  return dateToDateStr(d)
-}
-
-/**
- * Explain which rule is blocking and what to do about it.
- *
- * The blocker is usually invisible: it's the same class at the same time on the
- * same day, but taught by someone else and/or dated outside the week the admin
- * is looking at, so the slot they clicked looks empty. The message therefore has
- * to name the instructor and the date range — "there's already a rule" sends
- * them hunting through a timetable that isn't showing it.
- */
-function describeRuleConflict(
-  blocking: { starts_on: string; ends_on: string | null; instructors: unknown },
-  startsOn: string
-): string {
-  const who = (blocking.instructors as { name: string } | null)?.name
-  const subject = who ? `${who} already teaches this class` : "This class is already scheduled"
-  const runs = blocking.ends_on
-    ? `${shortDate(blocking.starts_on)} to ${shortDate(blocking.ends_on)}`
-    : `${shortDate(blocking.starts_on)} onwards`
-  const clash = `${subject} at this time, ${runs}.`
-
-  // A blocker that starts *after* the requested start leaves a usable gap in
-  // front of it. Offer that gap: telling someone to wait until the blocker ends
-  // is wrong advice when the date they actually asked for is free.
-  if (blocking.starts_on > startsOn) {
-    return `${clash} Set this one to end on ${shortDate(shiftDate(blocking.starts_on, -1))} to run it up to then, or edit that rule if you meant to change its instructor.`
-  }
-
-  if (blocking.ends_on) {
-    return `${clash} Start this one on ${shortDate(shiftDate(blocking.ends_on, 1))}, the day after it ends, or edit that rule.`
-  }
-
-  return `${clash} It has no end date, so edit or end-date that rule before adding another.`
-}
 
 /**
  * Create a schedule rule and materialise the first 4 weeks of slots.
- * Returns { error } on validation/conflict failures so the message
- * reaches the client in production (Next.js strips thrown errors).
+ * Returns { error } on validation/database failures so the message reaches the
+ * client in production (Next.js strips thrown errors).
  */
-export async function createScheduleRule(formData: FormData): Promise<{ error: string } | undefined> {
+export async function createScheduleRule(formData: FormData): Promise<ScheduleRuleResult | undefined> {
   await requireManager()
   const studioId = await getStudioId()
   const supabase = await createClient()
@@ -79,26 +33,16 @@ export async function createScheduleRule(formData: FormData): Promise<{ error: s
     return { error: "All fields are required" }
   }
 
-  // Pre-flight: check for overlapping active rules.
-  // Two date ranges [S, E] and [S', E'] overlap iff S <= E'_eff AND S' <= E_eff
-  // (where _eff means substitute '9999-12-31' for null).
-  // Ordered by starts_on so the message describes the *earliest* blocker rather
-  // than an arbitrary one when several overlap.
-  const { data: conflicts } = await supabase
-    .from("schedule_rules")
-    .select("id, starts_on, ends_on, instructors:instructor_id(name)")
-    .eq("studio_id", studioId)
-    .eq("class_id", class_id)
-    .eq("day_of_week", day_of_week)
-    .eq("start_time", start_time)
-    .eq("is_active", true)
-    .lte("starts_on", ends_on ?? "9999-12-31")
-    .or(`ends_on.gte.${starts_on},ends_on.is.null`)
-    .order("starts_on")
-
-  if (conflicts && conflicts.length > 0) {
-    return { error: describeRuleConflict(conflicts[0], starts_on) }
-  }
+  // Advisory only — reported back after the rule is saved, never used to reject it.
+  const conflicts = await findRuleConflicts(studioId, {
+    class_id,
+    instructor_id,
+    day_of_week,
+    start_time,
+    end_time,
+    starts_on,
+    ends_on,
+  })
 
   const { data: rule, error } = await supabase
     .from("schedule_rules")
@@ -116,12 +60,7 @@ export async function createScheduleRule(formData: FormData): Promise<{ error: s
     .select("id")
     .single()
 
-  if (error) {
-    if (error.message.includes("schedule_rules_no_overlap")) {
-      return { error: "There's already an active recurring rule for this class at this time on this day. Edit the existing rule instead, or choose a different time slot." }
-    }
-    return { error: error.message }
-  }
+  if (error) return { error: error.message }
 
   // Materialise slots for the next 4 weeks
   await materialiseSlots(rule.id)
@@ -141,6 +80,8 @@ export async function createScheduleRule(formData: FormData): Promise<{ error: s
 
   revalidatePath("/dashboard/timetable")
   revalidatePath("/dashboard")
+
+  if (conflicts.length > 0) return { warnings: conflicts.map(describeConflict) }
 }
 
 /**
@@ -186,7 +127,7 @@ export async function splitScheduleRule(
   ruleId: string,
   effectiveFrom: string,
   formData: FormData
-): Promise<{ error: string } | undefined> {
+): Promise<ScheduleRuleResult | undefined> {
   await requireManager()
   const studioId = await getStudioId()
   const supabase = await createClient()
@@ -207,21 +148,6 @@ export async function splitScheduleRule(
     return { error: "That date is after this rule already ends" }
   }
 
-  // End the old rule one day before the split
-  const dayBefore = (() => {
-    const d = new Date(effectiveFrom + "T00:00:00")
-    d.setDate(d.getDate() - 1)
-    return dateToDateStr(d)
-  })()
-
-  const { error: updateOldError } = await supabase
-    .from("schedule_rules")
-    .update({ ends_on: dayBefore })
-    .eq("id", ruleId)
-    .eq("studio_id", studioId)
-
-  if (updateOldError) return { error: updateOldError.message }
-
   // Build new rule from the form
   const class_id = formData.get("class_id") as string
   const instructor_id = formData.get("instructor_id") as string
@@ -238,6 +164,23 @@ export async function splitScheduleRule(
     return { error: "End date must be on or after the start of this change" }
   }
 
+  const conflicts = await findRuleConflicts(studioId, {
+    class_id,
+    instructor_id,
+    day_of_week,
+    start_time,
+    end_time,
+    starts_on: effectiveFrom,
+    ends_on,
+  })
+
+  // Create the replacement FIRST.
+  //
+  // This used to end-date the old rule and only then insert. When the insert
+  // failed, the old rule stayed truncated with nothing succeeding it, so the
+  // class disappeared from the split date onwards — and the obvious retry hit
+  // "That date is after this rule already ends", which left no way back from
+  // the UI at all. Inserting first means a failure here changes nothing.
   const { data: newRule, error: insertError } = await supabase
     .from("schedule_rules")
     .insert({
@@ -254,11 +197,30 @@ export async function splitScheduleRule(
     .select("id")
     .single()
 
-  if (insertError) {
-    if (insertError.message.includes("schedule_rules_no_overlap")) {
-      return { error: "There's already an active recurring rule for this class at this time on this day. Edit the existing rule instead, or choose a different time slot." }
-    }
-    return { error: insertError.message }
+  if (insertError) return { error: insertError.message }
+
+  // Only now close the old rule, the day before the split.
+  const dayBefore = (() => {
+    const d = new Date(effectiveFrom + "T00:00:00")
+    d.setDate(d.getDate() - 1)
+    return dateToDateStr(d)
+  })()
+
+  const { error: updateOldError } = await supabase
+    .from("schedule_rules")
+    .update({ ends_on: dayBefore })
+    .eq("id", ruleId)
+    .eq("studio_id", studioId)
+
+  if (updateOldError) {
+    // These two writes share no transaction, so undo the replacement by hand
+    // rather than leave the timetable running both patterns at once.
+    await supabase
+      .from("schedule_rules")
+      .delete()
+      .eq("id", newRule.id)
+      .eq("studio_id", studioId)
+    return { error: updateOldError.message }
   }
 
   // Materialise the new rule's schedule slot for the next 4 weeks
@@ -297,12 +259,14 @@ export async function splitScheduleRule(
 
   revalidatePath("/dashboard/timetable")
   revalidatePath("/dashboard")
+
+  if (conflicts.length > 0) return { warnings: conflicts.map(describeConflict) }
 }
 
 /**
  * Update an existing schedule rule. Re-materialise future slots.
  */
-export async function updateScheduleRule(ruleId: string, formData: FormData): Promise<{ error: string } | undefined> {
+export async function updateScheduleRule(ruleId: string, formData: FormData): Promise<ScheduleRuleResult | undefined> {
   await requireManager()
   const studioId = await getStudioId()
   const supabase = await createClient()
@@ -324,6 +288,46 @@ export async function updateScheduleRule(ruleId: string, formData: FormData): Pr
   const starts_on = formData.get("starts_on") as string
   const ends_on = (formData.get("ends_on") as string) || null
 
+  // Excludes this rule from its own results, so editing a rule in place never
+  // reports it against itself.
+  const conflicts = await findRuleConflicts(studioId, {
+    id: ruleId,
+    class_id,
+    instructor_id,
+    day_of_week,
+    start_time,
+    end_time,
+    starts_on,
+    ends_on,
+  })
+
+  const warnings = conflicts.map(describeConflict)
+
+  // Moving the rule to a different day leaves existing bookings on the old day:
+  // they keep the date they were booked for, while the slot now renders on the
+  // new one. The edit still goes through — it just must not do so silently.
+  if (oldRule && (oldRule.day_of_week as number) !== day_of_week) {
+    const { count } = await supabase
+      .from("bookings")
+      .select("id", { count: "exact", head: true })
+      .eq("studio_id", studioId)
+      .eq("status", "confirmed")
+      .gte("date", localDateStr())
+      .in(
+        "schedule_id",
+        ((
+          await supabase.from("schedule").select("id").eq("rule_id", ruleId).eq("is_active", true)
+        ).data ?? []).map((s) => s.id as string)
+      )
+
+    if (count && count > 0) {
+      warnings.push(
+        `${count} upcoming booking${count === 1 ? " is" : "s are"} still held against the old day. ` +
+          `Move them by hand, or undo this and use "a future date" instead so existing classes keep their day.`
+      )
+    }
+  }
+
   const { error } = await supabase
     .from("schedule_rules")
     .update({
@@ -339,12 +343,7 @@ export async function updateScheduleRule(ruleId: string, formData: FormData): Pr
     .eq("id", ruleId)
     .eq("studio_id", studioId)
 
-  if (error) {
-    if (error.message.includes("schedule_rules_no_overlap")) {
-      return { error: "There's already an active recurring rule for this class at this time on this day. Edit the existing rule instead, or choose a different time slot." }
-    }
-    return { error: error.message }
-  }
+  if (error) return { error: error.message }
 
   // Re-materialise: remove future unmutated slots and regenerate
   await rematerialiseSlots(ruleId)
@@ -383,6 +382,8 @@ export async function updateScheduleRule(ruleId: string, formData: FormData): Pr
 
   revalidatePath("/dashboard/timetable")
   revalidatePath("/dashboard")
+
+  if (warnings.length > 0) return { warnings }
 }
 
 /**
@@ -519,9 +520,8 @@ async function materialiseSlots(ruleId: string) {
   })
 
   if (insertError) {
-    // Must not be swallowed: a rule with no live slot renders nothing yet still
-    // holds its schedule_rules_no_overlap exclusion, so the class silently
-    // vanishes from the timetable and can never be re-added at that time.
+    // Must not be swallowed: a rule with no live slot renders nothing, so the
+    // class silently vanishes from the timetable while the rule still exists.
     throw new Error(`Failed to materialise slot: ${insertError.message}`)
   }
 }

@@ -22,6 +22,7 @@ interface TierRow {
   credits: number
   price_pence: number
   validity_days: number
+  max_per_week: number | null
   is_active: boolean
   excluded_class_ids: string[]
 }
@@ -121,6 +122,11 @@ export function PackTiersTable({ tiers, classes }: PackTiersTableProps) {
                     </td>
                     <td className="px-5 py-3 text-[0.82rem] text-slate">
                       {tier.credits} classes
+                      {tier.max_per_week !== null && (
+                        <span className="block text-[0.68rem] text-warm-grey">
+                          max {tier.max_per_week}/week
+                        </span>
+                      )}
                     </td>
                     <td className="px-5 py-3 text-[0.82rem] text-slate">
                       &pound;{formatPence(tier.price_pence)}

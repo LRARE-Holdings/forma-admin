@@ -26,6 +26,7 @@ interface TierData {
   credits: number
   price_pence: number
   validity_days: number
+  max_per_week: number | null
   excluded_class_ids: string[]
 }
 
@@ -147,6 +148,23 @@ export function PackTierFormDialog({
                 placeholder="42"
               />
             </div>
+          </div>
+
+          <div>
+            <Label htmlFor="max_per_week">Classes per week</Label>
+            <Input
+              id="max_per_week"
+              name="max_per_week"
+              type="number"
+              min={1}
+              defaultValue={editingTier?.max_per_week ?? ""}
+              placeholder="No limit"
+            />
+            <p className="mt-1 text-[0.72rem] text-warm-grey">
+              Caps how many of these credits can be spent in one week. Leave empty
+              for no limit. A 6-week course of 12 credits capped at 2 a week
+              paces itself across the six weeks.
+            </p>
           </div>
 
           <div className="space-y-2">

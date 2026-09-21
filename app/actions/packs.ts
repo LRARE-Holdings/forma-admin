@@ -60,9 +60,17 @@ export async function createPackTier(formData: FormData) {
   const price_pence = Math.round(parseFloat(formData.get("price") as string) * 100)
   const validity_days = parseInt(formData.get("validity_days") as string)
   const excludedClassIds = formData.getAll("excluded_class_ids") as string[]
+  // Optional rate limit, e.g. the Beginner's Course allows 2 classes a week
+  // from its 12 credits. Enforced in the database so it holds for bookings made
+  // on the member site as well as here.
+  const maxPerWeekRaw = (formData.get("max_per_week") as string) ?? ""
+  const max_per_week = maxPerWeekRaw.trim() ? parseInt(maxPerWeekRaw) : null
 
   if (!name || !credits || !price_pence || !validity_days) {
     throw new Error("All fields are required")
+  }
+  if (max_per_week !== null && (isNaN(max_per_week) || max_per_week < 1)) {
+    throw new Error("Classes per week must be 1 or more, or left empty for no limit")
   }
 
   // Insert into DB first
@@ -74,6 +82,7 @@ export async function createPackTier(formData: FormData) {
       credits,
       price_pence,
       validity_days,
+      max_per_week,
       is_active: true,
     })
     .select("id")
@@ -119,6 +128,12 @@ export async function updatePackTier(tierId: string, formData: FormData) {
   const price_pence = Math.round(parseFloat(formData.get("price") as string) * 100)
   const validity_days = parseInt(formData.get("validity_days") as string)
   const excludedClassIds = formData.getAll("excluded_class_ids") as string[]
+  const maxPerWeekRaw = (formData.get("max_per_week") as string) ?? ""
+  const max_per_week = maxPerWeekRaw.trim() ? parseInt(maxPerWeekRaw) : null
+
+  if (max_per_week !== null && (isNaN(max_per_week) || max_per_week < 1)) {
+    throw new Error("Classes per week must be 1 or more, or left empty for no limit")
+  }
 
   // Fetch current tier to detect price changes
   const { data: current } = await supabase
@@ -131,7 +146,7 @@ export async function updatePackTier(tierId: string, formData: FormData) {
   // Update DB
   const { error } = await supabase
     .from("pack_tiers")
-    .update({ name, credits, price_pence, validity_days })
+    .update({ name, credits, price_pence, validity_days, max_per_week })
     .eq("id", tierId)
     .eq("studio_id", studioId)
 

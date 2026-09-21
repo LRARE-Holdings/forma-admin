@@ -117,30 +117,38 @@ export async function cancelClassInstance(
 
     cancelledCount++
 
-    // Restore pack credit if applicable
+    // Restore pack credit if applicable. Same shared function the single-booking
+    // cancel and the member-site trigger use: it returns the credit to the pack
+    // the booking actually charged, revives that pack if it has expired, and
+    // will not pay out twice for one booking.
+    //
+    // The old block here picked the member's pack with the earliest expires_at,
+    // expired ones included, and then reported creditRestored = true regardless
+    // of whether the credit had gone anywhere usable.
     let creditRestored = false
     if (booking.payment_method === "pack_credit") {
-      const { data: packs } = await supabase
-        .from("class_packs")
-        .select("id, credits_remaining, credits_total")
-        .eq("studio_id", studioId)
-        .eq("profile_id", booking.profile_id)
-        .order("expires_at", { ascending: true })
-        .limit(1)
+      const { data: outcome, error: creditError } = await supabase.rpc(
+        "restore_pack_credit_for_booking",
+        { p_booking_id: booking.id }
+      )
 
-      if (packs && packs.length > 0) {
-        const pack = packs[0]
-        await supabase
-          .from("class_packs")
-          .update({
-            credits_remaining: Math.min(
-              pack.credits_remaining + 1,
-              pack.credits_total
-            ),
-          })
-          .eq("id", pack.id)
-
-        creditRestored = true
+      if (creditError) {
+        console.error(
+          "[class-cancellation] Credit restore failed for booking",
+          booking.id,
+          "—",
+          creditError.message
+        )
+      } else {
+        creditRestored = outcome === "refunded" || outcome === "already_refunded"
+        if (!creditRestored) {
+          console.warn(
+            "[class-cancellation] Credit not restored for booking",
+            booking.id,
+            "—",
+            outcome
+          )
+        }
       }
     }
 

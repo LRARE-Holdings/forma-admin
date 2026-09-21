@@ -5,11 +5,19 @@ import { ClassColorBar } from "@/components/shared/class-color-bar"
 import { formatPence } from "@/lib/utils"
 import { EmptyState } from "@/components/shared/empty-state"
 import { ClassFormDialog } from "./class-form-dialog"
+import { ClassDiscountDialog } from "./class-discount-dialog"
 import { DeleteConfirmDialog } from "@/components/shared/delete-confirm-dialog"
 import { deleteClass } from "@/app/actions/classes"
 import { Button } from "@/components/ui/button"
-import { Plus } from "lucide-react"
+import { Plus, TicketPercent } from "lucide-react"
 import { toast } from "sonner"
+import {
+  effectivePricePence,
+  isDiscountActive,
+  isDiscountScheduled,
+  describeDiscountWindow,
+  formatPrice,
+} from "@/lib/pricing"
 
 interface ClassRow {
   id: string
@@ -19,6 +27,9 @@ interface ClassRow {
   duration_mins: number
   price_pence: number
   capacity: number
+  discount_percent: number | null
+  discount_starts_on: string | null
+  discount_ends_on: string | null
 }
 
 interface ClassesTableProps {
@@ -32,6 +43,7 @@ export function ClassesTable({ classes, slotsByClass }: ClassesTableProps) {
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deletingClass, setDeletingClass] = useState<ClassRow | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
+  const [discountOpen, setDiscountOpen] = useState(false)
 
   function openCreate() {
     setEditingClass(null)
@@ -70,10 +82,16 @@ export function ClassesTable({ classes, slotsByClass }: ClassesTableProps) {
             All classes
           </h3>
           {classes.length > 0 && (
-            <Button onClick={openCreate} size="sm">
-              <Plus className="mr-1.5 h-3.5 w-3.5" />
-              New class
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button onClick={() => setDiscountOpen(true)} size="sm" variant="outline">
+                <TicketPercent className="mr-1.5 h-3.5 w-3.5" />
+                Discount
+              </Button>
+              <Button onClick={openCreate} size="sm">
+                <Plus className="mr-1.5 h-3.5 w-3.5" />
+                New class
+              </Button>
+            </div>
           )}
         </div>
         {classes.length === 0 ? (
@@ -129,7 +147,30 @@ export function ClassesTable({ classes, slotsByClass }: ClassesTableProps) {
                         {cls.duration_mins} min
                       </td>
                       <td className="px-5 py-3 text-[0.82rem] text-slate">
-                        &pound;{formatPence(cls.price_pence)}
+                        {isDiscountActive(cls) ? (
+                          <span className="flex flex-col">
+                            <span>
+                              <s className="text-warm-grey">
+                                &pound;{formatPence(cls.price_pence)}
+                              </s>{" "}
+                              <strong className="text-cocoa">
+                                {formatPrice(effectivePricePence(cls))}
+                              </strong>
+                            </span>
+                            <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-gold">
+                              {cls.discount_percent}% off · {describeDiscountWindow(cls)}
+                            </span>
+                          </span>
+                        ) : isDiscountScheduled(cls) ? (
+                          <span className="flex flex-col">
+                            <span>&pound;{formatPence(cls.price_pence)}</span>
+                            <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-warm-grey">
+                              {cls.discount_percent}% off {describeDiscountWindow(cls)}
+                            </span>
+                          </span>
+                        ) : (
+                          <>&pound;{formatPence(cls.price_pence)}</>
+                        )}
                       </td>
                       <td className="px-5 py-3 text-[0.82rem] text-slate">
                         {cls.capacity}
@@ -166,6 +207,12 @@ export function ClassesTable({ classes, slotsByClass }: ClassesTableProps) {
         open={formOpen}
         onOpenChange={setFormOpen}
         editingClass={editingClass}
+      />
+
+      <ClassDiscountDialog
+        open={discountOpen}
+        onOpenChange={setDiscountOpen}
+        classes={classes}
       />
 
       <DeleteConfirmDialog

@@ -53,6 +53,7 @@ export default async function PackagesPage() {
     credits: t.credits as number,
     price_pence: t.price_pence as number,
     validity_days: t.validity_days as number,
+    max_per_week: (t.max_per_week as number) ?? null,
     is_active: t.is_active as boolean,
     excluded_class_ids: exclusionsByTier[t.id as string] ?? [],
   }))

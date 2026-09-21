@@ -17,6 +17,7 @@ import {
   Settings,
   BarChart3,
   ClipboardCheck,
+  ScrollText,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 
@@ -40,6 +41,7 @@ const navItems: NavItem[] = [
   { href: "/dashboard/registration", label: "Registration", icon: ClipboardCheck, minRoles: MANAGER_ROLES },
   { href: "/dashboard/bookings", label: "Bookings", icon: CheckSquare, minRoles: RECEPTION_ROLES },
   { href: "/dashboard/members", label: "Members", icon: Users, minRoles: RECEPTION_ROLES },
+  { href: "/dashboard/audit", label: "Credit audit", icon: ScrollText, minRoles: RECEPTION_ROLES },
   { href: "/dashboard/classes", label: "Classes", icon: Star, minRoles: ADMIN_ROLES },
   { href: "/dashboard/packages", label: "Packages", icon: Package, minRoles: ADMIN_ROLES },
   { href: "/dashboard/memberships", label: "Memberships", icon: Repeat, minRoles: ADMIN_ROLES },

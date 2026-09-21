@@ -103,14 +103,21 @@ export async function createManualBooking(formData: FormData) {
     packToCharge = packs[0]
   }
 
-  const { error } = await supabase.from("bookings").insert({
-    studio_id: studioId,
-    profile_id,
-    schedule_id,
-    date,
-    status: "confirmed",
-    payment_method,
-  })
+  const { data: booking, error } = await supabase
+    .from("bookings")
+    .insert({
+      studio_id: studioId,
+      profile_id,
+      schedule_id,
+      date,
+      status: "confirmed",
+      payment_method,
+      // Recorded before the credit moves, so a later cancellation returns it to
+      // the pack it actually came from instead of guessing at the member's packs.
+      class_pack_id: packToCharge?.id ?? null,
+    })
+    .select("id")
+    .single()
 
   if (error) {
     // 23505 = unique_violation on bookings_unique_confirmed: this member already
@@ -118,15 +125,22 @@ export async function createManualBooking(formData: FormData) {
     if (error.code === "23505") {
       throw new Error("This member is already booked into this session.")
     }
+    // 23514 = the pack weekly cap (Beginner's Course). Its message is written
+    // for the person reading it, so pass it straight through.
+    if (error.code === "23514") {
+      throw new Error(error.message)
+    }
     throw new Error(error.message)
   }
 
-  // Booking is in — now charge the pack credit.
-  if (packToCharge) {
-    const { error: creditError } = await supabase
-      .from("class_packs")
-      .update({ credits_remaining: packToCharge.credits_remaining - 1 })
-      .eq("id", packToCharge.id)
+  // Booking is in — now charge the pack credit. The RPC locks the pack, so two
+  // simultaneous bookings can't both spend the same last credit, and it records
+  // the debit against this booking in the ledger.
+  if (packToCharge && booking) {
+    const { error: creditError } = await supabase.rpc("spend_pack_credit", {
+      p_pack_id: packToCharge.id,
+      p_booking_id: booking.id,
+    })
 
     if (creditError) {
       // The booking exists; don't fail the whole action over the credit. Surface
@@ -238,30 +252,6 @@ export async function cancelBooking(bookingId: string) {
   if (!booking) throw new Error("Booking not found")
   if (booking.status === "cancelled") throw new Error("Booking is already cancelled")
 
-  // If was pack credit, refund the credit
-  if (booking.payment_method === "pack_credit") {
-    const { data: packs } = await supabase
-      .from("class_packs")
-      .select("id, credits_remaining, credits_total")
-      .eq("studio_id", studioId)
-      .eq("profile_id", booking.profile_id)
-      .order("expires_at", { ascending: true })
-      .limit(1)
-
-    if (packs && packs.length > 0) {
-      const pack = packs[0]
-      await supabase
-        .from("class_packs")
-        .update({
-          credits_remaining: Math.min(
-            pack.credits_remaining + 1,
-            pack.credits_total
-          ),
-        })
-        .eq("id", pack.id)
-    }
-  }
-
   // Issue Stripe refund for drop-in payers
   let refundPence: number | null = null
   let refundFailed = false
@@ -302,11 +292,40 @@ export async function cancelBooking(bookingId: string) {
 
   const { error } = await supabase
     .from("bookings")
-    .update({ status: "cancelled", cancelled_by: "admin" })
+    // 'studio' — not 'admin'. bookings_cancelled_by_check only permits
+    // 'member' | 'studio', so writing 'admin' made every admin-side cancel
+    // fail on a check violation *after* the credit and Stripe refund had
+    // already been issued.
+    .update({ status: "cancelled", cancelled_by: "studio" })
     .eq("id", bookingId)
     .eq("studio_id", studioId)
 
   if (error) throw new Error(error.message)
+
+  // Return the credit. This replaces an inline block that picked the member's
+  // pack with the earliest expires_at — including long-expired ones — so 263 of
+  // 431 refunds landed somewhere the member could never spend them.
+  //
+  // The function returns the credit to the pack the booking actually charged,
+  // reviving it if it has since expired, and refuses to pay out twice for the
+  // same booking. That last part is what lets this call coexist with the
+  // database trigger that covers cancellations made on the member site.
+  let creditRestored = false
+  if (booking.payment_method === "pack_credit") {
+    const { data: outcome, error: creditError } = await supabase.rpc(
+      "restore_pack_credit_for_booking",
+      { p_booking_id: bookingId }
+    )
+
+    if (creditError) {
+      console.error("[bookings] Credit restore failed for booking", bookingId, "—", creditError.message)
+    } else {
+      creditRestored = outcome === "refunded" || outcome === "already_refunded"
+      if (!creditRestored) {
+        console.warn("[bookings] Credit not restored for booking", bookingId, "—", outcome)
+      }
+    }
+  }
 
   // Promote next person on waitlist (fire-and-forget)
   promoteNextInWaitlist(studioId, booking.schedule_id, booking.date).catch((err) =>
@@ -334,7 +353,10 @@ export async function cancelBooking(bookingId: string) {
       className: schedule.classes?.name ?? "Class",
       date: formattedDate,
       time: formatTime(schedule.start_time),
-      creditRestored: booking.payment_method === "pack_credit",
+      // What actually happened, not what was assumed. The old value claimed a
+      // credit was restored for every pack booking, including the ones where
+      // the restore silently failed.
+      creditRestored,
       refundPence,
       refundFailed,
       studioName: studio?.name ?? "Your studio",

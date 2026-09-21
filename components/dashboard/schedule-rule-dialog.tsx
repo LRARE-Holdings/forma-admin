@@ -23,6 +23,7 @@ import {
   splitScheduleRule,
   updateScheduleRule,
 } from "@/app/actions/schedule-rules"
+import type { ScheduleRuleResult } from "@/lib/schedule-conflicts"
 import { dateToDateStr, localDateStr } from "@/lib/utils"
 import { toast } from "sonner"
 
@@ -240,7 +241,7 @@ export function ScheduleRuleDialog({
     fd.set("starts_on", startsOn)
     if (finalEndsOn) fd.set("ends_on", finalEndsOn)
 
-    let result: { error: string } | undefined
+    let result: ScheduleRuleResult | undefined
     if (isEditing) {
       if (applyMode === "future_date" && applyFrom > editingRule!.starts_on) {
         result = await splitScheduleRule(editingRule!.id, applyFrom, fd)
@@ -251,12 +252,29 @@ export function ScheduleRuleDialog({
       result = await createScheduleRule(fd)
     }
 
+    // `error` now only ever means the save genuinely failed. Overlaps come back
+    // as `warnings` — the change is already saved, so the dialog closes and the
+    // clash is reported rather than standing in the way.
     if (result?.error) {
       toast.error(result.error)
       return
     }
 
-    toast.success(isEditing ? (applyMode === "future_date" ? `Changes applied from ${applyFrom}` : "Schedule rule updated") : "Recurring class added")
+    const saved = isEditing
+      ? applyMode === "future_date"
+        ? `Changes applied from ${applyFrom}`
+        : "Schedule rule updated"
+      : "Recurring class added"
+
+    if (result?.warnings?.length) {
+      toast.warning(`${saved} — with a clash`, {
+        description: result.warnings.join(" "),
+        duration: 10000,
+      })
+    } else {
+      toast.success(saved)
+    }
+
     onOpenChange(false)
   }
 
