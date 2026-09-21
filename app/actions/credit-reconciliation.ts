@@ -13,14 +13,17 @@ import type { ShortfallRow } from "@/lib/audit-types"
  * things: still on the balance, or spent on a confirmed booking. A credit that
  * is neither was taken by a cancellation that failed to give it back.
  *
- * Members holding any pack created before the March 2026 import are skipped.
- * Those packs arrived part-used, with credits already spent on the studio's
- * previous system and no booking here to account for them, so they read as a
- * shortfall that was never real. Counting them inflated the first estimate of
- * this from 29 credits to 296.
+ * Counted by `credit_shortfalls()` in the database rather than here. Tallying it
+ * in application code meant fetching every pack-credit booking, and there are
+ * 1490 of them against PostgREST's 1000-row ceiling: 490 spent credits went
+ * uncounted and the screen read 270 owed across 47 members instead of 29 across
+ * 18. It returned a plausible number rather than an error, which is the worst
+ * way for this to be wrong.
+ *
+ * The function also excludes members holding packs from the March 2026 import.
+ * Those arrived part-used, with credits spent on the studio's previous system
+ * and no booking here to match, so they read as a shortfall that was never real.
  */
-const IMPORT_CUTOFF = "2026-04-01"
-
 export async function getCreditShortfalls(): Promise<{
   rows: ShortfallRow[]
   skippedLegacyMembers: number
@@ -29,87 +32,30 @@ export async function getCreditShortfalls(): Promise<{
   const studioId = await getStudioId()
   const supabase = await createClient()
 
-  const [packsRes, bookingsRes, profilesRes] = await Promise.all([
-    supabase
-      .from("class_packs")
-      .select("profile_id, credits_total, credits_remaining, purchased_at")
-      .eq("studio_id", studioId),
-    supabase
-      .from("bookings")
-      .select("profile_id, status")
-      .eq("studio_id", studioId)
-      .eq("payment_method", "pack_credit"),
-    supabase
-      .from("profiles")
-      .select("id, full_name, email"),
+  const [shortfallRes, legacyRes] = await Promise.all([
+    supabase.rpc("credit_shortfalls", { p_studio_id: studioId }),
+    supabase.rpc("credit_shortfall_legacy_count", { p_studio_id: studioId }),
   ])
 
-  const profiles = new Map(
-    (profilesRes.data ?? []).map((p) => [
-      p.id as string,
-      { name: (p.full_name as string) ?? null, email: (p.email as string) ?? null },
-    ])
+  if (shortfallRes.error) throw new Error(shortfallRes.error.message)
+
+  const rows: ShortfallRow[] = (shortfallRes.data ?? []).map(
+    (r: Record<string, unknown>) => ({
+      profileId: r.profile_id as string,
+      name: (r.full_name as string) ?? null,
+      email: (r.email as string) ?? null,
+      bought: r.bought as number,
+      used: r.used as number,
+      cancelled: r.cancelled as number,
+      remaining: r.remaining as number,
+      missing: r.missing as number,
+    })
   )
 
-  interface Tally {
-    bought: number
-    remaining: number
-    used: number
-    cancelled: number
-    legacy: boolean
+  return {
+    rows,
+    skippedLegacyMembers: (legacyRes.data as number) ?? 0,
   }
-
-  const byMember = new Map<string, Tally>()
-
-  function tally(profileId: string): Tally {
-    let t = byMember.get(profileId)
-    if (!t) {
-      t = { bought: 0, remaining: 0, used: 0, cancelled: 0, legacy: false }
-      byMember.set(profileId, t)
-    }
-    return t
-  }
-
-  for (const pack of packsRes.data ?? []) {
-    const t = tally(pack.profile_id as string)
-    t.bought += pack.credits_total as number
-    t.remaining += pack.credits_remaining as number
-    if ((pack.purchased_at as string) < IMPORT_CUTOFF) t.legacy = true
-  }
-
-  for (const b of bookingsRes.data ?? []) {
-    const t = tally(b.profile_id as string)
-    if (b.status === "confirmed") t.used++
-    else if (b.status === "cancelled") t.cancelled++
-  }
-
-  const rows: ShortfallRow[] = []
-  let skippedLegacyMembers = 0
-
-  for (const [profileId, t] of byMember) {
-    if (t.legacy) {
-      skippedLegacyMembers++
-      continue
-    }
-    const missing = t.bought - t.used - t.remaining
-    if (missing <= 0) continue
-
-    const profile = profiles.get(profileId)
-    rows.push({
-      profileId,
-      name: profile?.name ?? null,
-      email: profile?.email ?? null,
-      bought: t.bought,
-      used: t.used,
-      cancelled: t.cancelled,
-      remaining: t.remaining,
-      missing,
-    })
-  }
-
-  rows.sort((a, b) => b.missing - a.missing || (a.name ?? "").localeCompare(b.name ?? ""))
-
-  return { rows, skippedLegacyMembers }
 }
 
 /**

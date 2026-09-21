@@ -90,6 +90,11 @@ async function runQuery(filters: AuditFilters, limit: number, offset: number) {
 
   let rows = (data ?? []).map((r) => shape(r as RawRow))
 
+  // How many rows the database actually returned, before any filtering below.
+  // The export pages on this, not on rows.length: a search that filters a full
+  // page down to a handful would otherwise look like the end of the data.
+  const fetched = rows.length
+
   // Name/email search runs here rather than in the query: the searchable fields
   // live on the joined profile, and PostgREST cannot filter an embedded resource
   // without turning the join into an inner one and dropping rows whose member
@@ -103,7 +108,7 @@ async function runQuery(filters: AuditFilters, limit: number, offset: number) {
     )
   }
 
-  return { rows, total: count ?? 0 }
+  return { rows, total: count ?? 0, fetched }
 }
 
 export async function getAuditRows(
@@ -166,12 +171,23 @@ function csvCell(value: string | number | null): string {
 }
 
 /**
- * Export the current view as CSV. Applies the same filters as the table, but
- * without the page limit — an export that silently stopped at the first 100
- * rows would be worse than no export.
+ * Export the current view as CSV. Applies the same filters as the table, and
+ * pages until the source is exhausted.
+ *
+ * Asking for one big range does not work: PostgREST caps a response at 1000
+ * rows and says nothing about it, so the file would quietly stop a third of the
+ * way through and look complete.
  */
 export async function exportAuditCsv(filters: AuditFilters): Promise<string> {
-  const { rows } = await runQuery(filters, 10000, 0)
+  const PAGE = 1000
+  const MAX_ROWS = 50000
+  const rows: AuditRow[] = []
+
+  for (let offset = 0; offset < MAX_ROWS; offset += PAGE) {
+    const page = await runQuery(filters, PAGE, offset)
+    rows.push(...page.rows)
+    if (page.fetched < PAGE) break
+  }
 
   const header = [
     "Timestamp",
