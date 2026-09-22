@@ -89,12 +89,16 @@ export async function setClassDiscount(
           await archiveStripePrice(cls.discount_stripe_price_id as string, stripeAccountId)
         }
 
-        const discounted = effectivePricePence({
-          price_pence: cls.price_pence as number,
-          discount_percent: percent,
-          discount_starts_on: null, // price the discount itself, not today's state
-          discount_ends_on: null,
-        })
+        const discounted = effectivePricePence(
+          {
+            price_pence: cls.price_pence as number,
+            discount_percent: percent,
+            discount_starts_on: null,
+            discount_ends_on: null,
+          },
+          // Unbounded window above, so any date prices the discount itself.
+          "2000-01-01"
+        )
 
         const price = await createStripePrice(
           {

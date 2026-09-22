@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { ClassColorBar } from "@/components/shared/class-color-bar"
-import { formatPence } from "@/lib/utils"
+import { formatPence, localDateStr } from "@/lib/utils"
 import { EmptyState } from "@/components/shared/empty-state"
 import { ClassFormDialog } from "./class-form-dialog"
 import { ClassDiscountDialog } from "./class-discount-dialog"
@@ -13,9 +13,8 @@ import { Plus, TicketPercent } from "lucide-react"
 import { toast } from "sonner"
 import {
   effectivePricePence,
-  isDiscountActive,
-  isDiscountScheduled,
-  describeDiscountWindow,
+  hasDiscount,
+  describeDiscountCoverage,
   formatPrice,
 } from "@/lib/pricing"
 
@@ -147,25 +146,22 @@ export function ClassesTable({ classes, slotsByClass }: ClassesTableProps) {
                         {cls.duration_mins} min
                       </td>
                       <td className="px-5 py-3 text-[0.82rem] text-slate">
-                        {isDiscountActive(cls) ? (
+                        {/* A class row has no date, so it states which classes
+                            the offer covers. The timetable prices each session. */}
+                        {hasDiscount(cls) ? (
                           <span className="flex flex-col">
                             <span>
                               <s className="text-warm-grey">
                                 &pound;{formatPence(cls.price_pence)}
                               </s>{" "}
                               <strong className="text-cocoa">
-                                {formatPrice(effectivePricePence(cls))}
+                                {formatPrice(
+                                  effectivePricePence(cls, cls.discount_starts_on ?? localDateStr())
+                                )}
                               </strong>
                             </span>
                             <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-gold">
-                              {cls.discount_percent}% off · {describeDiscountWindow(cls)}
-                            </span>
-                          </span>
-                        ) : isDiscountScheduled(cls) ? (
-                          <span className="flex flex-col">
-                            <span>&pound;{formatPence(cls.price_pence)}</span>
-                            <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-warm-grey">
-                              {cls.discount_percent}% off {describeDiscountWindow(cls)}
+                              {describeDiscountCoverage(cls)}
                             </span>
                           </span>
                         ) : (

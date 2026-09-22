@@ -146,7 +146,7 @@ export function ClassDiscountDialog({
               </div>
             </div>
             <div>
-              <Label htmlFor="discount_starts">Starts</Label>
+              <Label htmlFor="discount_starts">Classes from</Label>
               <Input
                 id="discount_starts"
                 type="date"
@@ -155,7 +155,7 @@ export function ClassDiscountDialog({
               />
             </div>
             <div>
-              <Label htmlFor="discount_ends">Ends</Label>
+              <Label htmlFor="discount_ends">Classes until</Label>
               <Input
                 id="discount_ends"
                 type="date"
@@ -166,8 +166,10 @@ export function ClassDiscountDialog({
           </div>
 
           <p className="text-[0.7rem] text-warm-grey">
-            Prices go back to normal by themselves the day after the end date.
-            Leave the end date empty to run it until you stop it.
+            These dates are the classes the discount covers, not a window for
+            booking. Someone booking today for a class inside this range pays the
+            discounted price straight away. Leave the end date empty to run it
+            until you stop it.
           </p>
 
           <div>
@@ -175,12 +177,16 @@ export function ClassDiscountDialog({
             <div className="mt-1.5 max-h-64 space-y-1 overflow-y-auto rounded-lg border border-sand p-2">
               {classes.map((cls) => {
                 const now = cls.price_pence
-                const then = effectivePricePence({
-                  price_pence: cls.price_pence,
-                  discount_percent: pct || null,
-                  discount_starts_on: null,
-                  discount_ends_on: null,
-                })
+                const then = effectivePricePence(
+                  {
+                    price_pence: cls.price_pence,
+                    discount_percent: pct || null,
+                    discount_starts_on: null,
+                    discount_ends_on: null,
+                  },
+                  // No window on this object, so any date prices the discount.
+                  "2000-01-01"
+                )
                 const on = selected.has(cls.id)
                 return (
                   <label
