@@ -62,3 +62,33 @@ Run as `DO` blocks ending in a deliberate exception, so they roll themselves bac
 - The refund is written to `credit_transactions` against the right booking and pack
 - A Beginner's Course pack allows two classes a week, blocks the third, and resets the next week
 - Two instructors can now hold the same class at the same time, and partial time overlaps are accepted
+
+## Events and event tickets (2026-09-23)
+
+Step 1 applied on 2026-09-23 as `20260923145006` (`events_and_event_tickets`);
+the scenario suite was re-run against the applied functions and passed. Steps 2–3
+are still to do.
+
+1. `20260923_01_events.sql` — `events`, `event_tickets`, `event_waitlist`,
+   `event_sale_alerts`, and the functions that decide who can buy
+   (`reserve_event_tickets`, `confirm_event_ticket`, `join_event_waitlist`,
+   `offer_event_waitlist`, `claim_due_sale_alerts`, `event_availability`).
+   Dry-run verified on 2026-09-23 inside a rolled-back transaction: holds,
+   per-member limits, queue fairness, waitlist offer and claim, late payments
+   refunded when there is no room, sale-time gating, alerts sent once, and
+   execute grants.
+2. Add Vault secret `forma_admin_url` (e.g. `https://admin.burnmatstudio.co.uk`)
+   and check Vault's `CRON_SECRET` equals the forma-admin Vercel `CRON_SECRET`.
+3. `20260923_02_event_jobs_cron.sql` — every-minute `event-jobs` pg_cron job.
+
+Deploy forma-admin (webhook + `/api/internal/event-jobs`) before or with
+burn-public. Until step 3, tickets still sell correctly; only the "on sale"
+and waitlist-offer emails wait.
+
+### Wallet passes (2026-09-23)
+
+4. `20260923_03_event_ticket_wallet_token.sql` — `event_tickets.wallet_token`,
+   the secret behind the "Add to Apple/Google Wallet" links in the ticket
+   confirmation email. Not applied yet. Apply before deploying burn-public's
+   `/api/wallet/*` routes and before switching on either `WALLET_*_ENABLED`
+   flag in forma-admin.

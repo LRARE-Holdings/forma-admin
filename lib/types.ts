@@ -300,6 +300,71 @@ export interface StudioHoliday {
   created_at: string
 }
 
+export interface StudioEvent {
+  id: string
+  studio_id: string
+  title: string
+  description: string
+  /** UK wall-clock date, YYYY-MM-DD */
+  event_date: string
+  start_time: string | null
+  end_time: string | null
+  location: string | null
+  image_url: string | null
+  link_url: string | null
+  link_label: string | null
+  is_published: boolean
+  tickets_enabled: boolean
+  price_pence: number
+  capacity: number | null
+  max_tickets_per_member: number
+  /** Null means on sale as soon as the event is published */
+  sales_open_at: string | null
+  stripe_product_id: string | null
+  stripe_price_id: string | null
+  cancelled_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type EventTicketStatus = "pending" | "confirmed" | "cancelled" | "expired"
+
+export interface EventTicket {
+  id: string
+  studio_id: string
+  event_id: string
+  profile_id: string
+  quantity: number
+  amount_pence: number
+  status: EventTicketStatus
+  hold_expires_at: string | null
+  stripe_payment_intent_id: string | null
+  waitlist_entry_id: string | null
+  confirmed_at: string | null
+  cancelled_at: string | null
+  cancelled_by: "member" | "studio" | "stripe" | null
+  refunded_at: string | null
+  refund_amount_pence: number | null
+  /** Secret for the "Add to Wallet" links in the confirmation email */
+  wallet_token: string
+  created_at: string
+}
+
+export type EventWaitlistStatus = "waiting" | "offered" | "claimed" | "expired" | "removed"
+
+export interface EventWaitlistEntry {
+  id: string
+  studio_id: string
+  event_id: string
+  profile_id: string
+  quantity: number
+  status: EventWaitlistStatus
+  offered_at: string | null
+  expires_at: string | null
+  claim_token: string
+  created_at: string
+}
+
 // Computed slot for a specific week view
 export interface WeekSlot {
   scheduleId: string

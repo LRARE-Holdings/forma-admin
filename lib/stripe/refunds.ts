@@ -1,6 +1,28 @@
 import { stripe } from "@/lib/stripe"
 import type Stripe from "stripe"
 
+/**
+ * Refunds whose sender already emails the member, so the `charge.refunded`
+ * webhook must not send a second one. `member_cancel` comes from burn-public's
+ * class cancellation, whose cancellation email states the refund.
+ *
+ * Deliberately absent: burn-public's `member_event_cancel`. Nothing else emails
+ * a member who cancels event tickets, so the webhook's refund email is their
+ * confirmation.
+ */
+export const APP_REFUND_INITIATORS = [
+  "class_cancel",
+  "booking_cancel",
+  "holiday_cancel",
+  "event_ticket_cancel",
+  "event_cancel",
+  "event_unconfirmed",
+  "member_cancel",
+] as const
+
+/** Refunds this app issues itself. */
+export type RefundInitiator = Exclude<(typeof APP_REFUND_INITIATORS)[number], "member_cancel">
+
 export type RefundOutcome =
   | { ok: true; amountPence: number; refundId: string }
   | { ok: false; reason: string }
@@ -19,10 +41,11 @@ export type RefundOutcome =
 export async function issueAdminRefund(params: {
   stripeId: string
   connectedAccountId: string
-  initiatedBy: "class_cancel" | "booking_cancel" | "holiday_cancel"
+  initiatedBy: RefundInitiator
   bookingId?: string
+  eventTicketId?: string
 }): Promise<RefundOutcome> {
-  const { stripeId, connectedAccountId, initiatedBy, bookingId } = params
+  const { stripeId, connectedAccountId, initiatedBy, bookingId, eventTicketId } = params
   const stripeAccount = { stripeAccount: connectedAccountId }
 
   try {
@@ -44,6 +67,7 @@ export async function issueAdminRefund(params: {
 
     const metadata: Record<string, string> = { initiated_by: initiatedBy }
     if (bookingId) metadata.booking_id = bookingId
+    if (eventTicketId) metadata.event_ticket_id = eventTicketId
 
     const refund = await stripe.refunds.create(
       { payment_intent: paymentIntentId, metadata },

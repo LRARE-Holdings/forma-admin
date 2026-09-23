@@ -6,7 +6,12 @@ import { sendBookingNotification } from "@/lib/email/booking-notification"
 import { sendStudioEmail } from "@/lib/email/send"
 import { refundEmail } from "@/lib/email/templates"
 import { formatTime } from "@/lib/utils"
-import { issueAdminRefund } from "@/lib/stripe/refunds"
+import { issueAdminRefund, APP_REFUND_INITIATORS } from "@/lib/stripe/refunds"
+import {
+  sendTicketConfirmation,
+  refundUnconfirmedTicket,
+  offerWaitlistPlaces,
+} from "@/lib/event-tickets"
 import type Stripe from "stripe"
 import type { StudioBranding } from "@/lib/types"
 
@@ -122,6 +127,29 @@ async function handlePaymentIntentSucceeded(
 
   // Guard against duplicate processing — check if we already handled this PI
   const piId = paymentIntent.id
+
+  if (metadata.type === "event_ticket") {
+    const ticketId = metadata.event_ticket_id
+    if (!ticketId) return
+
+    // The places were held when checkout started; this turns the hold into a
+    // ticket, or reports why it cannot. Idempotent, so Stripe retries are safe.
+    const { data: outcome, error } = await supabase.rpc("confirm_event_ticket", {
+      p_ticket_id: ticketId,
+      p_payment_intent_id: piId,
+    })
+    // Throwing makes Stripe retry, which is right for a transient DB error.
+    if (error) throw new Error(`confirm_event_ticket failed: ${error.message}`)
+
+    if (outcome === "confirmed") {
+      await sendTicketConfirmation(ticketId).catch((err) =>
+        console.error("[webhook] Ticket confirmation email failed:", err),
+      )
+    } else if (outcome !== "already_confirmed") {
+      await refundUnconfirmedTicket(ticketId, outcome as string)
+    }
+    return
+  }
 
   if (metadata.type === "pack_tier") {
     const packTierId = metadata.pack_tier_id
@@ -525,11 +553,7 @@ async function handleChargeRefunded(
   // If any refund on this charge was issued by the admin app (cancel flow,
   // skip flow, holiday flow), the cancellation email already told the member
   // about the refund — don't send a duplicate refund email from the webhook.
-  const adminInitiatedReasons = new Set([
-    "class_cancel",
-    "booking_cancel",
-    "holiday_cancel",
-  ])
+  const adminInitiatedReasons = new Set<string>(APP_REFUND_INITIATORS)
   const refundList = charge.refunds?.data ?? []
   const skipRefundEmail = refundList.some(
     (r) => adminInitiatedReasons.has((r.metadata?.initiated_by as string) ?? "")
@@ -543,6 +567,60 @@ async function handleChargeRefunded(
     .single()
   const studioName = studio?.name ?? "Your studio"
   const branding = studio?.branding as StudioBranding | null
+
+  // Event tickets are only ever sold through PaymentIntents.
+  const { data: ticketByPi } = await supabase
+    .from("event_tickets")
+    .select("id, event_id, profile_id, status, quantity, refunded_at, events:event_id(title, event_date)")
+    .eq("stripe_payment_intent_id", paymentIntentId)
+    .eq("studio_id", studioId)
+    .maybeSingle()
+
+  if (ticketByPi) {
+    const update: Record<string, unknown> = {}
+    if (!ticketByPi.refunded_at) {
+      update.refunded_at = new Date().toISOString()
+      update.refund_amount_pence = charge.amount_refunded
+    }
+    // A full refund from the Stripe dashboard releases the places.
+    const releasesPlaces = fullyRefunded && ticketByPi.status === "confirmed"
+    if (releasesPlaces) {
+      update.status = "cancelled"
+      update.cancelled_by = "stripe"
+      update.cancelled_at = new Date().toISOString()
+    }
+    if (Object.keys(update).length > 0) {
+      await supabase.from("event_tickets").update(update).eq("id", ticketByPi.id)
+    }
+
+    if (!skipRefundEmail) {
+      const ev = ticketByPi.events as unknown as { title: string; event_date: string } | null
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("full_name, email")
+        .eq("id", ticketByPi.profile_id)
+        .single()
+      if (profile?.email && ev) {
+        const formattedDate = new Date(ev.event_date + "T00:00:00").toLocaleDateString("en-GB", {
+          weekday: "long", day: "numeric", month: "long",
+        })
+        const { subject, html } = refundEmail({
+          memberName: profile.full_name?.split(" ")[0] ?? "there",
+          amountPounds: amountRefundedPounds,
+          description: `${ticketByPi.quantity} ticket${ticketByPi.quantity === 1 ? "" : "s"} for ${ev.title} on ${formattedDate}`,
+          fullyRefunded,
+          studioName,
+          branding,
+        })
+        await sendStudioEmail(studioId, { to: profile.email, subject, html }).catch((err) =>
+          console.error("[webhook] Refund email failed:", err),
+        )
+      }
+    }
+
+    if (releasesPlaces) await offerWaitlistPlaces(ticketByPi.event_id as string)
+    return
+  }
 
   // Look up directly by payment intent ID (primary path — Elements flow)
   const { data: packByPi } = await supabase
@@ -765,6 +843,18 @@ async function handleDisputeCreated(
     : (charge.payment_intent as Stripe.PaymentIntent)?.id
 
   if (!paymentIntentId) return
+
+  // A chargeback voids the ticket. The place is not re-offered: the studio may
+  // yet win the dispute, and the member may still turn up.
+  const { data: ticketByPi } = await supabase
+    .from("event_tickets")
+    .update({ status: "cancelled", cancelled_by: "stripe", cancelled_at: new Date().toISOString() })
+    .eq("stripe_payment_intent_id", paymentIntentId)
+    .eq("studio_id", studioId)
+    .eq("status", "confirmed")
+    .select("id")
+    .maybeSingle()
+  if (ticketByPi) return
 
   // Try direct lookup by payment intent ID first (Elements flow)
   const { data: packByPi } = await supabase
