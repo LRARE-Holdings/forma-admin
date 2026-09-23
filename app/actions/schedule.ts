@@ -5,6 +5,8 @@ import { createClient } from "@/lib/supabase/server"
 import { requireManager } from "@/lib/auth"
 import { getStudioId } from "@/lib/studio-context"
 import { notifyInstructorScheduleChange } from "@/lib/email/schedule-notifications"
+import { getSlotRemovalImpact } from "@/lib/schedule-integrity"
+import { cancelClassInstance } from "./class-cancellation"
 
 export async function createScheduleSlot(formData: FormData) {
   await requireManager()
@@ -113,7 +115,46 @@ export async function updateScheduleSlot(slotId: string, formData: FormData) {
   revalidatePath("/dashboard")
 }
 
-export async function deleteScheduleSlot(slotId: string) {
+/**
+ * What removing this slot would cancel: upcoming dates that still hold
+ * confirmed bookings, and how many on each. The removal dialog asks for this
+ * first, so nobody deletes a class out from under eleven paying members
+ * without being told that is what the button does.
+ */
+export async function getSlotRemovalSummary(
+  slotId: string
+): Promise<{ date: string; bookingCount: number }[]> {
+  await requireManager()
+  const studioId = await getStudioId()
+  return getSlotRemovalImpact(studioId, slotId)
+}
+
+/**
+ * Take a slot off the timetable.
+ *
+ * Switching `is_active` off hides the class from every surface at once — the
+ * admin timetable, the staff schedule, the register and the public booking
+ * page all filter on it. Any confirmed booking left pointing at the slot
+ * therefore becomes invisible while staying perfectly valid: the member keeps
+ * their confirmation email and their spent credit, and turns up to a class
+ * that is on nobody's timetable and has nobody rostered to teach it.
+ *
+ * So the bookings are cancelled *before* the slot goes, through the normal
+ * cancellation path — credits restored, drop-ins refunded, members emailed.
+ * Cancelling first means a failure part-way leaves the class still visible,
+ * which is the recoverable direction to fail in.
+ *
+ * (23 Sep 2026: four members arrived for a 10:00 Infrared Pilates whose slot
+ * had been switched off a week earlier. Nobody was told, on either side.)
+ *
+ * Returns what it cancelled so the caller can report it rather than saying
+ * "removed" over the top of six refunds.
+ */
+export async function deleteScheduleSlot(slotId: string): Promise<{
+  cancelledCount: number
+  refundedCount: number
+  refundFailedCount: number
+}> {
   await requireManager()
   const studioId = await getStudioId()
   const supabase = await createClient()
@@ -125,6 +166,24 @@ export async function deleteScheduleSlot(slotId: string) {
     .eq("id", slotId)
     .eq("studio_id", studioId)
     .single()
+
+  // Cancel every future date that still holds bookings, one instance at a time.
+  const impact = await getSlotRemovalImpact(studioId, slotId)
+
+  let cancelledCount = 0
+  let refundedCount = 0
+  let refundFailedCount = 0
+
+  for (const { date } of impact) {
+    const result = await cancelClassInstance(
+      slotId,
+      date,
+      "This class has been taken off the timetable"
+    )
+    cancelledCount += result.cancelledCount
+    refundedCount += result.refundedCount
+    refundFailedCount += result.refundFailedCount
+  }
 
   const { error } = await supabase
     .from("schedule")
@@ -161,4 +220,7 @@ export async function deleteScheduleSlot(slotId: string) {
 
   revalidatePath("/dashboard/timetable")
   revalidatePath("/dashboard")
+  revalidatePath("/staff")
+
+  return { cancelledCount, refundedCount, refundFailedCount }
 }
