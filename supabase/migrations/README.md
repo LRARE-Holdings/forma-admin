@@ -123,3 +123,16 @@ Found during a codebase review. Both applied the same day.
   rename. Unique per studio (`-2`, `-3`… on repeats). Applied 2026-09-23 after
   a rolled-back test of punctuation, repeats, a title with no letters, another
   studio reusing a slug, and a rename.
+
+## Member write holes (2026-09-23)
+
+- `20260923_08_close_member_write_holes.sql` — from the database audit, each
+  hole proven in a rolled-back transaction first: sign-ups could make
+  themselves studio admins (role read from user-supplied metadata); members
+  could write free bookings, re-confirm cancelled/refunded ones or move them
+  past capacity; members could give themselves waitlist offers; class-waitlist
+  positions were wrong (59 entries at #1); members could write any profile
+  column. Applied after 16 rolled-back checks covering both the holes and the
+  legitimate paths (staff invites, admin edits, joining/leaving waitlists,
+  profile edits, server-side date-of-birth corrections). Nobody had used the
+  admin hole — every admin/staff membership traced to a real invite.
