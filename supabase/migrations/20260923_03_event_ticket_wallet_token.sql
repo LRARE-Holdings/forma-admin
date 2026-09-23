@@ -1,4 +1,4 @@
--- STATUS: NOT YET APPLIED — awaiting review.
+-- STATUS: APPLIED 2026-09-23 (event_ticket_wallet_token).
 --
 -- A per-ticket secret for the "Add to Apple Wallet" / "Add to Google Wallet"
 -- links in the ticket confirmation email.
