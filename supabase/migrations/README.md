@@ -159,6 +159,22 @@ Found during a codebase review. Both applied the same day.
 - Edge functions `forma-announcement` and `migration-email` were replaced with
   410 stubs (they exposed member emails to anyone). Delete them in the
   dashboard when convenient.
-- **Open:** the edge-function secret `CRON_SECRET` does not match the Vault's,
-  so `waitlist-expiry` and `send-weekly-emails` get 401 from their cron jobs.
-  Set the edge-function secret to the Vault value.
+- The edge-function secret `CRON_SECRET` now matches the Vault's (fixed the
+  same evening); `waitlist-expiry` returns 200 again.
+
+## Audit clean-up: data links and performance (2026-09-23)
+
+- `20260923_11_link_unlinked_pack_bookings.sql` — six pack bookings from the
+  morning of 2026-09-22 (before the class_pack_id fix) were saved without
+  their pack, and their ledger debits without the booking. Credits were taken
+  correctly; this only fills in the links so a cancellation re-credits the
+  right pack. Applied.
+- `20260923_12_rls_initplan_and_fk_indexes.sql` — policies call
+  `(select auth.uid())` so it runs once per query instead of per row, and every
+  unindexed foreign key gets an index. No access changes: dry run in a
+  rolled-back transaction rewrote all 40 policies and a member saw exactly
+  their own bookings, packs and profile. Applied.
+- Left as they are: 1,496 older pack bookings without `class_pack_id` (from
+  before packs were tracked per booking), one 2026-09-02 "stripe" booking with
+  no payment reference (a past class, most likely added by hand), and 8
+  internal/test accounts with no studio membership.
