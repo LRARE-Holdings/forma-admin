@@ -7,6 +7,7 @@ import { getStudioId } from "@/lib/studio-context"
 import { notifyInstructorScheduleChange } from "@/lib/email/schedule-notifications"
 import { dateToDateStr, localDateStr } from "@/lib/utils"
 import { findRuleConflicts, describeConflict } from "@/lib/schedule-conflicts"
+import { deleteScheduleSlot } from "./schedule"
 import type { ScheduleRuleResult } from "@/lib/schedule-conflicts"
 import type { Recurrence } from "@/lib/types"
 
@@ -425,7 +426,17 @@ export async function resumeScheduleRule(ruleId: string) {
 }
 
 /**
- * Delete a schedule rule. Materialised slots stay (rule_id becomes null via ON DELETE SET NULL).
+ * Delete a schedule rule, and retire the slot it materialised.
+ *
+ * The rule's FK is ON DELETE SET NULL, so dropping the rule on its own leaves
+ * the slot live with `rule_id = NULL`. A slot with no rule has no window and no
+ * recurrence, and `getRangeData` reads that as "runs on this weekday forever" —
+ * which is right for a standing slot somebody added by hand, and quietly wrong
+ * for one whose rule was just deleted. The class carries on rendering and
+ * taking bookings for a recurrence that no longer exists.
+ *
+ * Retiring the slot goes through `deleteScheduleSlot`, so any future bookings
+ * on it are cancelled, refunded and emailed rather than stranded.
  */
 export async function deleteScheduleRule(ruleId: string) {
   await requireManager()
@@ -440,6 +451,19 @@ export async function deleteScheduleRule(ruleId: string) {
     .eq("studio_id", studioId)
     .single()
 
+  // Retire the slots first, while they can still be found by rule_id — once the
+  // rule row goes, the link back to them is gone.
+  const { data: slots } = await supabase
+    .from("schedule")
+    .select("id")
+    .eq("rule_id", ruleId)
+    .eq("studio_id", studioId)
+    .eq("is_active", true)
+
+  for (const slot of slots ?? []) {
+    await deleteScheduleSlot(slot.id as string)
+  }
+
   const { error } = await supabase
     .from("schedule_rules")
     .delete()
@@ -448,8 +472,10 @@ export async function deleteScheduleRule(ruleId: string) {
 
   if (error) throw new Error(error.message)
 
-  // Notify instructor (fire-and-forget)
-  if (rule) {
+  // Notify instructor (fire-and-forget). Only when the rule had no live slot —
+  // retiring one through deleteScheduleSlot already sent this same email, and
+  // two "you've been taken off Hot Pilates" messages read like two changes.
+  if (rule && (slots ?? []).length === 0) {
     const cls = rule.classes as unknown as { name: string } | null
     notifyInstructorScheduleChange(studioId, rule.instructor_id, "removed", {
       className: cls?.name ?? "a class",

@@ -4,11 +4,13 @@ import { getStudioId } from "@/lib/studio-context"
 import { getGreeting, formatTime, formatPence, localDateStr, dateToDateStr, ukDayOfWeek } from "@/lib/utils"
 import { getMonthlyRevenue, getPreviousMonthRevenue } from "@/lib/stripe/revenue"
 import { ADMIN_ROLES } from "@/lib/types"
+import { findStrandedBookings } from "@/lib/schedule-integrity"
 import { StatCard } from "@/components/shared/stat-card"
 import { ClassColorBar } from "@/components/shared/class-color-bar"
 import { EmptyState } from "@/components/shared/empty-state"
 import { PageHeader } from "@/components/shared/page-header"
 import { OnboardingChecklist } from "@/components/dashboard/onboarding-checklist"
+import { StrandedBookingsBanner } from "@/components/dashboard/stranded-bookings-banner"
 import { TodayCancelButton } from "@/components/dashboard/today-cancel-button"
 import { RealtimeBookingListener } from "@/components/dashboard/realtime-booking-listener"
 
@@ -53,6 +55,14 @@ export default async function OverviewPage() {
   const lastMondayISO = lastMonday.toISOString()
 
   const role = await getUserRole(studioId)
+
+  // Bookings pointing at a slot that is no longer live. Checked on every
+  // dashboard load because this failure produces no error and no log — the
+  // only signal it ever gave was a member standing in the car park.
+  const stranded =
+    role && ADMIN_ROLES.includes(role)
+      ? await findStrandedBookings(studioId)
+      : []
 
   // Fetch data in parallel
   const [scheduleRes, bookingsTodayRes, membersRes, revenue, recentBookingsRes, studioRes, classesCountRes, scheduleCountRes, teamCountRes, allBookingsRes, bookingsLastWeekRes, newMembersThisWeekRes, newMembersLastWeekRes, prevMonthRevenue] =
@@ -282,6 +292,11 @@ export default async function OverviewPage() {
         title={`${getGreeting()}, ${firstName}`}
         description={`Here\u2019s what\u2019s happening at your studio today.`}
       />
+
+      {/* Bookings held against a class that no longer renders anywhere. Above
+          the onboarding checklist and the stats: these members have paid and
+          are expecting to turn up. */}
+      <StrandedBookingsBanner stranded={stranded} />
 
       {/* Onboarding checklist */}
       {onboardingItems && onboardingItems.some((i) => !i.completed) && (

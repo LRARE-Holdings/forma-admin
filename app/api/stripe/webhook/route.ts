@@ -6,6 +6,7 @@ import { sendBookingNotification } from "@/lib/email/booking-notification"
 import { sendStudioEmail } from "@/lib/email/send"
 import { refundEmail } from "@/lib/email/templates"
 import { formatTime } from "@/lib/utils"
+import { issueAdminRefund } from "@/lib/stripe/refunds"
 import type Stripe from "stripe"
 import type { StudioBranding } from "@/lib/types"
 
@@ -65,11 +66,11 @@ export async function POST(request: NextRequest) {
   try {
     switch (event.type) {
       case "payment_intent.succeeded":
-        await handlePaymentIntentSucceeded(supabase, studioId, event.data.object as Stripe.PaymentIntent)
+        await handlePaymentIntentSucceeded(supabase, studioId, connectedAccountId ?? null, event.data.object as Stripe.PaymentIntent)
         break
 
       case "checkout.session.completed":
-        await handleCheckoutCompleted(supabase, studioId, event.data.object as Stripe.Checkout.Session)
+        await handleCheckoutCompleted(supabase, studioId, connectedAccountId ?? null, event.data.object as Stripe.Checkout.Session)
         break
 
       case "customer.subscription.created":
@@ -112,6 +113,7 @@ export async function POST(request: NextRequest) {
 async function handlePaymentIntentSucceeded(
   supabase: ReturnType<typeof createAdminClient>,
   studioId: string,
+  connectedAccountId: string | null,
   paymentIntent: Stripe.PaymentIntent,
 ) {
   const metadata = paymentIntent.metadata ?? {}
@@ -174,9 +176,20 @@ async function handlePaymentIntentSucceeded(
 
     if (existingBooking) return
 
-    // Reject booking if class is skipped for this date
-    if (await isClassSkipped(supabase, studioId, scheduleId, date)) {
-      console.warn(`Rejected booking for skipped class: schedule=${scheduleId} date=${date}`)
+    // Last gate before the booking exists: cancelled, closed, or full.
+    const blocked = await bookingBlockedReason(supabase, studioId, scheduleId, date, {
+      checkCapacity: true,
+    })
+    if (blocked) {
+      await refundUnbookablePayment(supabase, {
+        studioId,
+        connectedAccountId,
+        profileId,
+        stripeId: piId,
+        scheduleId,
+        date,
+        reason: blocked,
+      })
       return
     }
 
@@ -217,9 +230,20 @@ async function handlePaymentIntentSucceeded(
 
     if (existingBooking) return
 
-    // Reject booking if class is skipped for this date
-    if (await isClassSkipped(supabase, studioId, scheduleId, date)) {
-      console.warn(`Rejected waitlist claim for skipped class: schedule=${scheduleId} date=${date}`)
+    // The claimant's spot is held for them, so capacity is not re-checked here.
+    const blocked = await bookingBlockedReason(supabase, studioId, scheduleId, date, {
+      checkCapacity: false,
+    })
+    if (blocked) {
+      await refundUnbookablePayment(supabase, {
+        studioId,
+        connectedAccountId,
+        profileId,
+        stripeId: piId,
+        scheduleId,
+        date,
+        reason: blocked,
+      })
       return
     }
 
@@ -260,6 +284,7 @@ async function handlePaymentIntentSucceeded(
 async function handleCheckoutCompleted(
   supabase: ReturnType<typeof createAdminClient>,
   studioId: string,
+  connectedAccountId: string | null,
   session: Stripe.Checkout.Session,
 ) {
   const metadata = session.metadata ?? {}
@@ -309,9 +334,19 @@ async function handleCheckoutCompleted(
     const date = metadata.date
     if (!scheduleId || !date) return
 
-    // Reject booking if class is skipped for this date
-    if (await isClassSkipped(supabase, studioId, scheduleId, date)) {
-      console.warn(`Rejected booking for skipped class: schedule=${scheduleId} date=${date}`)
+    const blocked = await bookingBlockedReason(supabase, studioId, scheduleId, date, {
+      checkCapacity: true,
+    })
+    if (blocked) {
+      await refundUnbookablePayment(supabase, {
+        studioId,
+        connectedAccountId,
+        profileId,
+        stripeId: session.id,
+        scheduleId,
+        date,
+        reason: blocked,
+      })
       return
     }
 
@@ -342,9 +377,20 @@ async function handleCheckoutCompleted(
     const claimToken = metadata.waitlist_claim_token
     if (!scheduleId || !date) return
 
-    // Reject booking if class is skipped for this date
-    if (await isClassSkipped(supabase, studioId, scheduleId, date)) {
-      console.warn(`Rejected waitlist claim for skipped class: schedule=${scheduleId} date=${date}`)
+    // The claimant's spot is held for them, so capacity is not re-checked here.
+    const blocked = await bookingBlockedReason(supabase, studioId, scheduleId, date, {
+      checkCapacity: false,
+    })
+    if (blocked) {
+      await refundUnbookablePayment(supabase, {
+        studioId,
+        connectedAccountId,
+        profileId,
+        stripeId: session.id,
+        scheduleId,
+        date,
+        reason: blocked,
+      })
       return
     }
 
@@ -780,19 +826,156 @@ async function handleDisputeCreated(
  * Check if a class instance is skipped (has a schedule_exception for that date).
  * Used as a server-side guard to prevent bookings on skipped classes.
  */
-async function isClassSkipped(
+/**
+ * Why this paid booking cannot be written, or null if it can.
+ *
+ * The public site checks all of this before it creates the PaymentIntent, but
+ * that check is minutes old by the time the payment succeeds. In between, the
+ * class can fill up or be cancelled. This is the last gate before a booking row
+ * exists, so it has to be at least as strict as the first one — it used to be
+ * weaker, checking only `schedule_exceptions` and never capacity at all, which
+ * is how two people could pay for the last spot and both get in.
+ */
+async function bookingBlockedReason(
   supabase: ReturnType<typeof createAdminClient>,
   studioId: string,
   scheduleId: string,
   date: string,
-): Promise<boolean> {
-  const { data } = await supabase
-    .from("schedule_exceptions")
-    .select("id")
+  opts: { checkCapacity: boolean },
+): Promise<string | null> {
+  const { data: slot } = await supabase
+    .from("schedule")
+    .select("start_time, class_id, is_active, classes:class_id(capacity)")
+    .eq("id", scheduleId)
     .eq("studio_id", studioId)
-    .eq("schedule_id", scheduleId)
-    .eq("date", date)
-    .maybeSingle()
+    .single()
 
-  return !!data
+  if (!slot) return "that class is no longer on the timetable"
+  if (!slot.is_active) return "that class is no longer on the timetable"
+
+  const [{ data: exception }, { data: holidays }] = await Promise.all([
+    supabase
+      .from("schedule_exceptions")
+      .select("id")
+      .eq("studio_id", studioId)
+      .eq("schedule_id", scheduleId)
+      .eq("date", date)
+      .maybeSingle(),
+    supabase
+      .from("studio_holidays")
+      .select("start_date, end_date, start_time, end_time")
+      .eq("studio_id", studioId)
+      .lte("start_date", date)
+      .gte("end_date", date),
+  ])
+
+  if (exception) return "that class was cancelled"
+
+  // A holiday with no times closes the whole day; one with times closes only
+  // the classes starting inside the window, which is how the dashboard decides
+  // what to cancel.
+  const startTime = slot.start_time as string
+  const closed = (holidays ?? []).some((h) => {
+    if (!h.start_time || !h.end_time) return true
+    return startTime >= (h.start_time as string) && startTime < (h.end_time as string)
+  })
+  if (closed) return "the studio is closed that day"
+
+  if (opts.checkCapacity) {
+    const cls = slot.classes as unknown as { capacity: number | null } | null
+    const capacity = cls?.capacity ?? 10
+
+    const { count } = await supabase
+      .from("bookings")
+      .select("id", { count: "exact", head: true })
+      .eq("studio_id", studioId)
+      .eq("schedule_id", scheduleId)
+      .eq("date", date)
+      .eq("status", "confirmed")
+
+    if ((count ?? 0) >= capacity) return "that class filled up"
+  }
+
+  return null
+}
+
+/**
+ * The payment went through but the booking cannot be written. Refund it and
+ * tell the member why.
+ *
+ * Returning early — which is what this used to do for a cancelled class — left
+ * the member charged, unbooked and unnotified, with nothing logged anywhere
+ * they could see. A charge with no booking behind it always gets refunded.
+ */
+async function refundUnbookablePayment(
+  supabase: ReturnType<typeof createAdminClient>,
+  params: {
+    studioId: string
+    connectedAccountId: string | null
+    profileId: string
+    stripeId: string
+    scheduleId: string
+    date: string
+    reason: string
+  },
+): Promise<void> {
+  const { studioId, connectedAccountId, profileId, stripeId, scheduleId, date, reason } = params
+
+  console.warn(
+    `[webhook] Refunding unbookable payment ${stripeId}: schedule=${scheduleId} date=${date} — ${reason}`,
+  )
+
+  if (!connectedAccountId) {
+    console.error(
+      `[webhook] Cannot refund ${stripeId} — studio ${studioId} has no connected account. REFUND BY HAND.`,
+    )
+    return
+  }
+
+  const refund = await issueAdminRefund({
+    stripeId,
+    connectedAccountId,
+    initiatedBy: "booking_cancel",
+  })
+
+  if (!refund.ok) {
+    console.error(
+      `[webhook] Refund FAILED for ${stripeId}: ${refund.reason}. REFUND BY HAND.`,
+    )
+    return
+  }
+
+  const [profileRes, slotRes, studioRes] = await Promise.all([
+    supabase.from("profiles").select("full_name, email").eq("id", profileId).single(),
+    supabase
+      .from("schedule")
+      .select("start_time, classes:class_id(name)")
+      .eq("id", scheduleId)
+      .single(),
+    supabase.from("studios").select("name, branding").eq("id", studioId).single(),
+  ])
+
+  const profile = profileRes.data
+  if (!profile?.email) return
+
+  const cls = slotRes.data?.classes as unknown as { name: string } | null
+  const formattedDate = new Date(date + "T00:00:00").toLocaleDateString("en-GB", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  })
+  const time = slotRes.data?.start_time ? formatTime(slotRes.data.start_time as string) : ""
+
+  const { subject, html } = refundEmail({
+    memberName: profile.full_name?.split(" ")[0] ?? "there",
+    amountPounds: (refund.amountPence / 100).toFixed(2),
+    description: `${cls?.name ?? "Class"} on ${formattedDate}${time ? ` at ${time}` : ""} — we could not confirm your booking because ${reason}.`,
+    fullyRefunded: true,
+    studioName: studioRes.data?.name ?? "Your studio",
+    branding: (studioRes.data?.branding as StudioBranding | null) ?? null,
+  })
+
+  await sendStudioEmail(studioId, { to: profile.email, subject, html }).catch((err) =>
+    console.error("[webhook] Refund email failed:", err),
+  )
 }

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { formatTime, formatPence, getInitial } from "@/lib/utils"
 import { unskipClassInstance } from "@/app/actions/schedule-exceptions"
-import { deleteScheduleSlot } from "@/app/actions/schedule"
+import { deleteScheduleSlot, getSlotRemovalSummary } from "@/app/actions/schedule"
 import { getSlotAttendees, cancelBooking, type SlotAttendee } from "@/app/actions/bookings"
 import { AttendanceDropdown } from "@/components/shared/attendance-dropdown"
 import { ClassColorBar } from "@/components/shared/class-color-bar"
@@ -43,6 +43,40 @@ function paymentLabel(method: string) {
   }
 }
 
+/**
+ * What the Remove button is actually about to do. A recurring slot is one row,
+ * so removing it takes out every future occurrence, not just the date that was
+ * clicked — and the members on those dates get cancelled and refunded.
+ */
+function describeRemoval(
+  className: string,
+  impact: { date: string; bookingCount: number }[] | null
+): string {
+  const base = `Remove this ${className} slot from the timetable permanently?`
+
+  if (impact === null) return base
+  if (impact.length === 0) {
+    return `${base} Nothing upcoming is booked onto it.`
+  }
+
+  const totalBookings = impact.reduce((sum, d) => sum + d.bookingCount, 0)
+  const dates = impact
+    .map((d) =>
+      new Date(d.date + "T00:00:00").toLocaleDateString("en-GB", {
+        day: "numeric",
+        month: "short",
+      })
+    )
+    .join(", ")
+
+  return (
+    `${base} This will cancel ${totalBookings} upcoming booking` +
+    `${totalBookings === 1 ? "" : "s"} across ${impact.length} date` +
+    `${impact.length === 1 ? "" : "s"} (${dates}). ` +
+    `Pack credits will be restored, drop-ins refunded, and members emailed.`
+  )
+}
+
 function paymentStyle(method: string) {
   switch (method) {
     case "pack_credit":
@@ -69,6 +103,13 @@ export function CalendarSlotPopover({
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [unskipLoading, setUnskipLoading] = useState(false)
 
+  // Upcoming dates on this slot that still hold confirmed bookings. Removing
+  // the slot cancels and refunds them, so the dialog has to say so first —
+  // "Remove this slot?" reads like tidying up an empty row.
+  const [removalImpact, setRemovalImpact] = useState<
+    { date: string; bookingCount: number }[] | null
+  >(null)
+
   // Track which child dialog to open after the parent fully closes
   const pendingDialog = useRef<"skip" | "cancel" | "csv" | "delete" | null>(null)
 
@@ -90,6 +131,19 @@ export function CalendarSlotPopover({
     else if (target === "cancel") setCancelOpen(true)
     else if (target === "csv") setCsvUploadOpen(true)
     else if (target === "delete") setDeleteOpen(true)
+  }
+
+  async function openDeleteDialog() {
+    setRemovalImpact(null)
+    pendingDialog.current = "delete"
+    onOpenChange(false)
+    if (!childSlot) return
+    try {
+      setRemovalImpact(await getSlotRemovalSummary(childSlot.scheduleId))
+    } catch {
+      // Leave it null — the dialog then warns in general terms rather than
+      // claiming there is nothing booked.
+    }
   }
 
   // Attendee state
@@ -142,8 +196,21 @@ export function CalendarSlotPopover({
     if (!childSlot) return
     setDeleteLoading(true)
     try {
-      await deleteScheduleSlot(childSlot.scheduleId)
-      toast.success("Schedule slot removed")
+      const result = await deleteScheduleSlot(childSlot.scheduleId)
+      if (result.cancelledCount > 0) {
+        const refundPart =
+          result.refundedCount > 0 ? `, ${result.refundedCount} refunded` : ""
+        toast.success(
+          `Slot removed — ${result.cancelledCount} booking${result.cancelledCount === 1 ? "" : "s"} cancelled${refundPart} and members emailed`
+        )
+        if (result.refundFailedCount > 0) {
+          toast.error(
+            `${result.refundFailedCount} refund${result.refundFailedCount === 1 ? "" : "s"} couldn't be processed — refund manually in Stripe`
+          )
+        }
+      } else {
+        toast.success("Schedule slot removed")
+      }
       setDeleteOpen(false)
       onOpenChange(false)
     } catch (e) {
@@ -410,10 +477,7 @@ export function CalendarSlotPopover({
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => {
-                      pendingDialog.current = "delete"
-                      onOpenChange(false)
-                    }}
+                    onClick={openDeleteDialog}
                     className="text-warm-grey hover:text-red-600"
                   >
                     <Trash2 className="mr-1.5 h-3 w-3" />
@@ -465,10 +529,15 @@ export function CalendarSlotPopover({
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
         title="Remove slot"
-        description={`Remove this ${childSlot.className} slot from the timetable permanently?`}
+        description={describeRemoval(childSlot.className, removalImpact)}
         onConfirm={handleDelete}
         loading={deleteLoading}
         actionLabel="Remove"
+        loadingLabel={
+          removalImpact && removalImpact.length > 0
+            ? "Cancelling and refunding…"
+            : undefined
+        }
       />
     </>
   )
