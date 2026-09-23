@@ -1,5 +1,6 @@
 "use server"
 
+import { runAction } from "@/lib/action-result"
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
@@ -148,105 +149,109 @@ export async function inviteStaffMember(
 }
 
 export async function removeStaffMember(membershipId: string) {
-  await requireAdmin()
-  const studioId = await getStudioId()
-  const supabase = await createClient()
+  return runAction(async () => {
+    await requireAdmin()
+    const studioId = await getStudioId()
+    const supabase = await createClient()
 
-  // Get the membership to find the profile_id and role
-  const { data: membership } = await supabase
-    .from("studio_memberships")
-    .select("profile_id, role")
-    .eq("id", membershipId)
-    .eq("studio_id", studioId)
-    .single()
+    // Get the membership to find the profile_id and role
+    const { data: membership } = await supabase
+      .from("studio_memberships")
+      .select("profile_id, role")
+      .eq("id", membershipId)
+      .eq("studio_id", studioId)
+      .single()
 
-  if (!membership) throw new Error("Membership not found")
+    if (!membership) throw new Error("Membership not found")
 
-  // Prevent removing the owner
-  if (membership.role === "owner") {
-    throw new Error("Cannot remove the studio owner")
-  }
+    // Prevent removing the owner
+    if (membership.role === "owner") {
+      throw new Error("Cannot remove the studio owner")
+    }
 
-  // Delete instructor record if they have one
-  await supabase
-    .from("instructors")
-    .delete()
-    .eq("profile_id", membership.profile_id)
-    .eq("studio_id", studioId)
+    // Delete instructor record if they have one
+    await supabase
+      .from("instructors")
+      .delete()
+      .eq("profile_id", membership.profile_id)
+      .eq("studio_id", studioId)
 
-  // Remove membership
-  await supabase
-    .from("studio_memberships")
-    .delete()
-    .eq("id", membershipId)
-    .eq("studio_id", studioId)
+    // Remove membership
+    await supabase
+      .from("studio_memberships")
+      .delete()
+      .eq("id", membershipId)
+      .eq("studio_id", studioId)
 
-  revalidatePath("/dashboard/team")
+    revalidatePath("/dashboard/team")
+  })
 }
 
 export async function updateStaffRole(
   membershipId: string,
   newRole: string
 ): Promise<{ error: string } | undefined> {
-  await requireAdmin()
-  const studioId = await getStudioId()
+  return runAction(async () => {
+    await requireAdmin()
+    const studioId = await getStudioId()
 
-  if (!VALID_INVITE_ROLES.includes(newRole)) {
-    throw new Error("Invalid role")
-  }
-
-  const supabase = await createClient()
-
-  // Fetch current membership
-  const { data: membership } = await supabase
-    .from("studio_memberships")
-    .select("id, profile_id, role")
-    .eq("id", membershipId)
-    .eq("studio_id", studioId)
-    .single()
-
-  if (!membership) throw new Error("Membership not found")
-  if (membership.role === "owner") throw new Error("Cannot change the owner's role")
-  if (membership.role === newRole) return
-
-  // Update the role
-  const { error } = await supabase
-    .from("studio_memberships")
-    .update({ role: newRole })
-    .eq("id", membershipId)
-    .eq("studio_id", studioId)
-
-  if (error) throw new Error(error.message)
-
-  // If changing to "staff", ensure an instructor record exists
-  if (newRole === "staff") {
-    const { data: existing } = await supabase
-      .from("instructors")
-      .select("id")
-      .eq("profile_id", membership.profile_id)
-      .eq("studio_id", studioId)
-      .maybeSingle()
-
-    if (!existing) {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("full_name")
-        .eq("id", membership.profile_id)
-        .single()
-
-      const name = profile?.full_name ?? "Instructor"
-
-      const { error: instructorError } = await insertInstructorRecord(
-        supabase,
-        studioId,
-        membership.profile_id,
-        name
-      )
-      if (instructorError) return { error: instructorError }
+    if (!VALID_INVITE_ROLES.includes(newRole)) {
+      throw new Error("Invalid role")
     }
-  }
 
-  revalidatePath("/dashboard/team")
+    const supabase = await createClient()
+
+    // Fetch current membership
+    const { data: membership } = await supabase
+      .from("studio_memberships")
+      .select("id, profile_id, role")
+      .eq("id", membershipId)
+      .eq("studio_id", studioId)
+      .single()
+
+    if (!membership) throw new Error("Membership not found")
+    if (membership.role === "owner") throw new Error("Cannot change the owner's role")
+    if (membership.role === newRole) return
+
+    // Update the role
+    const { error } = await supabase
+      .from("studio_memberships")
+      .update({ role: newRole })
+      .eq("id", membershipId)
+      .eq("studio_id", studioId)
+
+    if (error) throw new Error(error.message)
+
+    // If changing to "staff", ensure an instructor record exists
+    if (newRole === "staff") {
+      const { data: existing } = await supabase
+        .from("instructors")
+        .select("id")
+        .eq("profile_id", membership.profile_id)
+        .eq("studio_id", studioId)
+        .maybeSingle()
+
+      if (!existing) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("full_name")
+          .eq("id", membership.profile_id)
+          .single()
+
+        const name = profile?.full_name ?? "Instructor"
+
+        const { error: instructorError } = await insertInstructorRecord(
+          supabase,
+          studioId,
+          membership.profile_id,
+          name
+        )
+        if (instructorError) return { error: instructorError }
+      }
+    }
+
+    revalidatePath("/dashboard/team")
+  })
 }
 
 export async function resendInvite(
@@ -366,25 +371,27 @@ export async function revokeInvite(
 }
 
 export async function updateInstructor(instructorId: string, formData: FormData) {
-  await requireAdmin()
-  const studioId = await getStudioId()
-  const supabase = await createClient()
+  return runAction(async () => {
+    await requireAdmin()
+    const studioId = await getStudioId()
+    const supabase = await createClient()
 
-  const name = formData.get("name") as string
-  const bio = (formData.get("bio") as string) ?? ""
-  const photo_url = formData.get("photo_url") as string | null
+    const name = formData.get("name") as string
+    const bio = (formData.get("bio") as string) ?? ""
+    const photo_url = formData.get("photo_url") as string | null
 
-  const updates: Record<string, unknown> = { name, bio }
-  if (photo_url !== null) updates.photo_url = photo_url
+    const updates: Record<string, unknown> = { name, bio }
+    if (photo_url !== null) updates.photo_url = photo_url
 
-  const { error } = await supabase
-    .from("instructors")
-    .update(updates)
-    .eq("id", instructorId)
-    .eq("studio_id", studioId)
+    const { error } = await supabase
+      .from("instructors")
+      .update(updates)
+      .eq("id", instructorId)
+      .eq("studio_id", studioId)
 
-  if (error) throw new Error(error.message)
-  revalidatePath("/dashboard/team")
+    if (error) throw new Error(error.message)
+    revalidatePath("/dashboard/team")
+  })
 }
 
 /**
@@ -393,39 +400,41 @@ export async function updateInstructor(instructorId: string, formData: FormData)
  * Name is admin-controlled, so it's not editable here.
  */
 export async function updateOwnInstructorProfile(formData: FormData) {
-  const studioId = await getStudioId()
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  return runAction(async () => {
+    const studioId = await getStudioId()
+    const supabase = await createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
-  if (!user) throw new Error("Not authenticated")
+    if (!user) throw new Error("Not authenticated")
 
-  // Verify the instructor record belongs to the current user
-  const { data: instructor } = await supabase
-    .from("instructors")
-    .select("id")
-    .eq("studio_id", studioId)
-    .eq("profile_id", user.id)
-    .single()
+    // Verify the instructor record belongs to the current user
+    const { data: instructor } = await supabase
+      .from("instructors")
+      .select("id")
+      .eq("studio_id", studioId)
+      .eq("profile_id", user.id)
+      .single()
 
-  if (!instructor) throw new Error("No instructor record found")
+    if (!instructor) throw new Error("No instructor record found")
 
-  const bio = (formData.get("bio") as string) ?? ""
-  const photo_url = formData.get("photo_url") as string | null
+    const bio = (formData.get("bio") as string) ?? ""
+    const photo_url = formData.get("photo_url") as string | null
 
-  const updates: Record<string, unknown> = { bio }
-  if (photo_url !== null) updates.photo_url = photo_url
+    const updates: Record<string, unknown> = { bio }
+    if (photo_url !== null) updates.photo_url = photo_url
 
-  const { error } = await supabase
-    .from("instructors")
-    .update(updates)
-    .eq("id", instructor.id)
-    .eq("studio_id", studioId)
+    const { error } = await supabase
+      .from("instructors")
+      .update(updates)
+      .eq("id", instructor.id)
+      .eq("studio_id", studioId)
 
-  if (error) throw new Error(error.message)
-  revalidatePath("/staff")
-  revalidatePath("/dashboard/team")
+    if (error) throw new Error(error.message)
+    revalidatePath("/staff")
+    revalidatePath("/dashboard/team")
+  })
 }
 
 /**

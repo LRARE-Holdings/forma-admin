@@ -24,6 +24,7 @@ import {
   AlertCircle,
   ArrowLeft,
 } from "lucide-react"
+import { unwrap } from "@/lib/action-result"
 
 interface CsvUploadDialogProps {
   open: boolean
@@ -190,7 +191,7 @@ export function CsvUploadDialog({
 
     setImporting(true)
     try {
-      const result = await importCsvBookings(emailsToImport, scheduleId, date)
+      const result = unwrap(await importCsvBookings(emailsToImport, scheduleId, date))
       setResults(result)
       setStep("results")
       toast.success(`${result.created} booking${result.created !== 1 ? "s" : ""} imported`)

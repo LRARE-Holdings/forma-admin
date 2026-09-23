@@ -41,7 +41,11 @@ export function BookingsTable({ bookings, members }: BookingsTableProps) {
   async function handleCancel(bookingId: string) {
     setCancellingId(bookingId)
     try {
-      await cancelBooking(bookingId)
+      const res = await cancelBooking(bookingId)
+      if (res.error) {
+        toast.error(res.error)
+        return
+      }
       toast.success("Booking cancelled")
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to cancel booking")

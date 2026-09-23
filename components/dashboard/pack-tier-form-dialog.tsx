@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label"
 import { SubmitButton } from "@/components/shared/submit-button"
 import { createPackTier, updatePackTier } from "@/app/actions/packs"
 import { toast } from "sonner"
+import { unwrap } from "@/lib/action-result"
 
 interface ClassOption {
   id: string
@@ -79,10 +80,10 @@ export function PackTierFormDialog({
     }
     try {
       if (isEditing) {
-        await updatePackTier(editingTier!.id, formData)
+        unwrap(await updatePackTier(editingTier!.id, formData))
         toast.success("Pack tier updated")
       } else {
-        await createPackTier(formData)
+        unwrap(await createPackTier(formData))
         toast.success("Pack tier created")
       }
       onOpenChange(false)

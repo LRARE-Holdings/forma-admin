@@ -19,6 +19,7 @@ import { Palmtree, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import type { StudioHoliday } from "@/lib/types"
 import { localDateStr } from "@/lib/utils"
+import { unwrap } from "@/lib/action-result"
 
 interface HolidayBannerProps {
   holidays: StudioHoliday[]
@@ -43,7 +44,7 @@ export function HolidayBanner({ holidays }: HolidayBannerProps) {
       formData.delete("end_time")
     }
     try {
-      const result = await createStudioHoliday(formData)
+      const result = unwrap(await createStudioHoliday(formData))
       if (result.totalCancelled > 0) {
         const refundPart =
           result.totalRefunded > 0
@@ -71,7 +72,7 @@ export function HolidayBanner({ holidays }: HolidayBannerProps) {
     if (!deletingHoliday) return
     setDeleteLoading(true)
     try {
-      await deleteStudioHoliday(deletingHoliday.id)
+      unwrap(await deleteStudioHoliday(deletingHoliday.id))
       toast.success("Holiday removed")
       setDeleteOpen(false)
       setDeletingHoliday(null)

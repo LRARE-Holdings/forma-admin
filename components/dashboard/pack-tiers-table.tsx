@@ -9,6 +9,7 @@ import { deletePackTier } from "@/app/actions/packs"
 import { Button } from "@/components/ui/button"
 import { Plus } from "lucide-react"
 import { toast } from "sonner"
+import { unwrap } from "@/lib/action-result"
 
 interface ClassOption {
   id: string
@@ -60,7 +61,7 @@ export function PackTiersTable({ tiers, classes }: PackTiersTableProps) {
     if (!deletingTier) return
     setDeleteLoading(true)
     try {
-      await deletePackTier(deletingTier.id)
+      unwrap(await deletePackTier(deletingTier.id))
       toast.success("Pack tier archived")
       setDeleteOpen(false)
     } catch (e) {

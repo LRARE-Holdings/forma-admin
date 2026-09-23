@@ -92,7 +92,7 @@ export async function promoteNextInWaitlist(
     branding,
   })
 
-  sendStudioEmail(studioId, { to: profile.email, subject, html }).catch((err) =>
+  await sendStudioEmail(studioId, { to: profile.email, subject, html }).catch((err) =>
     console.error("[waitlist] Email failed:", err)
   )
 }

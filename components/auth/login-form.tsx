@@ -7,11 +7,11 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Mail, Lock, Loader2, CheckCircle, ArrowLeft } from "lucide-react"
 
-export function LoginForm() {
+export function LoginForm({ initialError = null }: { initialError?: string | null }) {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(initialError)
   const [mode, setMode] = useState<"login" | "forgot">("login")
   const [resetSent, setResetSent] = useState(false)
 

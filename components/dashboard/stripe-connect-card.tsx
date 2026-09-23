@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { startStripeOnboarding, checkStripeStatus } from "@/app/actions/stripe-connect"
 import { toast } from "sonner"
+import { unwrap } from "@/lib/action-result"
 
 interface StripeConnectCardProps {
   stripeAccountId: string | null
@@ -18,7 +19,7 @@ export function StripeConnectCard({
   async function handleConnect() {
     setLoading(true)
     try {
-      const { url } = await startStripeOnboarding()
+      const { url } = unwrap(await startStripeOnboarding())
       window.location.href = url
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to start onboarding")
@@ -34,7 +35,7 @@ export function StripeConnectCard({
         toast.success("Stripe is fully connected")
       } else {
         toast.info("Onboarding is not yet complete. Redirecting...")
-        const { url } = await startStripeOnboarding()
+        const { url } = unwrap(await startStripeOnboarding())
         window.location.href = url
       }
     } catch (e) {

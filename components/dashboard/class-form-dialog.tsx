@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label"
 import { SubmitButton } from "@/components/shared/submit-button"
 import { createClass, updateClass } from "@/app/actions/classes"
 import { toast } from "sonner"
+import { unwrap } from "@/lib/action-result"
 
 interface ClassData {
   id: string
@@ -45,7 +46,7 @@ export function ClassFormDialog({
   async function handleSubmit(formData: FormData) {
     try {
       if (isEditing) {
-        await updateClass(editingClass!.id, formData)
+        unwrap(await updateClass(editingClass!.id, formData))
         toast.success("Class updated")
       } else {
         const result = await createClass(formData)

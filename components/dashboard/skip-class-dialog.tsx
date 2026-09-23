@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Loader2, SkipForward } from "lucide-react"
+import { isActionFailure } from "@/lib/action-result"
 
 interface SkipClassDialogProps {
   open: boolean
@@ -45,7 +46,7 @@ export function SkipClassDialog({
     setLoading(true)
     try {
       const result = await skipClassInstance(scheduleId, date, reason || undefined)
-      if (result.error) {
+      if (isActionFailure(result)) {
         toast.error(result.error)
       } else if (result.cancelledCount > 0) {
         const refundPart =

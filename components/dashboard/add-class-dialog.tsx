@@ -23,6 +23,7 @@ import { createScheduleSlot } from "@/app/actions/schedule"
 import { createScheduleRule } from "@/app/actions/schedule-rules"
 import { toast } from "sonner"
 import { DAY_SHORT } from "@/lib/constants"
+import { unwrap } from "@/lib/action-result"
 
 interface ClassOption {
   id: string
@@ -142,7 +143,7 @@ export function AddClassDialog({
         formData.set("instructor_id", instructorId)
         formData.set("day_of_week", String(defaultDayOfWeek))
         formData.set("end_time", endTime)
-        await createScheduleSlot(formData)
+        unwrap(await createScheduleSlot(formData))
         toast.success("Class added to timetable")
       } else {
         formData.set("class_id", classId)

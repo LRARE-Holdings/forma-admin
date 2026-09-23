@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button"
 import { Repeat, Pencil, SkipForward, Undo2, Ban, Trash2, Upload, Users, Loader2, X } from "lucide-react"
 import { toast } from "sonner"
 import type { WeekSlot } from "@/lib/types"
+import { unwrap } from "@/lib/action-result"
 
 interface CalendarSlotPopoverProps {
   slot: WeekSlot | null
@@ -182,7 +183,7 @@ export function CalendarSlotPopover({
     if (!childSlot) return
     setUnskipLoading(true)
     try {
-      await unskipClassInstance(childSlot.scheduleId, childSlot.date)
+      unwrap(await unskipClassInstance(childSlot.scheduleId, childSlot.date))
       toast.success("Class restored for this week")
       onOpenChange(false)
     } catch (e) {
@@ -196,7 +197,7 @@ export function CalendarSlotPopover({
     if (!childSlot) return
     setDeleteLoading(true)
     try {
-      const result = await deleteScheduleSlot(childSlot.scheduleId)
+      const result = unwrap(await deleteScheduleSlot(childSlot.scheduleId))
       if (result.cancelledCount > 0) {
         const refundPart =
           result.refundedCount > 0 ? `, ${result.refundedCount} refunded` : ""
@@ -337,7 +338,11 @@ export function CalendarSlotPopover({
                               if (!confirm(`Remove ${att.full_name ?? "this attendee"} from the class?`)) return
                               setCancellingId(att.id)
                               try {
-                                await cancelBooking(att.id)
+                                const res = await cancelBooking(att.id)
+                                if (res.error) {
+                                  toast.error(res.error)
+                                  return
+                                }
                                 setAttendees((prev) => prev.filter((a) => a.id !== att.id))
                                 toast.success(`${att.full_name ?? "Attendee"} removed`)
                               } catch (err) {

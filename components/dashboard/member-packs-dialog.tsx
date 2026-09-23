@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button"
 import { SubmitButton } from "@/components/shared/submit-button"
 import { addMemberCredits, adjustMemberCredits } from "@/app/actions/packs"
 import { toast } from "sonner"
+import { unwrap } from "@/lib/action-result"
 
 interface PackRow {
   id: string
@@ -54,7 +55,7 @@ export function MemberPacksDialog({
   async function handleAddCredits(formData: FormData) {
     formData.set("profile_id", member!.id)
     try {
-      await addMemberCredits(formData)
+      unwrap(await addMemberCredits(formData))
       toast.success("Credits added")
       setShowAddForm(false)
       addFormRef.current?.reset()
@@ -65,7 +66,7 @@ export function MemberPacksDialog({
 
   async function handleAdjust(packId: string, formData: FormData) {
     try {
-      await adjustMemberCredits(packId, formData)
+      unwrap(await adjustMemberCredits(packId, formData))
       toast.success("Credits adjusted")
       setEditingPackId(null)
     } catch (e) {

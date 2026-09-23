@@ -20,6 +20,7 @@ import {
 import { SubmitButton } from "@/components/shared/submit-button"
 import { createScheduleSlot, updateScheduleSlot } from "@/app/actions/schedule"
 import { toast } from "sonner"
+import { unwrap } from "@/lib/action-result"
 
 interface ClassOption {
   id: string
@@ -126,10 +127,10 @@ export function ScheduleFormDialog({
     formData.set("end_time", addMinutes(startTime, parseInt(duration)))
     try {
       if (isEditing) {
-        await updateScheduleSlot(editingSlot!.id, formData)
+        unwrap(await updateScheduleSlot(editingSlot!.id, formData))
         toast.success("Schedule slot updated")
       } else {
-        await createScheduleSlot(formData)
+        unwrap(await createScheduleSlot(formData))
         toast.success("Schedule slot added")
       }
       onOpenChange(false)

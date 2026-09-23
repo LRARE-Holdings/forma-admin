@@ -1,5 +1,6 @@
 "use server"
 
+import { runAction, unwrap } from "@/lib/action-result"
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { requireManager } from "@/lib/auth"
@@ -17,72 +18,74 @@ import type { Recurrence } from "@/lib/types"
  * client in production (Next.js strips thrown errors).
  */
 export async function createScheduleRule(formData: FormData): Promise<ScheduleRuleResult | undefined> {
-  await requireManager()
-  const studioId = await getStudioId()
-  const supabase = await createClient()
+  return runAction(async () => {
+    await requireManager()
+    const studioId = await getStudioId()
+    const supabase = await createClient()
 
-  const class_id = formData.get("class_id") as string
-  const instructor_id = formData.get("instructor_id") as string
-  const day_of_week = parseInt(formData.get("day_of_week") as string)
-  const start_time = formData.get("start_time") as string
-  const end_time = formData.get("end_time") as string
-  const recurrence = (formData.get("recurrence") as Recurrence) || "weekly"
-  const starts_on = formData.get("starts_on") as string
-  const ends_on = (formData.get("ends_on") as string) || null
+    const class_id = formData.get("class_id") as string
+    const instructor_id = formData.get("instructor_id") as string
+    const day_of_week = parseInt(formData.get("day_of_week") as string)
+    const start_time = formData.get("start_time") as string
+    const end_time = formData.get("end_time") as string
+    const recurrence = (formData.get("recurrence") as Recurrence) || "weekly"
+    const starts_on = formData.get("starts_on") as string
+    const ends_on = (formData.get("ends_on") as string) || null
 
-  if (!class_id || !instructor_id || isNaN(day_of_week) || !start_time || !end_time || !starts_on) {
-    return { error: "All fields are required" }
-  }
+    if (!class_id || !instructor_id || isNaN(day_of_week) || !start_time || !end_time || !starts_on) {
+      return { error: "All fields are required" }
+    }
 
-  // Advisory only — reported back after the rule is saved, never used to reject it.
-  const conflicts = await findRuleConflicts(studioId, {
-    class_id,
-    instructor_id,
-    day_of_week,
-    start_time,
-    end_time,
-    starts_on,
-    ends_on,
-  })
-
-  const { data: rule, error } = await supabase
-    .from("schedule_rules")
-    .insert({
-      studio_id: studioId,
+    // Advisory only — reported back after the rule is saved, never used to reject it.
+    const conflicts = await findRuleConflicts(studioId, {
       class_id,
       instructor_id,
-      recurrence,
       day_of_week,
       start_time,
       end_time,
       starts_on,
       ends_on,
     })
-    .select("id")
-    .single()
 
-  if (error) return { error: error.message }
+    const { data: rule, error } = await supabase
+      .from("schedule_rules")
+      .insert({
+        studio_id: studioId,
+        class_id,
+        instructor_id,
+        recurrence,
+        day_of_week,
+        start_time,
+        end_time,
+        starts_on,
+        ends_on,
+      })
+      .select("id")
+      .single()
 
-  // Materialise slots for the next 4 weeks
-  await materialiseSlots(rule.id)
+    if (error) return { error: error.message }
 
-  // Notify instructor (fire-and-forget)
-  const { data: cls } = await supabase
-    .from("classes")
-    .select("name")
-    .eq("id", class_id)
-    .single()
+    // Materialise slots for the next 4 weeks
+    await materialiseSlots(rule.id)
 
-  notifyInstructorScheduleChange(studioId, instructor_id, "assigned", {
-    className: cls?.name ?? "a class",
-    dayOfWeek: day_of_week,
-    startTime: start_time,
-  }).catch((err) => console.error("[schedule-rules] Notification failed:", err))
+    // Notify instructor
+    const { data: cls } = await supabase
+      .from("classes")
+      .select("name")
+      .eq("id", class_id)
+      .single()
 
-  revalidatePath("/dashboard/timetable")
-  revalidatePath("/dashboard")
+    await notifyInstructorScheduleChange(studioId, instructor_id, "assigned", {
+      className: cls?.name ?? "a class",
+      dayOfWeek: day_of_week,
+      startTime: start_time,
+    }).catch((err) => console.error("[schedule-rules] Notification failed:", err))
 
-  if (conflicts.length > 0) return { warnings: conflicts.map(describeConflict) }
+    revalidatePath("/dashboard/timetable")
+    revalidatePath("/dashboard")
+
+    if (conflicts.length > 0) return { warnings: conflicts.map(describeConflict) }
+  })
 }
 
 /**
@@ -129,300 +132,308 @@ export async function splitScheduleRule(
   effectiveFrom: string,
   formData: FormData
 ): Promise<ScheduleRuleResult | undefined> {
-  await requireManager()
-  const studioId = await getStudioId()
-  const supabase = await createClient()
+  return runAction(async () => {
+    await requireManager()
+    const studioId = await getStudioId()
+    const supabase = await createClient()
 
-  // Pull the old rule so we can validate the split date and notify
-  const { data: oldRule } = await supabase
-    .from("schedule_rules")
-    .select("starts_on, ends_on, class_id, instructor_id, day_of_week, start_time, classes:class_id(name)")
-    .eq("id", ruleId)
-    .eq("studio_id", studioId)
-    .single()
+    // Pull the old rule so we can validate the split date and notify
+    const { data: oldRule } = await supabase
+      .from("schedule_rules")
+      .select("starts_on, ends_on, class_id, instructor_id, day_of_week, start_time, classes:class_id(name)")
+      .eq("id", ruleId)
+      .eq("studio_id", studioId)
+      .single()
 
-  if (!oldRule) return { error: "Rule not found" }
-  if (effectiveFrom <= (oldRule.starts_on as string)) {
-    return updateScheduleRule(ruleId, formData)
-  }
-  if (oldRule.ends_on && effectiveFrom > (oldRule.ends_on as string)) {
-    return { error: "That date is after this rule already ends" }
-  }
+    if (!oldRule) return { error: "Rule not found" }
+    if (effectiveFrom <= (oldRule.starts_on as string)) {
+      return updateScheduleRule(ruleId, formData)
+    }
+    if (oldRule.ends_on && effectiveFrom > (oldRule.ends_on as string)) {
+      return { error: "That date is after this rule already ends" }
+    }
 
-  // Build new rule from the form
-  const class_id = formData.get("class_id") as string
-  const instructor_id = formData.get("instructor_id") as string
-  const day_of_week = parseInt(formData.get("day_of_week") as string)
-  const start_time = formData.get("start_time") as string
-  const end_time = formData.get("end_time") as string
-  const recurrence = (formData.get("recurrence") as Recurrence) || "weekly"
-  const ends_on = (formData.get("ends_on") as string) || null
+    // Build new rule from the form
+    const class_id = formData.get("class_id") as string
+    const instructor_id = formData.get("instructor_id") as string
+    const day_of_week = parseInt(formData.get("day_of_week") as string)
+    const start_time = formData.get("start_time") as string
+    const end_time = formData.get("end_time") as string
+    const recurrence = (formData.get("recurrence") as Recurrence) || "weekly"
+    const ends_on = (formData.get("ends_on") as string) || null
 
-  if (!class_id || !instructor_id || isNaN(day_of_week) || !start_time || !end_time) {
-    return { error: "All fields are required" }
-  }
-  if (ends_on && ends_on < effectiveFrom) {
-    return { error: "End date must be on or after the start of this change" }
-  }
+    if (!class_id || !instructor_id || isNaN(day_of_week) || !start_time || !end_time) {
+      return { error: "All fields are required" }
+    }
+    if (ends_on && ends_on < effectiveFrom) {
+      return { error: "End date must be on or after the start of this change" }
+    }
 
-  const conflicts = await findRuleConflicts(studioId, {
-    class_id,
-    instructor_id,
-    day_of_week,
-    start_time,
-    end_time,
-    starts_on: effectiveFrom,
-    ends_on,
-  })
-
-  // Create the replacement FIRST.
-  //
-  // This used to end-date the old rule and only then insert. When the insert
-  // failed, the old rule stayed truncated with nothing succeeding it, so the
-  // class disappeared from the split date onwards — and the obvious retry hit
-  // "That date is after this rule already ends", which left no way back from
-  // the UI at all. Inserting first means a failure here changes nothing.
-  const { data: newRule, error: insertError } = await supabase
-    .from("schedule_rules")
-    .insert({
-      studio_id: studioId,
+    const conflicts = await findRuleConflicts(studioId, {
       class_id,
       instructor_id,
-      recurrence,
       day_of_week,
       start_time,
       end_time,
       starts_on: effectiveFrom,
       ends_on,
     })
-    .select("id")
-    .single()
 
-  if (insertError) return { error: insertError.message }
-
-  // Only now close the old rule, the day before the split.
-  const dayBefore = (() => {
-    const d = new Date(effectiveFrom + "T00:00:00")
-    d.setDate(d.getDate() - 1)
-    return dateToDateStr(d)
-  })()
-
-  const { error: updateOldError } = await supabase
-    .from("schedule_rules")
-    .update({ ends_on: dayBefore })
-    .eq("id", ruleId)
-    .eq("studio_id", studioId)
-
-  if (updateOldError) {
-    // These two writes share no transaction, so undo the replacement by hand
-    // rather than leave the timetable running both patterns at once.
-    await supabase
+    // Create the replacement FIRST.
+    //
+    // This used to end-date the old rule and only then insert. When the insert
+    // failed, the old rule stayed truncated with nothing succeeding it, so the
+    // class disappeared from the split date onwards — and the obvious retry hit
+    // "That date is after this rule already ends", which left no way back from
+    // the UI at all. Inserting first means a failure here changes nothing.
+    const { data: newRule, error: insertError } = await supabase
       .from("schedule_rules")
-      .delete()
-      .eq("id", newRule.id)
-      .eq("studio_id", studioId)
-    return { error: updateOldError.message }
-  }
-
-  // Materialise the new rule's schedule slot for the next 4 weeks
-  await materialiseSlots(newRule.id)
-
-  // Notify affected instructors (fire-and-forget)
-  const className = (oldRule.classes as unknown as { name: string } | null)?.name ?? "a class"
-  if (oldRule.instructor_id !== instructor_id) {
-    notifyInstructorScheduleChange(studioId, oldRule.instructor_id, "removed", {
-      className,
-      dayOfWeek: oldRule.day_of_week,
-      startTime: oldRule.start_time,
-    }).catch((err) => console.error("[schedule-rules] Notification failed:", err))
-
-    const { data: newCls } = await supabase
-      .from("classes")
-      .select("name")
-      .eq("id", class_id)
+      .insert({
+        studio_id: studioId,
+        class_id,
+        instructor_id,
+        recurrence,
+        day_of_week,
+        start_time,
+        end_time,
+        starts_on: effectiveFrom,
+        ends_on,
+      })
+      .select("id")
       .single()
 
-    notifyInstructorScheduleChange(studioId, instructor_id, "assigned", {
-      className: newCls?.name ?? className,
-      dayOfWeek: day_of_week,
-      startTime: start_time,
-    }).catch((err) => console.error("[schedule-rules] Notification failed:", err))
-  } else if (
-    oldRule.day_of_week !== day_of_week ||
-    oldRule.start_time !== start_time
-  ) {
-    notifyInstructorScheduleChange(studioId, instructor_id, "changed", {
-      className,
-      dayOfWeek: day_of_week,
-      startTime: start_time,
-    }).catch((err) => console.error("[schedule-rules] Notification failed:", err))
-  }
+    if (insertError) return { error: insertError.message }
 
-  revalidatePath("/dashboard/timetable")
-  revalidatePath("/dashboard")
+    // Only now close the old rule, the day before the split.
+    const dayBefore = (() => {
+      const d = new Date(effectiveFrom + "T00:00:00")
+      d.setDate(d.getDate() - 1)
+      return dateToDateStr(d)
+    })()
 
-  if (conflicts.length > 0) return { warnings: conflicts.map(describeConflict) }
+    const { error: updateOldError } = await supabase
+      .from("schedule_rules")
+      .update({ ends_on: dayBefore })
+      .eq("id", ruleId)
+      .eq("studio_id", studioId)
+
+    if (updateOldError) {
+      // These two writes share no transaction, so undo the replacement by hand
+      // rather than leave the timetable running both patterns at once.
+      await supabase
+        .from("schedule_rules")
+        .delete()
+        .eq("id", newRule.id)
+        .eq("studio_id", studioId)
+      return { error: updateOldError.message }
+    }
+
+    // Materialise the new rule's schedule slot for the next 4 weeks
+    await materialiseSlots(newRule.id)
+
+    // Notify affected instructors
+    const className = (oldRule.classes as unknown as { name: string } | null)?.name ?? "a class"
+    if (oldRule.instructor_id !== instructor_id) {
+      await notifyInstructorScheduleChange(studioId, oldRule.instructor_id, "removed", {
+        className,
+        dayOfWeek: oldRule.day_of_week,
+        startTime: oldRule.start_time,
+      }).catch((err) => console.error("[schedule-rules] Notification failed:", err))
+
+      const { data: newCls } = await supabase
+        .from("classes")
+        .select("name")
+        .eq("id", class_id)
+        .single()
+
+      await notifyInstructorScheduleChange(studioId, instructor_id, "assigned", {
+        className: newCls?.name ?? className,
+        dayOfWeek: day_of_week,
+        startTime: start_time,
+      }).catch((err) => console.error("[schedule-rules] Notification failed:", err))
+    } else if (
+      oldRule.day_of_week !== day_of_week ||
+      oldRule.start_time !== start_time
+    ) {
+      await notifyInstructorScheduleChange(studioId, instructor_id, "changed", {
+        className,
+        dayOfWeek: day_of_week,
+        startTime: start_time,
+      }).catch((err) => console.error("[schedule-rules] Notification failed:", err))
+    }
+
+    revalidatePath("/dashboard/timetable")
+    revalidatePath("/dashboard")
+
+    if (conflicts.length > 0) return { warnings: conflicts.map(describeConflict) }
+  })
 }
 
 /**
  * Update an existing schedule rule. Re-materialise future slots.
  */
 export async function updateScheduleRule(ruleId: string, formData: FormData): Promise<ScheduleRuleResult | undefined> {
-  await requireManager()
-  const studioId = await getStudioId()
-  const supabase = await createClient()
+  return runAction(async () => {
+    await requireManager()
+    const studioId = await getStudioId()
+    const supabase = await createClient()
 
-  // Fetch old rule for notification comparison
-  const { data: oldRule } = await supabase
-    .from("schedule_rules")
-    .select("instructor_id, day_of_week, start_time, class_id, classes:class_id(name)")
-    .eq("id", ruleId)
-    .eq("studio_id", studioId)
-    .single()
-
-  const class_id = formData.get("class_id") as string
-  const instructor_id = formData.get("instructor_id") as string
-  const day_of_week = parseInt(formData.get("day_of_week") as string)
-  const start_time = formData.get("start_time") as string
-  const end_time = formData.get("end_time") as string
-  const recurrence = (formData.get("recurrence") as Recurrence) || "weekly"
-  const starts_on = formData.get("starts_on") as string
-  const ends_on = (formData.get("ends_on") as string) || null
-
-  // Excludes this rule from its own results, so editing a rule in place never
-  // reports it against itself.
-  const conflicts = await findRuleConflicts(studioId, {
-    id: ruleId,
-    class_id,
-    instructor_id,
-    day_of_week,
-    start_time,
-    end_time,
-    starts_on,
-    ends_on,
-  })
-
-  const warnings = conflicts.map(describeConflict)
-
-  // Moving the rule to a different day leaves existing bookings on the old day:
-  // they keep the date they were booked for, while the slot now renders on the
-  // new one. The edit still goes through — it just must not do so silently.
-  if (oldRule && (oldRule.day_of_week as number) !== day_of_week) {
-    const { count } = await supabase
-      .from("bookings")
-      .select("id", { count: "exact", head: true })
+    // Fetch old rule for notification comparison
+    const { data: oldRule } = await supabase
+      .from("schedule_rules")
+      .select("instructor_id, day_of_week, start_time, class_id, classes:class_id(name)")
+      .eq("id", ruleId)
       .eq("studio_id", studioId)
-      .eq("status", "confirmed")
-      .gte("date", localDateStr())
-      .in(
-        "schedule_id",
-        ((
-          await supabase.from("schedule").select("id").eq("rule_id", ruleId).eq("is_active", true)
-        ).data ?? []).map((s) => s.id as string)
-      )
+      .single()
 
-    if (count && count > 0) {
-      warnings.push(
-        `${count} upcoming booking${count === 1 ? " is" : "s are"} still held against the old day. ` +
-          `Move them by hand, or undo this and use "a future date" instead so existing classes keep their day.`
-      )
-    }
-  }
+    const class_id = formData.get("class_id") as string
+    const instructor_id = formData.get("instructor_id") as string
+    const day_of_week = parseInt(formData.get("day_of_week") as string)
+    const start_time = formData.get("start_time") as string
+    const end_time = formData.get("end_time") as string
+    const recurrence = (formData.get("recurrence") as Recurrence) || "weekly"
+    const starts_on = formData.get("starts_on") as string
+    const ends_on = (formData.get("ends_on") as string) || null
 
-  const { error } = await supabase
-    .from("schedule_rules")
-    .update({
+    // Excludes this rule from its own results, so editing a rule in place never
+    // reports it against itself.
+    const conflicts = await findRuleConflicts(studioId, {
+      id: ruleId,
       class_id,
       instructor_id,
-      recurrence,
       day_of_week,
       start_time,
       end_time,
       starts_on,
       ends_on,
     })
-    .eq("id", ruleId)
-    .eq("studio_id", studioId)
 
-  if (error) return { error: error.message }
+    const warnings = conflicts.map(describeConflict)
 
-  // Re-materialise: remove future unmutated slots and regenerate
-  await rematerialiseSlots(ruleId)
+    // Moving the rule to a different day leaves existing bookings on the old day:
+    // they keep the date they were booked for, while the slot now renders on the
+    // new one. The edit still goes through — it just must not do so silently.
+    if (oldRule && (oldRule.day_of_week as number) !== day_of_week) {
+      const { count } = await supabase
+        .from("bookings")
+        .select("id", { count: "exact", head: true })
+        .eq("studio_id", studioId)
+        .eq("status", "confirmed")
+        .gte("date", localDateStr())
+        .in(
+          "schedule_id",
+          ((
+            await supabase.from("schedule").select("id").eq("rule_id", ruleId).eq("is_active", true)
+          ).data ?? []).map((s) => s.id as string)
+        )
 
-  // Notify instructor about changes (fire-and-forget)
-  const { data: cls } = await supabase
-    .from("classes")
-    .select("name")
-    .eq("id", class_id)
-    .single()
-
-  const className = cls?.name ?? "a class"
-
-  if (oldRule) {
-    if (oldRule.instructor_id !== instructor_id) {
-      const oldClassName = (oldRule.classes as unknown as { name: string })?.name ?? className
-      notifyInstructorScheduleChange(studioId, oldRule.instructor_id, "removed", {
-        className: oldClassName,
-        dayOfWeek: oldRule.day_of_week,
-        startTime: oldRule.start_time,
-      }).catch((err) => console.error("[schedule-rules] Notification failed:", err))
-
-      notifyInstructorScheduleChange(studioId, instructor_id, "assigned", {
-        className,
-        dayOfWeek: day_of_week,
-        startTime: start_time,
-      }).catch((err) => console.error("[schedule-rules] Notification failed:", err))
-    } else if (oldRule.day_of_week !== day_of_week || oldRule.start_time !== start_time) {
-      notifyInstructorScheduleChange(studioId, instructor_id, "changed", {
-        className,
-        dayOfWeek: day_of_week,
-        startTime: start_time,
-      }).catch((err) => console.error("[schedule-rules] Notification failed:", err))
+      if (count && count > 0) {
+        warnings.push(
+          `${count} upcoming booking${count === 1 ? " is" : "s are"} still held against the old day. ` +
+            `Move them by hand, or undo this and use "a future date" instead so existing classes keep their day.`
+        )
+      }
     }
-  }
 
-  revalidatePath("/dashboard/timetable")
-  revalidatePath("/dashboard")
+    const { error } = await supabase
+      .from("schedule_rules")
+      .update({
+        class_id,
+        instructor_id,
+        recurrence,
+        day_of_week,
+        start_time,
+        end_time,
+        starts_on,
+        ends_on,
+      })
+      .eq("id", ruleId)
+      .eq("studio_id", studioId)
 
-  if (warnings.length > 0) return { warnings }
+    if (error) return { error: error.message }
+
+    // Re-materialise: remove future unmutated slots and regenerate
+    await rematerialiseSlots(ruleId)
+
+    // Notify instructor about changes
+    const { data: cls } = await supabase
+      .from("classes")
+      .select("name")
+      .eq("id", class_id)
+      .single()
+
+    const className = cls?.name ?? "a class"
+
+    if (oldRule) {
+      if (oldRule.instructor_id !== instructor_id) {
+        const oldClassName = (oldRule.classes as unknown as { name: string })?.name ?? className
+        await notifyInstructorScheduleChange(studioId, oldRule.instructor_id, "removed", {
+          className: oldClassName,
+          dayOfWeek: oldRule.day_of_week,
+          startTime: oldRule.start_time,
+        }).catch((err) => console.error("[schedule-rules] Notification failed:", err))
+
+        await notifyInstructorScheduleChange(studioId, instructor_id, "assigned", {
+          className,
+          dayOfWeek: day_of_week,
+          startTime: start_time,
+        }).catch((err) => console.error("[schedule-rules] Notification failed:", err))
+      } else if (oldRule.day_of_week !== day_of_week || oldRule.start_time !== start_time) {
+        await notifyInstructorScheduleChange(studioId, instructor_id, "changed", {
+          className,
+          dayOfWeek: day_of_week,
+          startTime: start_time,
+        }).catch((err) => console.error("[schedule-rules] Notification failed:", err))
+      }
+    }
+
+    revalidatePath("/dashboard/timetable")
+    revalidatePath("/dashboard")
+
+    if (warnings.length > 0) return { warnings }
+  })
 }
 
 /**
  * Pause/deactivate a schedule rule. Does NOT remove already-materialised slots.
  */
 export async function pauseScheduleRule(ruleId: string) {
-  await requireManager()
-  const studioId = await getStudioId()
-  const supabase = await createClient()
+  return runAction(async () => {
+    await requireManager()
+    const studioId = await getStudioId()
+    const supabase = await createClient()
 
-  const { error } = await supabase
-    .from("schedule_rules")
-    .update({ is_active: false })
-    .eq("id", ruleId)
-    .eq("studio_id", studioId)
+    const { error } = await supabase
+      .from("schedule_rules")
+      .update({ is_active: false })
+      .eq("id", ruleId)
+      .eq("studio_id", studioId)
 
-  if (error) throw new Error(error.message)
-  revalidatePath("/dashboard/timetable")
+    if (error) throw new Error(error.message)
+    revalidatePath("/dashboard/timetable")
+  })
 }
 
 /**
  * Resume a paused schedule rule and materialise upcoming slots.
  */
 export async function resumeScheduleRule(ruleId: string) {
-  await requireManager()
-  const studioId = await getStudioId()
-  const supabase = await createClient()
+  return runAction(async () => {
+    await requireManager()
+    const studioId = await getStudioId()
+    const supabase = await createClient()
 
-  const { error } = await supabase
-    .from("schedule_rules")
-    .update({ is_active: true })
-    .eq("id", ruleId)
-    .eq("studio_id", studioId)
+    const { error } = await supabase
+      .from("schedule_rules")
+      .update({ is_active: true })
+      .eq("id", ruleId)
+      .eq("studio_id", studioId)
 
-  if (error) throw new Error(error.message)
+    if (error) throw new Error(error.message)
 
-  await materialiseSlots(ruleId)
-  revalidatePath("/dashboard/timetable")
+    await materialiseSlots(ruleId)
+    revalidatePath("/dashboard/timetable")
+  })
 }
 
 /**
@@ -439,53 +450,55 @@ export async function resumeScheduleRule(ruleId: string) {
  * on it are cancelled, refunded and emailed rather than stranded.
  */
 export async function deleteScheduleRule(ruleId: string) {
-  await requireManager()
-  const studioId = await getStudioId()
-  const supabase = await createClient()
+  return runAction(async () => {
+    await requireManager()
+    const studioId = await getStudioId()
+    const supabase = await createClient()
 
-  // Fetch rule data before deletion for notification
-  const { data: rule } = await supabase
-    .from("schedule_rules")
-    .select("instructor_id, day_of_week, start_time, classes:class_id(name)")
-    .eq("id", ruleId)
-    .eq("studio_id", studioId)
-    .single()
+    // Fetch rule data before deletion for notification
+    const { data: rule } = await supabase
+      .from("schedule_rules")
+      .select("instructor_id, day_of_week, start_time, classes:class_id(name)")
+      .eq("id", ruleId)
+      .eq("studio_id", studioId)
+      .single()
 
-  // Retire the slots first, while they can still be found by rule_id — once the
-  // rule row goes, the link back to them is gone.
-  const { data: slots } = await supabase
-    .from("schedule")
-    .select("id")
-    .eq("rule_id", ruleId)
-    .eq("studio_id", studioId)
-    .eq("is_active", true)
+    // Retire the slots first, while they can still be found by rule_id — once the
+    // rule row goes, the link back to them is gone.
+    const { data: slots } = await supabase
+      .from("schedule")
+      .select("id")
+      .eq("rule_id", ruleId)
+      .eq("studio_id", studioId)
+      .eq("is_active", true)
 
-  for (const slot of slots ?? []) {
-    await deleteScheduleSlot(slot.id as string)
-  }
+    for (const slot of slots ?? []) {
+      unwrap(await deleteScheduleSlot(slot.id as string))
+    }
 
-  const { error } = await supabase
-    .from("schedule_rules")
-    .delete()
-    .eq("id", ruleId)
-    .eq("studio_id", studioId)
+    const { error } = await supabase
+      .from("schedule_rules")
+      .delete()
+      .eq("id", ruleId)
+      .eq("studio_id", studioId)
 
-  if (error) throw new Error(error.message)
+    if (error) throw new Error(error.message)
 
-  // Notify instructor (fire-and-forget). Only when the rule had no live slot —
-  // retiring one through deleteScheduleSlot already sent this same email, and
-  // two "you've been taken off Hot Pilates" messages read like two changes.
-  if (rule && (slots ?? []).length === 0) {
-    const cls = rule.classes as unknown as { name: string } | null
-    notifyInstructorScheduleChange(studioId, rule.instructor_id, "removed", {
-      className: cls?.name ?? "a class",
-      dayOfWeek: rule.day_of_week,
-      startTime: rule.start_time,
-    }).catch((err) => console.error("[schedule-rules] Notification failed:", err))
-  }
+    // Notify instructor. Only when the rule had no live slot —
+    // retiring one through deleteScheduleSlot already sent this same email, and
+    // two "you've been taken off Hot Pilates" messages read like two changes.
+    if (rule && (slots ?? []).length === 0) {
+      const cls = rule.classes as unknown as { name: string } | null
+      await notifyInstructorScheduleChange(studioId, rule.instructor_id, "removed", {
+        className: cls?.name ?? "a class",
+        dayOfWeek: rule.day_of_week,
+        startTime: rule.start_time,
+      }).catch((err) => console.error("[schedule-rules] Notification failed:", err))
+    }
 
-  revalidatePath("/dashboard/timetable")
-  revalidatePath("/dashboard")
+    revalidatePath("/dashboard/timetable")
+    revalidatePath("/dashboard")
+  })
 }
 
 /**
@@ -657,27 +670,4 @@ function calculateDates(
   }
 
   return dates
-}
-
-/**
- * Materialise all active rules for all studios (called by cron).
- */
-export async function materialiseAllRules() {
-  const supabase = await createClient()
-
-  const { data: rules } = await supabase
-    .from("schedule_rules")
-    .select("id")
-    .eq("is_active", true)
-
-  if (!rules) return
-
-  // One bad rule must not abort the whole cron sweep
-  for (const rule of rules) {
-    try {
-      await materialiseSlots(rule.id)
-    } catch (err) {
-      console.error(`[schedule-rules] Materialise failed for rule ${rule.id}:`, err)
-    }
-  }
 }
