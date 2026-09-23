@@ -303,6 +303,8 @@ export interface StudioHoliday {
 export interface StudioEvent {
   id: string
   studio_id: string
+  /** Set once from the title by the database and never changed, so shared links keep working */
+  slug: string
   title: string
   description: string
   /** UK wall-clock date, YYYY-MM-DD */

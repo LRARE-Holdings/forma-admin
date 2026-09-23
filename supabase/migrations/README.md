@@ -115,3 +115,11 @@ Found during a codebase review. Both applied the same day.
   `onboarding_submissions`, and `studios.onboarding_submission_id`). The data
   was test data; it was exported to `forma-crm-export-2026-09-23.json` outside
   the repos first. `email_signups` is kept for the marketing waitlist.
+
+## Event pages (2026-09-23)
+
+- `20260923_07_event_slugs.sql` — `events.slug`, set once from the title by a
+  trigger and never changed, so links Lucy has shared keep working after a
+  rename. Unique per studio (`-2`, `-3`… on repeats). Applied 2026-09-23 after
+  a rolled-back test of punctuation, repeats, a title with no letters, another
+  studio reusing a slug, and a rename.

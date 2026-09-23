@@ -134,15 +134,27 @@ export interface CropArea {
  * Outputs at the native cropped resolution, capped at 2× the display size
  * (740×416) so images stay sharp on retina screens without being oversized.
  */
+export interface CropOutput {
+  maxWidth: number
+  maxHeight: number
+  type: "image/png" | "image/jpeg"
+  /** 0–1, JPEG only */
+  quality?: number
+}
+
+/** Instructor photos: shown small, so 2× their display size is plenty. */
+export const PHOTO_CROP_OUTPUT: CropOutput = { maxWidth: 740, maxHeight: 416, type: "image/png" }
+
 export async function getCroppedImage(
   imageSrc: string,
-  cropArea: CropArea
+  cropArea: CropArea,
+  output: CropOutput = PHOTO_CROP_OUTPUT
 ): Promise<Blob> {
   const image = await loadImage(imageSrc)
 
-  // Use the native crop dimensions, but cap at 2× display size (740×416)
-  const MAX_W = 740
-  const MAX_H = 416
+  // Use the native crop dimensions, capped at the output's maximum
+  const MAX_W = output.maxWidth
+  const MAX_H = output.maxHeight
   let outW = Math.round(cropArea.width)
   let outH = Math.round(cropArea.height)
 
@@ -178,7 +190,8 @@ export async function getCroppedImage(
   return new Promise((resolve, reject) => {
     canvas.toBlob(
       (blob) => (blob ? resolve(blob) : reject(new Error("Failed to create blob"))),
-      "image/png"
+      output.type,
+      output.quality
     )
   })
 }

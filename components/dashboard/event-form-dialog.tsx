@@ -16,11 +16,20 @@ import { SubmitButton } from "@/components/shared/submit-button"
 import { ImageCropDialog } from "@/components/dashboard/image-crop-dialog"
 import { createEvent, updateEvent } from "@/app/actions/events"
 import { createClient } from "@/lib/supabase/client"
-import { formatTime, localDateStr } from "@/lib/utils"
+import { formatTime, localDateStr, type CropOutput } from "@/lib/utils"
 import { isoToUkWallClock } from "@/lib/events"
 import type { StudioEvent } from "@/lib/types"
 import { ImagePlus, X } from "lucide-react"
 import { toast } from "sonner"
+
+/**
+ * Event images appear full width on the event page and as the preview when
+ * the link is shared (Facebook/WhatsApp want ~1200 × 630), so they are kept
+ * far larger than instructor photos — as JPEG, which keeps that size small.
+ */
+const EVENT_IMAGE_OUTPUT: CropOutput = { maxWidth: 1600, maxHeight: 900, type: "image/jpeg", quality: 0.88 }
+const EVENT_IMAGE_MIN_WIDTH = 1200
+const EVENT_IMAGE_MAX_BYTES = 10 * 1024 * 1024
 
 interface EventFormDialogProps {
   open: boolean
@@ -71,14 +80,13 @@ export function EventFormDialog({
     if (!file) return
 
     const ALLOWED_TYPES = ["image/png", "image/jpeg"]
-    const MAX_SIZE = 5 * 1024 * 1024 // 5 MB
 
     if (!ALLOWED_TYPES.includes(file.type)) {
       toast.error("Only PNG or JPG files are allowed")
       return
     }
-    if (file.size > MAX_SIZE) {
-      toast.error("Image must be under 5 MB")
+    if (file.size > EVENT_IMAGE_MAX_BYTES) {
+      toast.error("Image must be under 10 MB")
       return
     }
 
@@ -96,11 +104,11 @@ export function EventFormDialog({
       const supabase = createClient()
       // A fresh path per upload: the event may not exist yet, and a new URL
       // means no stale cached copy on the public site.
-      const path = `events/${crypto.randomUUID()}.png`
+      const path = `events/${crypto.randomUUID()}.jpg`
 
       const { error } = await supabase.storage
         .from("photos")
-        .upload(path, blob, { contentType: "image/png" })
+        .upload(path, blob, { contentType: "image/jpeg" })
 
       if (error) throw error
 
@@ -184,7 +192,15 @@ export function EventFormDialog({
               >
                 <ImagePlus className="h-5 w-5" />
                 {uploading ? "Uploading…" : "Add an image (optional)"}
+                <span className="text-[0.7rem] text-warm-grey/80">
+                  Landscape 16:9, at least 1600 × 900 px · JPG or PNG, up to 10 MB
+                </span>
               </button>
+            )}
+            {imageUrl && (
+              <p className="-mt-2 text-[0.7rem] text-warm-grey">
+                Recommended: landscape 16:9, at least 1600 × 900 px. Used on the event page and when the link is shared.
+              </p>
             )}
             <input
               ref={fileInputRef}
@@ -457,6 +473,8 @@ export function EventFormDialog({
         }}
         imageSrc={cropSrc}
         onCrop={handleCropComplete}
+        output={EVENT_IMAGE_OUTPUT}
+        recommendedWidth={EVENT_IMAGE_MIN_WIDTH}
       />
     </>
   )

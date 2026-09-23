@@ -5,6 +5,7 @@ import Link from "next/link"
 import { EmptyState } from "@/components/shared/empty-state"
 import { DeleteConfirmDialog } from "@/components/shared/delete-confirm-dialog"
 import { EventFormDialog } from "./event-form-dialog"
+import { CopyEventLink } from "./copy-event-link"
 import { deleteEvent } from "@/app/actions/events"
 import { Button } from "@/components/ui/button"
 import { formatTime } from "@/lib/utils"
@@ -18,6 +19,8 @@ interface EventsTableProps {
   past: StudioEvent[]
   placesSold: Record<string, number>
   stripeConnected: boolean
+  /** The public site, e.g. https://burnmatstudio.co.uk, for share links */
+  publicBaseUrl: string
 }
 
 function formatEventDate(event: StudioEvent): string {
@@ -34,7 +37,7 @@ function formatEventDate(event: StudioEvent): string {
   return `${date} · ${times}`
 }
 
-export function EventsTable({ upcoming, past, placesSold, stripeConnected }: EventsTableProps) {
+export function EventsTable({ upcoming, past, placesSold, stripeConnected, publicBaseUrl }: EventsTableProps) {
   const [formOpen, setFormOpen] = useState(false)
   const [editingEvent, setEditingEvent] = useState<StudioEvent | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -98,7 +101,7 @@ export function EventsTable({ upcoming, past, placesSold, stripeConnected }: Eve
             action={newButton}
           />
         ) : (
-          <EventRows events={upcoming} placesSold={placesSold} onEdit={openEdit} onDelete={openDelete} />
+          <EventRows events={upcoming} placesSold={placesSold} publicBaseUrl={publicBaseUrl} onEdit={openEdit} onDelete={openDelete} />
         )}
       </div>
 
@@ -109,7 +112,7 @@ export function EventsTable({ upcoming, past, placesSold, stripeConnected }: Eve
               Past events
             </h3>
           </div>
-          <EventRows events={past} placesSold={placesSold} onEdit={openEdit} onDelete={openDelete} muted />
+          <EventRows events={past} placesSold={placesSold} publicBaseUrl={publicBaseUrl} onEdit={openEdit} onDelete={openDelete} muted />
         </div>
       )}
 
@@ -161,12 +164,14 @@ function TicketSummary({ event, sold }: { event: StudioEvent; sold: number }) {
 function EventRows({
   events,
   placesSold,
+  publicBaseUrl,
   onEdit,
   onDelete,
   muted,
 }: {
   events: StudioEvent[]
   placesSold: Record<string, number>
+  publicBaseUrl: string
   onEdit: (event: StudioEvent) => void
   onDelete: (event: StudioEvent) => void
   muted?: boolean
@@ -209,6 +214,9 @@ function EventRows({
               {event.location && ` · ${event.location}`}
             </div>
             <TicketSummary event={event} sold={placesSold[event.id] ?? 0} />
+            <div className="mt-1.5">
+              <CopyEventLink url={`${publicBaseUrl}/events/${event.slug}`} published={event.is_published} />
+            </div>
           </div>
           <div className="flex shrink-0 items-center gap-3">
             {event.tickets_enabled && (

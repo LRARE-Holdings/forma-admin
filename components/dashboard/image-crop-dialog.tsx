@@ -10,13 +10,17 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { getCroppedImage } from "@/lib/utils"
+import { getCroppedImage, type CropOutput } from "@/lib/utils"
 
 interface ImageCropDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   imageSrc: string | null
   onCrop: (blob: Blob) => void
+  /** Output size and format; defaults to instructor-photo settings */
+  output?: CropOutput
+  /** Warn when the cropped area is narrower than this many source pixels */
+  recommendedWidth?: number
 }
 
 const ASPECT = 370 / 208
@@ -26,6 +30,8 @@ export function ImageCropDialog({
   onOpenChange,
   imageSrc,
   onCrop,
+  output,
+  recommendedWidth,
 }: ImageCropDialogProps) {
   const [crop, setCrop] = useState({ x: 0, y: 0 })
   const [zoom, setZoom] = useState(1)
@@ -40,7 +46,7 @@ export function ImageCropDialog({
     if (!croppedArea || !imageSrc) return
     setSaving(true)
     try {
-      const blob = await getCroppedImage(imageSrc, croppedArea)
+      const blob = await getCroppedImage(imageSrc, croppedArea, output)
       onCrop(blob)
     } catch {
       // Parent handles errors via toast
@@ -77,6 +83,13 @@ export function ImageCropDialog({
             onCropComplete={onCropComplete}
           />
         </div>
+
+        {recommendedWidth && croppedArea && croppedArea.width < recommendedWidth && (
+          <p className="rounded-lg bg-ember/10 px-3 py-2 text-[0.75rem] text-cocoa">
+            This crop is only {Math.round(croppedArea.width)} pixels wide, so it may look blurry on the event page and in
+            link previews. Zoom out, or use a larger image (at least {recommendedWidth} pixels wide).
+          </p>
+        )}
 
         {/* Zoom control */}
         <div className="flex items-center gap-3 px-1">

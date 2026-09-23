@@ -31,7 +31,7 @@ export default async function EventsPage() {
       .lt("event_date", today)
       .order("event_date", { ascending: false })
       .limit(PAST_EVENTS_SHOWN),
-    supabase.from("studios").select("stripe_onboarding_complete").eq("id", studioId).single(),
+    supabase.from("studios").select("stripe_onboarding_complete, domain").eq("id", studioId).single(),
     supabase
       .from("event_tickets")
       .select("event_id, quantity")
@@ -44,6 +44,7 @@ export default async function EventsPage() {
     placesSold[t.event_id as string] = (placesSold[t.event_id as string] ?? 0) + (t.quantity as number)
   }
   const stripeConnected = !!studio?.stripe_onboarding_complete
+  const publicBaseUrl = `https://${(studio?.domain as string | null) ?? "burnmatstudio.co.uk"}`
 
   return (
     <>
@@ -57,6 +58,7 @@ export default async function EventsPage() {
         past={(past as StudioEvent[]) ?? []}
         placesSold={placesSold}
         stripeConnected={stripeConnected}
+        publicBaseUrl={publicBaseUrl}
       />
     </>
   )
