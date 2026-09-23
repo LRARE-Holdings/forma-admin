@@ -189,6 +189,9 @@ Found during a codebase review. Both applied the same day.
   the dates each would show on. The app now creates one-offs as single-date
   rules, and gives any new rule its slot however far ahead it starts (it used to
   look only 4 weeks ahead, which left six rules planned in August with no slot).
-- Still open: Infrared Pilates Wed 10:00 (slot 359e726e) has no rule and so
-  shows every week; its intended date is unconfirmed. The six slotless rules
-  are inert (no slot, no bookings) and were left alone.
+- `20260923_14_timetable_fixes_tue_wed_fri.sql` — Wed 10:00 one-off → 30 Sep
+  only; Pilates Sculpt Fri 08:00 (Dominika), a slotless rule, now runs 25 Sep
+  only with its slot; the two identical Pilates Sculpt Tue 06:30 rules no
+  longer overlap in October (the open-ended one ends 29 Sep and resumes from
+  3 Nov). Dry run showed no duplicate class on any day to 30 Nov and no ruleless
+  slots left. The remaining slotless rules are inert and were left alone.
