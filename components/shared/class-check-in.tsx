@@ -41,14 +41,17 @@ export function ClassCheckIn({
   date,
   capacity,
   attendees,
+  initialMode = "names",
 }: {
   scheduleId: string
   date: string
   capacity: number
   attendees: CheckInAttendee[]
+  /** The door check-in site opens straight onto the camera. */
+  initialMode?: "names" | "scan"
 }) {
   const router = useRouter()
-  const [mode, setMode] = useState<"names" | "scan">("names")
+  const [mode, setMode] = useState<"names" | "scan">(initialMode)
   const [query, setQuery] = useState("")
   // Optimistic statuses on top of what the server last sent.
   const [overrides, setOverrides] = useState<Record<string, AttendanceStatus | null>>({})
