@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { formatTime, formatPence, getInitial } from "@/lib/utils"
+import Link from "next/link"
+import { formatTime, formatPence, getInitial, localDateStr } from "@/lib/utils"
 import { unskipClassInstance } from "@/app/actions/schedule-exceptions"
 import { deleteScheduleSlot, getSlotRemovalSummary } from "@/app/actions/schedule"
 import { getSlotAttendees, cancelBooking, type SlotAttendee } from "@/app/actions/bookings"
@@ -18,8 +19,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Button } from "@/components/ui/button"
-import { Repeat, Pencil, SkipForward, Undo2, Ban, Trash2, Upload, Users, Loader2, X } from "lucide-react"
+import { Button, buttonVariants } from "@/components/ui/button"
+import { Repeat, Pencil, SkipForward, Undo2, Ban, Trash2, Upload, Users, Loader2, X, QrCode } from "lucide-react"
 import { toast } from "sonner"
 import type { WeekSlot } from "@/lib/types"
 import { unwrap } from "@/lib/action-result"
@@ -78,17 +79,13 @@ function describeRemoval(
   )
 }
 
-function paymentStyle(method: string) {
-  switch (method) {
-    case "pack_credit":
-      return "bg-gold/15 text-gold"
-    case "membership":
-      return "bg-purple-100 text-purple-700"
-    case "complimentary":
-      return "bg-green-100 text-green-700"
-    default:
-      return "bg-ember/12 text-ember"
-  }
+function Fact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 rounded-lg bg-cream px-3 py-2">
+      <p className="text-[0.62rem] font-semibold uppercase tracking-[0.08em] text-warm-grey">{label}</p>
+      <p className="truncate text-[0.82rem] font-medium text-cocoa">{value}</p>
+    </div>
+  )
 }
 
 export function CalendarSlotPopover({
@@ -227,111 +224,90 @@ export function CalendarSlotPopover({
   const canUnskip = !childSlot.isPast && childSlot.isSkipped
   const canCancel = !childSlot.isPast && !childSlot.isHoliday && !childSlot.isSkipped
   const canImport = !childSlot.isHoliday && !childSlot.isSkipped
+  // The door register, on the day itself.
+  const canCheckIn = !childSlot.isHoliday && !childSlot.isSkipped && childSlot.date === localDateStr()
 
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange} onOpenChangeComplete={handleParentCloseComplete}>
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <ClassColorBar
-                classSlug={childSlot.classSlug}
-                className="w-[3px] h-5"
-              />
-              {childSlot.className}
-              {childSlot.ruleId && (
-                <Repeat className="h-3.5 w-3.5 shrink-0 text-gold" />
-              )}
+            <DialogTitle className="flex min-w-0 items-center gap-2 pr-6">
+              <ClassColorBar classSlug={childSlot.classSlug} className="h-5 w-[3px] shrink-0" />
+              <span className="truncate">{childSlot.className}</span>
+              {childSlot.ruleId && <Repeat className="h-3.5 w-3.5 shrink-0 text-gold" />}
             </DialogTitle>
+            <p className="text-[0.8rem] text-warm-grey">
+              {formattedDate} · {formatTime(childSlot.startTime)}–{formatTime(childSlot.endTime)}
+            </p>
           </DialogHeader>
 
-          {/* min-w-0: a long attendee row must truncate, not stretch the dialog past its edge */}
-          <div className="min-w-0 space-y-3 py-1">
-            {/* Details */}
-            <div className="space-y-1.5 text-[0.82rem]">
-              <div className="flex justify-between">
-                <span className="text-warm-grey">Date</span>
-                <span className="font-medium text-cocoa">{formattedDate}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-warm-grey">Time</span>
-                <span className="font-medium text-cocoa">
-                  {formatTime(childSlot.startTime)}–{formatTime(childSlot.endTime)}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-warm-grey">Instructor</span>
-                <span className="font-medium text-cocoa">
-                  {childSlot.instructorName}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-warm-grey">Price</span>
-                <span className="font-medium text-cocoa">
-                  &pound;{formatPence(childSlot.pricePence)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-warm-grey">Bookings</span>
-                <CapacityBadge
-                  booked={childSlot.bookingCount}
-                  capacity={childSlot.capacity}
-                  isPast={childSlot.isPast}
-                />
-              </div>
+          {/* min-w-0 everywhere below: long names truncate instead of widening the dialog */}
+          <div className="min-w-0 space-y-4">
+            <div className="grid grid-cols-2 gap-2">
+              <Fact label="Instructor" value={childSlot.instructorName} />
+              <Fact label="Drop-in" value={`\u00a3${formatPence(childSlot.pricePence)}`} />
             </div>
 
-            {/* Attendee list */}
-            {showAttendees && (
-              <div className="rounded-xl border border-sand overflow-hidden">
-                <div className="flex items-center justify-between bg-cream px-3 py-2 text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-warm-grey">
-                  <span className="flex items-center gap-1.5">
-                    <Users className="h-3 w-3" />
-                    Attendees ({childSlot.bookingCount} of {childSlot.capacity})
-                    {childSlot.bookingCount >= childSlot.capacity ? " — FULL" : ""}
+            {!childSlot.isSkipped && !childSlot.isHoliday && (
+              <div>
+                <div className="mb-1.5 flex items-center justify-between gap-3">
+                  <span className="text-[0.8rem] font-medium text-cocoa">
+                    {childSlot.bookingCount} of {childSlot.capacity} booked
                   </span>
-                  <span>Payment</span>
+                  <CapacityBadge
+                    booked={childSlot.bookingCount}
+                    capacity={childSlot.capacity}
+                    isPast={childSlot.isPast}
+                  />
                 </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-sand/50">
+                  <div
+                    className="h-full rounded-full bg-gold transition-[width]"
+                    style={{
+                      width: `${Math.min(100, (childSlot.bookingCount / Math.max(childSlot.capacity, 1)) * 100)}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
 
+            {/* Who's booked */}
+            {showAttendees && (
+              <div className="overflow-hidden rounded-xl border border-sand">
+                <div className="flex items-center gap-1.5 bg-cream px-3 py-2 text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-warm-grey">
+                  <Users className="h-3 w-3" />
+                  Booked in
+                </div>
                 {attendeesLoading ? (
-                  <div className="flex items-center justify-center py-4">
+                  <div className="flex items-center justify-center py-5">
                     <Loader2 className="h-4 w-4 animate-spin text-warm-grey" />
                   </div>
                 ) : (
-                  <div className="max-h-[200px] overflow-y-auto">
-                    {attendees.map((att, i) => (
-                      <div
-                        key={att.id}
-                        className="group flex items-center gap-2.5 border-b border-sand/40 px-3 py-1.5 text-[0.78rem] last:border-b-0"
-                      >
-                        <span className="w-4 text-center text-[0.65rem] text-warm-grey">
-                          {i + 1}
-                        </span>
-                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-sand font-heading text-[0.65rem] font-semibold text-cocoa">
+                  <ul className="max-h-[240px] divide-y divide-sand/40 overflow-y-auto">
+                    {attendees.map((att) => (
+                      <li key={att.id} className="group flex min-w-0 items-center gap-2.5 px-3 py-2">
+                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sand font-heading text-[0.7rem] font-semibold text-cocoa">
                           {getInitial(att.full_name)}
                         </div>
-                        <span className="min-w-0 flex-1 truncate font-medium text-cocoa">
-                          {att.full_name ?? "Unknown"}
-                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[0.8rem] font-medium text-cocoa">
+                            {att.full_name ?? "Unknown"}
+                          </p>
+                          <p className="text-[0.66rem] text-warm-grey">{paymentLabel(att.payment_method)}</p>
+                        </div>
                         <div className="shrink-0">
                           <AttendanceDropdown
                             bookingId={att.id}
                             currentStatus={att.attendance_status}
                             onStatusChange={(newStatus) =>
                               setAttendees((prev) =>
-                                prev.map((a) =>
-                                  a.id === att.id ? { ...a, attendance_status: newStatus } : a
-                                )
+                                prev.map((a) => (a.id === att.id ? { ...a, attendance_status: newStatus } : a))
                               )
                             }
                             size="sm"
                           />
                         </div>
-                        <span
-                          className={`inline-block shrink-0 rounded-full px-1.5 py-0.5 text-[0.58rem] font-semibold uppercase ${paymentStyle(att.payment_method)}`}
-                        >
-                          {paymentLabel(att.payment_method)}
-                        </span>
                         {!childSlot.isPast && (
                           <button
                             type="button"
@@ -354,143 +330,131 @@ export function CalendarSlotPopover({
                                 setCancellingId(null)
                               }
                             }}
-                            className="hidden shrink-0 rounded p-0.5 text-warm-grey transition-colors hover:bg-red-50 hover:text-red-600 group-hover:inline-flex"
+                            className="shrink-0 rounded p-1 text-warm-grey/60 transition-colors hover:bg-red-50 hover:text-red-600"
+                            aria-label={`Remove ${att.full_name ?? "attendee"} from the class`}
                             title={`Remove ${att.full_name ?? "attendee"}`}
                           >
                             {cancellingId === att.id ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
                             ) : (
-                              <X className="h-3 w-3" />
+                              <X className="h-3.5 w-3.5" />
                             )}
                           </button>
                         )}
-                      </div>
+                      </li>
                     ))}
-
-                    {/* Empty spots */}
-                    {Array.from(
-                      { length: childSlot.capacity - attendees.length },
-                      (_, i) => (
-                        <div
-                          key={`empty-${i}`}
-                          className="flex items-center gap-2.5 border-b border-sand/40 px-3 py-1.5 last:border-b-0"
-                        >
-                          <span className="w-4 text-center text-[0.65rem] text-warm-grey">
-                            {attendees.length + i + 1}
-                          </span>
-                          <div className="h-6 w-6 rounded-full border-[1.5px] border-dashed border-sand" />
-                          <span className="text-[0.72rem] italic text-sand">
-                            Open spot
-                          </span>
-                        </div>
-                      )
-                    )}
-                  </div>
+                  </ul>
                 )}
               </div>
             )}
 
-            {/* No bookings message */}
             {childSlot.bookingCount === 0 && !childSlot.isSkipped && !childSlot.isHoliday && (
-              <div className="rounded-lg bg-sand/30 px-3 py-2 text-center text-[0.78rem] text-warm-grey">
+              <p className="rounded-lg bg-sand/30 px-3 py-2.5 text-center text-[0.78rem] text-warm-grey">
                 No bookings yet
-              </div>
+              </p>
             )}
-
-            {/* Status badges */}
             {childSlot.isSkipped && (
-              <div className="rounded-lg bg-sand/50 px-3 py-2 text-[0.78rem] text-warm-grey">
+              <p className="rounded-lg bg-sand/50 px-3 py-2.5 text-[0.78rem] text-warm-grey">
                 This class is <strong>cancelled</strong>
                 {childSlot.ruleId ? " this week" : ""}.
-              </div>
+              </p>
             )}
             {childSlot.isHoliday && (
-              <div className="rounded-lg bg-ember/10 px-3 py-2 text-[0.78rem] text-cocoa">
+              <p className="rounded-lg bg-ember/10 px-3 py-2.5 text-[0.78rem] text-cocoa">
                 Studio is on <strong>holiday</strong> this date.
-              </div>
+              </p>
             )}
             {childSlot.isPast && (
-              <div className="rounded-lg bg-sand/50 px-3 py-2 text-[0.78rem] text-warm-grey">
+              <p className="rounded-lg bg-sand/50 px-3 py-2.5 text-[0.78rem] text-warm-grey">
                 This class has already passed.
-              </div>
+              </p>
             )}
 
             {/* Actions */}
-            {(canEdit || canSkip || canUnskip || canCancel || canImport) && (
-              <div className="flex flex-wrap gap-2 border-t border-sand pt-3">
+            {(canCheckIn || canEdit || canSkip || canUnskip || canCancel || canImport) && (
+              <div className="space-y-2 border-t border-sand pt-4">
+                {canCheckIn && (
+                  <Link
+                    href={`/dashboard/registration/${childSlot.scheduleId}/${childSlot.date}`}
+                    className={buttonVariants({ className: "w-full" })}
+                  >
+                    <QrCode className="mr-1.5 h-3.5 w-3.5" />
+                    Check people in
+                  </Link>
+                )}
+                <div className="grid grid-cols-2 gap-2">
+                  {canEdit && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => {
+                        onOpenChange(false)
+                        onEdit(childSlot)
+                      }}
+                    >
+                      <Pencil className="mr-1.5 h-3 w-3" />
+                      Edit
+                    </Button>
+                  )}
+                  {canSkip && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => {
+                        pendingDialog.current = "skip"
+                        onOpenChange(false)
+                      }}
+                    >
+                      <SkipForward className="mr-1.5 h-3 w-3" />
+                      Skip this week
+                    </Button>
+                  )}
+                  {canUnskip && (
+                    <Button variant="outline" size="sm" className="w-full" onClick={handleUnskip} disabled={unskipLoading}>
+                      <Undo2 className="mr-1.5 h-3 w-3" />
+                      Unskip
+                    </Button>
+                  )}
+                  {canCancel && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => {
+                        pendingDialog.current = "cancel"
+                        onOpenChange(false)
+                      }}
+                    >
+                      <Ban className="mr-1.5 h-3 w-3" />
+                      Cancel class
+                    </Button>
+                  )}
+                  {canImport && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => {
+                        pendingDialog.current = "csv"
+                        onOpenChange(false)
+                      }}
+                    >
+                      <Upload className="mr-1.5 h-3 w-3" />
+                      Import bookings
+                    </Button>
+                  )}
+                </div>
                 {canEdit && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      onOpenChange(false)
-                      onEdit(childSlot)
-                    }}
-                  >
-                    <Pencil className="mr-1.5 h-3 w-3" />
-                    Edit
-                  </Button>
-                )}
-                {canSkip && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      pendingDialog.current = "skip"
-                      onOpenChange(false)
-                    }}
-                  >
-                    <SkipForward className="mr-1.5 h-3 w-3" />
-                    Skip this week
-                  </Button>
-                )}
-                {canUnskip && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleUnskip}
-                    disabled={unskipLoading}
-                  >
-                    <Undo2 className="mr-1.5 h-3 w-3" />
-                    Unskip
-                  </Button>
-                )}
-                {canCancel && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      pendingDialog.current = "cancel"
-                      onOpenChange(false)
-                    }}
-                  >
-                    <Ban className="mr-1.5 h-3 w-3" />
-                    Cancel
-                  </Button>
-                )}
-                {canImport && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      pendingDialog.current = "csv"
-                      onOpenChange(false)
-                    }}
-                  >
-                    <Upload className="mr-1.5 h-3 w-3" />
-                    Import bookings
-                  </Button>
-                )}
-                {canEdit && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
+                  <button
+                    type="button"
                     onClick={openDeleteDialog}
-                    className="text-warm-grey hover:text-red-600"
+                    className="inline-flex items-center gap-1.5 pt-1 text-[0.74rem] text-warm-grey transition-colors hover:text-red-600"
                   >
-                    <Trash2 className="mr-1.5 h-3 w-3" />
-                    Remove
-                  </Button>
+                    <Trash2 className="h-3 w-3" />
+                    Remove from timetable
+                  </button>
                 )}
               </div>
             )}

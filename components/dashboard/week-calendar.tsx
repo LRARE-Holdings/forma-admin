@@ -17,10 +17,11 @@ import { ChevronLeft, ChevronRight, Plus, Repeat, Loader2 } from "lucide-react"
 import type { WeekSlot, StudioHoliday } from "@/lib/types"
 
 // --- Constants ---
-const START_HOUR = 6
-const END_HOUR = 21
+// The grid covers 06:00–21:00, stretched to fit any class outside that (a
+// 21:35 class used to render below the grid, unclickable).
+const DEFAULT_START_HOUR = 6
+const DEFAULT_END_HOUR = 21
 const ROW_HEIGHT = 40
-const TOTAL_ROWS = (END_HOUR - START_HOUR) * 2
 
 interface ClassOption {
   id: string
@@ -47,15 +48,70 @@ interface WeekCalendarProps {
 }
 
 // --- Helpers ---
-function getSlotPosition(startTime: string, endTime: string) {
-  const [sh, sm] = startTime.split(":").map(Number)
-  const [eh, em] = endTime.split(":").map(Number)
-  const startMinutes = sh * 60 + sm - START_HOUR * 60
-  const endMinutes = eh * 60 + em - START_HOUR * 60
+function toMinutes(time: string): number {
+  const [h, m] = time.split(":").map(Number)
+  return h * 60 + (m || 0)
+}
+
+function hourRange(slots: WeekSlot[]) {
+  let startHour = DEFAULT_START_HOUR
+  let endHour = DEFAULT_END_HOUR
+  for (const s of slots) {
+    startHour = Math.min(startHour, Math.floor(toMinutes(s.startTime) / 60))
+    endHour = Math.max(endHour, Math.ceil(toMinutes(s.endTime) / 60))
+  }
+  endHour = Math.min(endHour, 24)
+  const totalRows = (endHour - startHour) * 2
+  const timeLabels = Array.from({ length: totalRows }, (_, i) => {
+    const hour = startHour + Math.floor(i / 2)
+    const min = i % 2 === 0 ? "00" : "30"
+    return `${String(hour).padStart(2, "0")}:${min}`
+  })
+  return { startHour, totalRows, timeLabels }
+}
+
+function getSlotPosition(startTime: string, endTime: string, startHour: number) {
+  const startMinutes = toMinutes(startTime) - startHour * 60
+  const endMinutes = toMinutes(endTime) - startHour * 60
   return {
     top: (startMinutes / 30) * ROW_HEIGHT,
     height: Math.max(((endMinutes - startMinutes) / 30) * ROW_HEIGHT, ROW_HEIGHT),
   }
+}
+
+/**
+ * Side-by-side lanes for classes that overlap on one day, so two 18:40
+ * classes sit next to each other instead of printed on top of one another.
+ * Each run of overlapping classes shares a lane count; a class takes the
+ * first lane that's free when it starts.
+ */
+function layoutLanes(daySlots: WeekSlot[]): Map<string, { lane: number; lanes: number }> {
+  const result = new Map<string, { lane: number; lanes: number }>()
+  const sorted = [...daySlots].sort((a, b) => a.startTime.localeCompare(b.startTime))
+  let group: { id: string; lane: number }[] = []
+  let laneEnds: number[] = []
+  let groupEnd = -1
+  const flush = () => {
+    for (const g of group) result.set(g.id, { lane: g.lane, lanes: laneEnds.length })
+    group = []
+    laneEnds = []
+  }
+  for (const s of sorted) {
+    const start = toMinutes(s.startTime)
+    const end = toMinutes(s.endTime)
+    if (start >= groupEnd) flush()
+    let lane = laneEnds.findIndex((laneEnd) => laneEnd <= start)
+    if (lane === -1) {
+      lane = laneEnds.length
+      laneEnds.push(end)
+    } else {
+      laneEnds[lane] = end
+    }
+    group.push({ id: s.scheduleId, lane })
+    groupEnd = Math.max(groupEnd, end)
+  }
+  flush()
+  return result
 }
 
 function buildDayHeaders(weekStart: string) {
@@ -75,12 +131,6 @@ function buildDayHeaders(weekStart: string) {
   })
 }
 
-const timeLabels = Array.from({ length: TOTAL_ROWS }, (_, i) => {
-  const hour = START_HOUR + Math.floor(i / 2)
-  const min = i % 2 === 0 ? "00" : "30"
-  return `${String(hour).padStart(2, "0")}:${min}`
-})
-
 export function WeekCalendar({
   slots,
   holidays,
@@ -91,6 +141,7 @@ export function WeekCalendar({
   isCurrentWeek,
 }: WeekCalendarProps) {
   const router = useRouter()
+  const { startHour, totalRows, timeLabels } = useMemo(() => hourRange(slots), [slots])
   const [isPending, startTransition] = useTransition()
 
   const navigateToWeek = useCallback(
@@ -176,7 +227,7 @@ export function WeekCalendar({
     const rect = e.currentTarget.getBoundingClientRect()
     const y = e.clientY - rect.top + e.currentTarget.scrollTop
     const slotIndex = Math.floor(y / ROW_HEIGHT)
-    const hour = START_HOUR + Math.floor(slotIndex / 2)
+    const hour = startHour + Math.floor(slotIndex / 2)
     const min = slotIndex % 2 === 0 ? "00" : "30"
     const clickedTime = `${String(hour).padStart(2, "0")}:${min}`
 
@@ -334,7 +385,7 @@ export function WeekCalendar({
         {/* Grid body */}
         <div
           className="grid grid-cols-[60px_repeat(7,1fr)] overflow-y-auto"
-          style={{ height: `${Math.min(TOTAL_ROWS * ROW_HEIGHT, 600)}px` }}
+          style={{ height: `${Math.min(totalRows * ROW_HEIGHT, 600)}px` }}
         >
           {/* Time labels */}
           <div className="relative border-r border-sand">
@@ -357,6 +408,7 @@ export function WeekCalendar({
               .filter((s) => s.dayOfWeek === dayOfWeek)
               .sort((a, b) => a.startTime.localeCompare(b.startTime))
 
+            const lanes = layoutLanes(daySlots)
             const dayHolidays = holidaysOnDate(dateStr)
             const allDay = dayHolidays.find((h) => !h.start_time && !h.end_time)
             const partials = dayHolidays.filter((h) => h.start_time && h.end_time)
@@ -367,7 +419,7 @@ export function WeekCalendar({
                 className={`relative border-l border-sand cursor-pointer ${
                   isToday ? "bg-gold/4" : ""
                 }`}
-                style={{ height: `${TOTAL_ROWS * ROW_HEIGHT}px` }}
+                style={{ height: `${totalRows * ROW_HEIGHT}px` }}
                 onClick={(e) => handleEmptyCellClick(dayOfWeek, e)}
               >
                 {/* Gridlines */}
@@ -393,7 +445,7 @@ export function WeekCalendar({
                 {/* Partial-day holiday bands */}
                 {!allDay &&
                   partials.map((h) => {
-                    const pos = getSlotPosition(h.start_time!, h.end_time!)
+                    const pos = getSlotPosition(h.start_time!, h.end_time!, startHour)
                     return (
                       <div
                         key={h.id}
@@ -412,7 +464,8 @@ export function WeekCalendar({
                   <CalendarSlotBlock
                     key={slot.scheduleId}
                     slot={slot}
-                    position={getSlotPosition(slot.startTime, slot.endTime)}
+                    position={getSlotPosition(slot.startTime, slot.endTime, startHour)}
+                    lane={lanes.get(slot.scheduleId)}
                     onClick={(e) => {
                       e.stopPropagation()
                       setPopoverSlot(slot)

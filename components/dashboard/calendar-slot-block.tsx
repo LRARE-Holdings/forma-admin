@@ -8,21 +8,26 @@ import type { WeekSlot } from "@/lib/types"
 interface CalendarSlotBlockProps {
   slot: WeekSlot
   position: { top: number; height: number }
+  /** Which of the day's side-by-side lanes this class sits in, when classes overlap. */
+  lane?: { lane: number; lanes: number }
   onClick: (e: React.MouseEvent) => void
 }
 
 export function CalendarSlotBlock({
   slot,
   position,
+  lane,
   onClick,
 }: CalendarSlotBlockProps) {
   const isCompact = position.height < 60
+  const lanes = lane?.lanes ?? 1
+  const index = lane?.lane ?? 0
 
   return (
     <div
       data-slot-block
       onClick={onClick}
-      className={`absolute left-1 right-1 z-20 cursor-pointer overflow-hidden rounded-lg border transition-shadow hover:shadow-md ${
+      className={`absolute z-20 cursor-pointer overflow-hidden rounded-lg border transition-shadow hover:shadow-md ${
         slot.isSkipped
           ? "border-sand/60 bg-sand/30 opacity-60"
           : slot.isHoliday
@@ -34,7 +39,10 @@ export function CalendarSlotBlock({
       style={{
         top: `${position.top + 2}px`,
         height: `${position.height - 4}px`,
+        left: `calc(${(index / lanes) * 100}% + 4px)`,
+        width: `calc(${100 / lanes}% - 8px)`,
       }}
+      title={`${slot.className} · ${slot.instructorName} · ${formatTime(slot.startTime)}–${formatTime(slot.endTime)}`}
     >
       <div className="flex h-full gap-1.5 px-2 py-1">
         <ClassColorBar
