@@ -97,3 +97,21 @@ and waitlist-offer emails wait.
    job (03:30 UTC) keeping 7 days of `cron.job_run_details`. Applied
    2026-09-23, after the project ran out of Disk IO budget and that table was
    found to be 26 MB of a 49 MB database.
+
+## Security fixes and CRM removal (2026-09-23)
+
+Found during a codebase review. Both applied the same day.
+
+- `20260923_05_lock_down_credit_functions.sql` — `grant_correction_credit`,
+  `credit_shortfalls`, `credit_shortfall_legacy_count` and `spend_pack_credit`
+  were SECURITY DEFINER and executable with the public anon key, with no check
+  of their own: anyone could grant free credits or list members' emails. They
+  now call `require_studio_admin_or_server()`. Verified in a rolled-back
+  transaction (anon and members refused; studio admin, service role allowed;
+  an admin of another studio refused) and then over the live REST API with the
+  anon key (401 permission denied on all four).
+- `20260923_06_remove_crm.sql` — drops the sales CRM (`crm_activity`, which was
+  anon-readable, `crm_notes`, `referrers`, `referral_rewards`,
+  `onboarding_submissions`, and `studios.onboarding_submission_id`). The data
+  was test data; it was exported to `forma-crm-export-2026-09-23.json` outside
+  the repos first. `email_signups` is kept for the marketing waitlist.
