@@ -383,6 +383,8 @@ export interface WeekSlot {
   capacity: number
   durationMins: number
   ruleId: string | null
+  /** A class on one date only (its rule starts and ends the same day). */
+  isOneOff: boolean
   bookingCount: number
   isSkipped: boolean
   isHoliday: boolean

@@ -516,15 +516,12 @@ async function materialiseSlots(ruleId: string) {
 
   if (error || !rule) return
 
-  const dates = calculateDates(
-    rule.recurrence as Recurrence,
-    rule.day_of_week,
-    rule.starts_on,
-    rule.ends_on,
-    28 // 4 weeks window
-  )
-
-  if (dates.length === 0) return
+  // The slot is a weekly pattern, not a date, so it's needed as soon as the rule
+  // has any date from today on — however far ahead it starts. This used to look
+  // only 4 weeks ahead, so a timetable planned a month out (or a one-off added
+  // for six weeks' time) got no slot and never appeared anywhere; nothing came
+  // back later to create it.
+  if (rule.ends_on && rule.ends_on < localDateStr()) return
 
   // Check which dates already have slots for this rule
   const { data: existing } = await supabase
@@ -621,53 +618,4 @@ async function rematerialiseSlots(ruleId: string) {
   // Must not be swallowed: a slot left out of sync with its rule shows the wrong
   // class, instructor or time to everyone booking it.
   if (error) throw new Error(`Failed to update slot: ${error.message}`)
-}
-
-/**
- * Calculate dates for a recurrence pattern within a window.
- */
-function calculateDates(
-  recurrence: Recurrence,
-  dayOfWeek: number,
-  startsOn: string,
-  endsOn: string | null,
-  windowDays: number
-): string[] {
-  const dates: string[] = []
-  const today = new Date(localDateStr() + "T00:00:00")
-
-  const start = new Date(startsOn + "T00:00:00")
-  const windowEnd = new Date(today)
-  windowEnd.setDate(windowEnd.getDate() + windowDays)
-
-  const end = endsOn ? new Date(endsOn + "T00:00:00") : windowEnd
-  const effectiveEnd = end < windowEnd ? end : windowEnd
-
-  // Find the first occurrence on or after start
-  const cursor = new Date(start)
-  const cursorDow = cursor.getDay()
-  // Convert JS day (0=Sun) to our convention (0=Mon)
-  const cursorOurDow = cursorDow === 0 ? 6 : cursorDow - 1
-  let daysToAdd = dayOfWeek - cursorOurDow
-  if (daysToAdd < 0) daysToAdd += 7
-  cursor.setDate(cursor.getDate() + daysToAdd)
-
-  const interval =
-    recurrence === "weekly" ? 7 :
-    recurrence === "fortnightly" ? 14 :
-    0 // monthly handled separately
-
-  while (cursor <= effectiveEnd) {
-    if (cursor >= today) {
-      dates.push(dateToDateStr(cursor))
-    }
-
-    if (recurrence === "monthly") {
-      cursor.setMonth(cursor.getMonth() + 1)
-    } else {
-      cursor.setDate(cursor.getDate() + interval)
-    }
-  }
-
-  return dates
 }

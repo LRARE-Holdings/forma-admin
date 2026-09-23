@@ -197,6 +197,10 @@ async function getRangeData(
           capacity: (cls.capacity as number) ?? 10,
           durationMins: (cls.duration_mins as number) ?? 60,
           ruleId: (entry.rule_id as string) ?? null,
+          isOneOff: (() => {
+            const rule = entry.rule_id ? rulesById.get(entry.rule_id as string) : undefined
+            return !!rule && !!rule.ends_on && rule.ends_on === rule.starts_on
+          })(),
           bookingCount: bookingCounts.get(key) ?? 0,
           isSkipped: exceptionSet.has(key),
           isHoliday: isSlotInHoliday(dateStr, entry.start_time as string),

@@ -19,11 +19,9 @@ import {
   SelectItem,
 } from "@/components/ui/select"
 import { SubmitButton } from "@/components/shared/submit-button"
-import { createScheduleSlot } from "@/app/actions/schedule"
 import { createScheduleRule } from "@/app/actions/schedule-rules"
 import { toast } from "sonner"
 import { DAY_SHORT } from "@/lib/constants"
-import { unwrap } from "@/lib/action-result"
 
 interface ClassOption {
   id: string
@@ -139,12 +137,23 @@ export function AddClassDialog({
 
     try {
       if (mode === "one-off") {
+        // A one-off is a rule that starts and ends on the same date. It used to
+        // be a slot with no rule, which the timetable, the website and bookings
+        // all read as "every week, forever" — so a class added for one
+        // Wednesday reappeared (and took bookings) every Wednesday after.
         formData.set("class_id", classId)
         formData.set("instructor_id", instructorId)
         formData.set("day_of_week", String(defaultDayOfWeek))
         formData.set("end_time", endTime)
-        unwrap(await createScheduleSlot(formData))
-        toast.success("Class added to timetable")
+        formData.set("recurrence", "weekly")
+        formData.set("starts_on", defaultDate)
+        formData.set("ends_on", defaultDate)
+        const result = await createScheduleRule(formData)
+        if (result?.error) {
+          toast.error(result.error)
+          return
+        }
+        toast.success(`Class added for ${formattedDate}`)
       } else {
         formData.set("class_id", classId)
         formData.set("instructor_id", instructorId)

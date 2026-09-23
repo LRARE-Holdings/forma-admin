@@ -592,7 +592,7 @@ export function WeekCalendar({
                     <span className="truncate text-[0.85rem] font-semibold text-cocoa">
                       {slot.className}
                     </span>
-                    {slot.ruleId && (
+                    {slot.ruleId && !slot.isOneOff && (
                       <Repeat className="h-3 w-3 shrink-0 text-gold" />
                     )}
                   </div>

@@ -345,7 +345,7 @@ export function MonthCalendar({
                         {formatTime(slot.startTime)}
                       </span>
                       <span className="truncate text-cocoa">{slot.className}</span>
-                      {slot.ruleId && (
+                      {slot.ruleId && !slot.isOneOff && (
                         <Repeat className="h-2 w-2 shrink-0 text-gold" />
                       )}
                     </button>

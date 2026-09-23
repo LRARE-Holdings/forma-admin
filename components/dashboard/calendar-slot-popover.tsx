@@ -220,7 +220,7 @@ export function CalendarSlotPopover({
 
   const canEdit = !childSlot.isPast && !childSlot.isHoliday
   const canSkip =
-    !childSlot.isPast && !childSlot.isHoliday && !childSlot.isSkipped && !!childSlot.ruleId
+    !childSlot.isPast && !childSlot.isHoliday && !childSlot.isSkipped && !!childSlot.ruleId && !childSlot.isOneOff
   const canUnskip = !childSlot.isPast && childSlot.isSkipped
   const canCancel = !childSlot.isPast && !childSlot.isHoliday && !childSlot.isSkipped
   const canImport = !childSlot.isHoliday && !childSlot.isSkipped
@@ -235,7 +235,7 @@ export function CalendarSlotPopover({
             <DialogTitle className="flex min-w-0 items-center gap-2 pr-6">
               <ClassColorBar classSlug={childSlot.classSlug} className="h-5 w-[3px] shrink-0" />
               <span className="truncate">{childSlot.className}</span>
-              {childSlot.ruleId && <Repeat className="h-3.5 w-3.5 shrink-0 text-gold" />}
+              {childSlot.ruleId && !childSlot.isOneOff && <Repeat className="h-3.5 w-3.5 shrink-0 text-gold" />}
             </DialogTitle>
             <p className="text-[0.8rem] text-warm-grey">
               {formattedDate} · {formatTime(childSlot.startTime)}–{formatTime(childSlot.endTime)}
@@ -356,7 +356,7 @@ export function CalendarSlotPopover({
             {childSlot.isSkipped && (
               <p className="rounded-lg bg-sand/50 px-3 py-2.5 text-[0.78rem] text-warm-grey">
                 This class is <strong>cancelled</strong>
-                {childSlot.ruleId ? " this week" : ""}.
+                {childSlot.ruleId && !childSlot.isOneOff ? " this week" : ""}.
               </p>
             )}
             {childSlot.isHoliday && (

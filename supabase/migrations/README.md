@@ -178,3 +178,17 @@ Found during a codebase review. Both applied the same day.
   before packs were tracked per booking), one 2026-09-02 "stripe" booking with
   no payment reference (a past class, most likely added by hand), and 8
   internal/test accounts with no studio membership.
+
+## One-off classes (2026-09-23)
+
+- `20260923_13_one_off_classes_to_single_date_rules.sql` — "Add one-off class"
+  saved a slot with no rule, which everything reads as "every week, forever";
+  three added that morning showed (and took bookings) every week. Each now has a
+  rule covering only its dates (Tue 17:40 and 18:40 → 29 Sep; Wed 18:30 → 23 and
+  30 Sep, since it also ran on the 23rd). Applied after a rolled-back check of
+  the dates each would show on. The app now creates one-offs as single-date
+  rules, and gives any new rule its slot however far ahead it starts (it used to
+  look only 4 weeks ahead, which left six rules planned in August with no slot).
+- Still open: Infrared Pilates Wed 10:00 (slot 359e726e) has no rule and so
+  shows every week; its intended date is unconfirmed. The six slotless rules
+  are inert (no slot, no bookings) and were left alone.

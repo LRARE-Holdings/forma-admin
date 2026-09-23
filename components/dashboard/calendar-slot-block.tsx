@@ -56,7 +56,7 @@ export function CalendarSlotBlock({
             <span className="truncate text-[0.72rem] font-semibold text-cocoa">
               {slot.className}
             </span>
-            {slot.ruleId && (
+            {slot.ruleId && !slot.isOneOff && (
               <Repeat className="h-2.5 w-2.5 shrink-0 text-gold" />
             )}
           </div>
