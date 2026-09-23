@@ -136,3 +136,13 @@ Found during a codebase review. Both applied the same day.
   legitimate paths (staff invites, admin edits, joining/leaving waitlists,
   profile edits, server-side date-of-birth corrections). Nobody had used the
   admin hole — every admin/staff membership traced to a real invite.
+
+## Check-in (2026-09-23)
+
+- `20260923_09_check_in.sql` — `studio_memberships.checkin_token` (each
+  member's personal class check-in code, one per studio; the QR carries
+  `forma-member:<token>`, never a profile id) and `event_tickets.checked_in_count`
+  / `checked_in_at` (a ticket for several people checks in one at a time).
+  Applied 2026-09-23; all 992 memberships got distinct codes. The check-in
+  server code was then run against real temporary data (20/20 scenarios,
+  including permissions and walk-ins), all of it deleted afterwards.

@@ -119,6 +119,8 @@ export default async function RegistrationPage({
           {daySlots.map((slot) => (
             <RegistrationClassCard
               key={slot.scheduleId}
+              scheduleId={slot.scheduleId}
+              date={dateStr}
               className={slot.className}
               classSlug={slot.classSlug}
               startTime={slot.startTime}
