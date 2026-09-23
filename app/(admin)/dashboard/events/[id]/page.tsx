@@ -34,7 +34,7 @@ export default async function EventTicketsPage({
   const [{ data: tickets }, { data: waitlist }, { count: alertCount }] = await Promise.all([
     supabase
       .from("event_tickets")
-      .select("id, quantity, amount_pence, status, cancelled_by, refunded_at, refund_amount_pence, confirmed_at, created_at, profiles:profile_id(full_name, email)")
+      .select("id, quantity, amount_pence, status, cancelled_by, refunded_at, refund_amount_pence, confirmed_at, created_at, checked_in_count, profiles:profile_id(full_name, email)")
       .eq("event_id", id)
       .in("status", ["confirmed", "cancelled"])
       .order("created_at"),
@@ -62,6 +62,7 @@ export default async function EventTicketsPage({
       cancelledBy: t.cancelled_by as TicketRow["cancelledBy"],
       refundedPence: t.refunded_at ? ((t.refund_amount_pence as number | null) ?? 0) : null,
       boughtAt: (t.confirmed_at ?? t.created_at) as string,
+      checkedIn: (t.checked_in_count as number) ?? 0,
     }
   })
 

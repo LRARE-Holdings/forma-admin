@@ -1,5 +1,7 @@
 "use client"
 
+import Link from "next/link"
+import { QrCode } from "lucide-react"
 import { ClassColorBar } from "@/components/shared/class-color-bar"
 import { CapacityBadge } from "@/components/shared/capacity-badge"
 import { AttendanceDropdown } from "@/components/shared/attendance-dropdown"
@@ -14,6 +16,8 @@ interface AttendeeData {
 }
 
 interface RegistrationClassCardProps {
+  scheduleId: string
+  date: string
   className: string
   classSlug: string
   startTime: string
@@ -51,6 +55,8 @@ function paymentStyle(method: string) {
 }
 
 export function RegistrationClassCard({
+  scheduleId,
+  date,
   className,
   classSlug,
   startTime,
@@ -77,7 +83,16 @@ export function RegistrationClassCard({
             </p>
           </div>
         </div>
-        <CapacityBadge booked={booked} capacity={capacity} isPast={isPast} />
+        <div className="flex items-center gap-3">
+          <Link
+            href={`/dashboard/registration/${scheduleId}/${date}`}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-cocoa px-3 py-1.5 text-[0.75rem] font-semibold text-wheat hover:bg-gold hover:text-cocoa"
+          >
+            <QrCode className="h-3.5 w-3.5" />
+            Check in
+          </Link>
+          <CapacityBadge booked={booked} capacity={capacity} isPast={isPast} />
+        </div>
       </div>
 
       {/* Attendee table */}

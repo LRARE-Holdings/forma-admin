@@ -7,7 +7,7 @@ import { formatTime } from "@/lib/utils"
 import { DAY_NAMES } from "@/lib/constants"
 import { ClassColorBar } from "@/components/shared/class-color-bar"
 import { CapacityRing } from "@/components/shared/capacity-ring"
-import { RegisterAttendees } from "@/components/staff/register-attendees"
+import { ClassCheckIn } from "@/components/shared/class-check-in"
 import type { AttendanceStatus } from "@/lib/types"
 
 interface Props {
@@ -58,8 +58,6 @@ export default async function RegisterPage({ params }: Props) {
   })
 
   const booked = attendees.length
-  const attended = attendees.filter((a) => a.attendance_status === "attended").length
-  const noShow = attendees.filter((a) => a.attendance_status === "no_show").length
 
   // Format the date for display
   const dateObj = new Date(date + "T00:00:00")
@@ -100,62 +98,9 @@ export default async function RegisterPage({ params }: Props) {
           <CapacityRing booked={booked} capacity={capacity} classSlug={cls.slug} />
         </div>
 
-        {/* Quick stats */}
-        <div className="mt-5 grid grid-cols-3 gap-3">
-          <div className="rounded-xl bg-cream px-4 py-3 text-center">
-            <span className="block font-heading text-[1.4rem] font-semibold text-cocoa">{booked}</span>
-            <span className="text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-warm-grey">
-              Booked
-            </span>
-          </div>
-          <div className="rounded-xl bg-cream px-4 py-3 text-center">
-            <span className="block font-heading text-[1.4rem] font-semibold text-success">{attended}</span>
-            <span className="text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-warm-grey">
-              Attended
-            </span>
-          </div>
-          <div className="rounded-xl bg-cream px-4 py-3 text-center">
-            <span className="block font-heading text-[1.4rem] font-semibold text-red-500">{noShow}</span>
-            <span className="text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-warm-grey">
-              No-show
-            </span>
-          </div>
-        </div>
       </div>
 
-      {/* Register list */}
-      <div className="rounded-2xl border border-sand bg-white overflow-hidden">
-        <div className="flex justify-between bg-cocoa px-6 py-3 text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-wheat/70">
-          <span>Register ({booked} of {capacity})</span>
-          <div className="flex gap-8">
-            <span>Payment</span>
-            <span>Attendance</span>
-          </div>
-        </div>
-
-        {/* Booked attendees */}
-        <RegisterAttendees attendees={attendees} />
-
-        {/* Empty spots */}
-        {Array.from({ length: capacity - booked }, (_, i) => (
-          <div
-            key={`empty-${i}`}
-            className="flex items-center gap-3 border-b border-sand/40 px-6 py-3 last:border-b-0"
-          >
-            <span className="w-5 text-center text-[0.72rem] font-medium text-warm-grey">
-              {booked + i + 1}
-            </span>
-            <div className="h-8 w-8 rounded-full border-[1.5px] border-dashed border-sand" />
-            <span className="text-[0.82rem] italic text-sand">Open spot</span>
-          </div>
-        ))}
-
-        {booked === 0 && (
-          <div className="px-6 py-10 text-center">
-            <p className="text-[0.88rem] text-warm-grey">No bookings yet for this class.</p>
-          </div>
-        )}
-      </div>
+      <ClassCheckIn scheduleId={scheduleId} date={date} capacity={capacity} attendees={attendees} />
     </>
   )
 }

@@ -7,7 +7,10 @@ import { Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/shared/empty-state"
 import { DeleteConfirmDialog } from "@/components/shared/delete-confirm-dialog"
 import { cancelEvent, cancelTicket } from "@/app/actions/events"
+import { adjustEventCheckIn, checkInEventByCode, type EventCheckInResult } from "@/app/actions/check-in"
+import { QrScanView } from "@/components/shared/qr-scan-view"
 import { formatPounds } from "@/lib/events"
+import { Check, Minus, Plus, QrCode, XCircle, AlertTriangle } from "lucide-react"
 
 export interface TicketRow {
   id: string
@@ -20,6 +23,8 @@ export interface TicketRow {
   /** Null when not refunded */
   refundedPence: number | null
   boughtAt: string
+  /** People on this ticket checked in at the door */
+  checkedIn: number
 }
 
 export interface WaitlistRow {
@@ -51,6 +56,32 @@ export function EventTicketsPanel({ eventId, eventTitle, cancelled, salesNote, t
   const [target, setTarget] = useState<TicketRow | null>(null)
   const [cancelEventOpen, setCancelEventOpen] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [scanning, setScanning] = useState(false)
+  const [scanResult, setScanResult] = useState<EventCheckInResult | null>(null)
+  // Check-in counts updated here since the last server render.
+  const [checkedIn, setCheckedIn] = useState<Record<string, number>>({})
+  const countFor = (t: TicketRow) => checkedIn[t.id] ?? t.checkedIn
+
+  const peopleExpected = tickets.filter((t) => t.status === "confirmed").reduce((n, t) => n + t.quantity, 0)
+  const peopleIn = tickets.filter((t) => t.status === "confirmed").reduce((n, t) => n + countFor(t), 0)
+
+  async function handleScan(code: string) {
+    const res = await checkInEventByCode(eventId, code)
+    setScanResult(res)
+    if (res.status === "checked_in") {
+      setCheckedIn((c) => ({ ...c, [res.ticketId]: res.checkedIn }))
+      navigator.vibrate?.(60)
+    }
+  }
+
+  async function adjust(t: TicketRow, delta: 1 | -1) {
+    const res = await adjustEventCheckIn(eventId, t.id, delta)
+    if (res.status === "error") {
+      toast.error(res.message)
+      return
+    }
+    setCheckedIn((c) => ({ ...c, [t.id]: res.checkedIn }))
+  }
 
   const confirmedCount = tickets.filter((t) => t.status === "confirmed").length
 
@@ -112,11 +143,39 @@ export function EventTicketsPanel({ eventId, eventTitle, cancelled, salesNote, t
             <p className="text-[0.72rem] text-warm-grey">{salesNote}</p>
           </div>
           {!cancelled && (
-            <Button size="sm" variant="outline" onClick={() => setCancelEventOpen(true)}>
-              Cancel event
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                onClick={() => {
+                  setScanning((s) => !s)
+                  setScanResult(null)
+                }}
+              >
+                <QrCode className="mr-1.5 h-3.5 w-3.5" />
+                {scanning ? "Close scanner" : "Check in"}
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setCancelEventOpen(true)}>
+                Cancel event
+              </Button>
+            </div>
           )}
         </div>
+
+        {peopleExpected > 0 && (
+          <div className="border-b border-sand bg-cream px-5 py-2.5 text-[0.78rem] text-cocoa">
+            <strong>{peopleIn}</strong> of {peopleExpected} {peopleExpected === 1 ? "person" : "people"} checked in
+          </div>
+        )}
+
+        {scanning && (
+          <div className="space-y-3 border-b border-sand p-5">
+            <QrScanView onScan={handleScan} />
+            <p className="text-center text-[0.75rem] text-warm-grey">
+              Scan the QR on their ticket — from their Wallet pass or confirmation email.
+            </p>
+            {scanResult && <EventScanResult result={scanResult} />}
+          </div>
+        )}
 
         {tickets.length === 0 ? (
           <EmptyState icon="users" title="No tickets yet" description="Tickets appear here as soon as they're paid for." />
@@ -125,7 +184,7 @@ export function EventTicketsPanel({ eventId, eventTitle, cancelled, salesNote, t
             <table className="w-full border-collapse">
               <thead>
                 <tr>
-                  {["Member", "Tickets", "Paid", "Status", ""].map((h) => (
+                  {["Member", "Tickets", "Paid", "Status", "Checked in", ""].map((h) => (
                     <th
                       key={h}
                       className="border-b border-sand bg-cream px-5 py-2.5 text-left text-[0.65rem] font-semibold uppercase tracking-[0.1em] text-warm-grey"
@@ -156,6 +215,37 @@ export function EventTicketsPanel({ eventId, eventTitle, cancelled, salesNote, t
                         <span className="font-semibold text-gold">Confirmed</span>
                       ) : (
                         <span className="text-warm-grey">{CANCELLED_BY[t.cancelledBy ?? ""] ?? "Cancelled"}</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-3">
+                      {t.status === "confirmed" ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <button
+                            onClick={() => adjust(t, -1)}
+                            disabled={countFor(t) === 0}
+                            aria-label={`Undo a check-in for ${t.name}`}
+                            className="flex h-7 w-7 items-center justify-center rounded-md border border-sand text-warm-grey hover:border-gold disabled:opacity-30"
+                          >
+                            <Minus className="h-3.5 w-3.5" />
+                          </button>
+                          <span
+                            className={`min-w-[3rem] text-center text-[0.8rem] font-semibold ${
+                              countFor(t) === t.quantity ? "text-success" : "text-cocoa"
+                            }`}
+                          >
+                            {countFor(t)}/{t.quantity}
+                          </span>
+                          <button
+                            onClick={() => adjust(t, 1)}
+                            disabled={countFor(t) >= t.quantity}
+                            aria-label={`Check in one person for ${t.name}`}
+                            className="flex h-7 w-7 items-center justify-center rounded-md bg-cocoa text-wheat hover:bg-gold hover:text-cocoa disabled:opacity-30"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </button>
+                        </span>
+                      ) : (
+                        <span className="text-[0.75rem] text-warm-grey">—</span>
                       )}
                     </td>
                     <td className="px-5 py-3 text-right">
@@ -243,5 +333,35 @@ export function EventTicketsPanel({ eventId, eventTitle, cancelled, salesNote, t
         loadingLabel="Cancelling and refunding…"
       />
     </>
+  )
+}
+
+function EventScanResult({ result }: { result: EventCheckInResult }) {
+  if (result.status === "error") {
+    return (
+      <div role="alert" className="flex items-center gap-3 rounded-2xl bg-red-50 px-5 py-4 text-red-700">
+        <XCircle className="h-6 w-6 shrink-0" />
+        <p className="text-[0.88rem] font-medium">{result.message}</p>
+      </div>
+    )
+  }
+  const full = result.status === "all_checked_in"
+  return (
+    <div
+      role="status"
+      className={`flex items-center gap-3 rounded-2xl px-5 py-4 ${full ? "bg-amber-100 text-cocoa" : "bg-success text-white"}`}
+    >
+      {full ? <AlertTriangle className="h-6 w-6 shrink-0 text-amber-600" /> : <Check className="h-7 w-7 shrink-0" />}
+      <div>
+        <p className="text-[1.05rem] font-semibold">{result.name}</p>
+        <p className="text-[0.8rem] opacity-90">
+          {full
+            ? `Everyone on this ticket is already in (${result.quantity} of ${result.quantity})`
+            : result.quantity > 1
+              ? `Checked in — ${result.checkedIn} of ${result.quantity} on this ticket`
+              : "Checked in"}
+        </p>
+      </div>
+    </div>
   )
 }
