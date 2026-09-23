@@ -14,7 +14,7 @@ const DEFAULT_BRANDING = {
   logo_url: "https://burnmatstudio.co.uk/burn-light.png",
 }
 
-function resolveColors(branding?: StudioBranding | null) {
+export function resolveColors(branding?: StudioBranding | null) {
   return {
     cocoa:    branding?.colors?.cocoa    ?? DEFAULT_BRANDING.cocoa,
     gold:     branding?.colors?.gold     ?? DEFAULT_BRANDING.gold,
@@ -28,7 +28,7 @@ function resolveColors(branding?: StudioBranding | null) {
   }
 }
 
-function layout(studioName: string, body: string, branding?: StudioBranding | null) {
+export function layout(studioName: string, body: string, branding?: StudioBranding | null) {
   const c = resolveColors(branding)
   const header = c.logo_url
     ? `<img src="${c.logo_url}" alt="${studioName}" width="180" style="display:block;" />`

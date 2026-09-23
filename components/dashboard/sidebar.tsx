@@ -18,6 +18,7 @@ import {
   BarChart3,
   ClipboardCheck,
   ScrollText,
+  PartyPopper,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 
@@ -43,6 +44,7 @@ const navItems: NavItem[] = [
   { href: "/dashboard/members", label: "Members", icon: Users, minRoles: RECEPTION_ROLES },
   { href: "/dashboard/audit", label: "Credit audit", icon: ScrollText, minRoles: RECEPTION_ROLES },
   { href: "/dashboard/classes", label: "Classes", icon: Star, minRoles: ADMIN_ROLES },
+  { href: "/dashboard/events", label: "Events", icon: PartyPopper, minRoles: ADMIN_ROLES },
   { href: "/dashboard/packages", label: "Packages", icon: Package, minRoles: ADMIN_ROLES },
   { href: "/dashboard/memberships", label: "Memberships", icon: Repeat, minRoles: ADMIN_ROLES },
   { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3, minRoles: ADMIN_ROLES },
