@@ -364,11 +364,6 @@ export function CalendarSlotPopover({
                 Studio is on <strong>holiday</strong> this date.
               </p>
             )}
-            {childSlot.isPast && (
-              <p className="rounded-lg bg-sand/50 px-3 py-2.5 text-[0.78rem] text-warm-grey">
-                This class has already passed.
-              </p>
-            )}
 
             {/* Actions */}
             {(canCheckIn || canEdit || canSkip || canUnskip || canCancel || canImport) && (
@@ -382,7 +377,7 @@ export function CalendarSlotPopover({
                     Check people in
                   </Link>
                 )}
-                <div className="grid grid-cols-2 gap-2">
+                <div className="flex flex-wrap gap-2 [&>*]:min-w-[calc(50%-0.25rem)] [&>*]:flex-1">
                   {canEdit && (
                     <Button
                       variant="outline"
