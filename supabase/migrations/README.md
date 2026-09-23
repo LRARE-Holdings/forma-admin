@@ -79,7 +79,9 @@ are still to do.
    execute grants.
 2. Add Vault secret `forma_admin_url` (e.g. `https://admin.burnmatstudio.co.uk`)
    and check Vault's `CRON_SECRET` equals the forma-admin Vercel `CRON_SECRET`.
-3. `20260923_02_event_jobs_cron.sql` — every-minute `event-jobs` pg_cron job.
+3. `20260923_02_event_jobs_cron.sql` — the `event-jobs` pg_cron job. It checks
+   `event_jobs_due()` every minute in the database and only calls forma-admin
+   when an alert, a lapsed offer or a fillable waitlist place is actually due.
 
 Deploy forma-admin (webhook + `/api/internal/event-jobs`) before or with
 burn-public. Until step 3, tickets still sell correctly; only the "on sale"
