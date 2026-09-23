@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label"
 import { SubmitButton } from "@/components/shared/submit-button"
 import { updateStudioSettings, updateFirstClassFree } from "@/app/actions/studio"
 import { toast } from "sonner"
+import { unwrap } from "@/lib/action-result"
 
 interface StudioData {
   name: string
@@ -27,7 +28,7 @@ export function SettingsForm({ studio }: SettingsFormProps) {
 
   async function handleSubmit(formData: FormData) {
     try {
-      await updateStudioSettings(formData)
+      unwrap(await updateStudioSettings(formData))
       toast.success("Settings updated")
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to update settings")
@@ -124,7 +125,7 @@ function PromotionsCard({ initialEnabled }: { initialEnabled: boolean }) {
     const newValue = !enabled
     setSaving(true)
     try {
-      await updateFirstClassFree(newValue)
+      unwrap(await updateFirstClassFree(newValue))
       setEnabled(newValue)
       toast.success(newValue ? "First class free enabled" : "First class free disabled")
     } catch (e) {

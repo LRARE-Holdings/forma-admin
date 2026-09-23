@@ -1,5 +1,6 @@
 "use server"
 
+import { runAction } from "@/lib/action-result"
 import { createClient } from "@/lib/supabase/server"
 import { requireAdmin } from "@/lib/auth"
 import { getStudioId } from "@/lib/studio-context"
@@ -16,54 +17,56 @@ import { revalidatePath } from "next/cache"
  * Creates a Standard connected account (if needed) and returns the onboarding URL.
  */
 export async function startStripeOnboarding() {
-  await requireAdmin()
-  const studioId = await getStudioId()
-  const supabase = await createClient()
+  return runAction(async () => {
+    await requireAdmin()
+    const studioId = await getStudioId()
+    const supabase = await createClient()
 
-  // Fetch current studio
-  const { data: studio, error: studioError } = await supabase
-    .from("studios")
-    .select("id, name, stripe_account_id, stripe_onboarding_complete")
-    .eq("id", studioId)
-    .single()
-
-  if (studioError || !studio) throw new Error("Studio not found")
-
-  let accountId = studio.stripe_account_id as string | null
-
-  // Create connected account if one doesn't exist yet
-  if (!accountId) {
-    // Get the admin's email for the account
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user?.email) throw new Error("No email found for current user")
-
-    const account = await createConnectedAccount(
-      studio.name as string,
-      user.email,
-    )
-    accountId = account.id
-
-    // Store the account ID
-    const { error: updateError } = await supabase
+    // Fetch current studio
+    const { data: studio, error: studioError } = await supabase
       .from("studios")
-      .update({ stripe_account_id: accountId })
+      .select("id, name, stripe_account_id, stripe_onboarding_complete")
       .eq("id", studioId)
+      .single()
 
-    if (updateError) throw new Error(updateError.message)
-  }
+    if (studioError || !studio) throw new Error("Studio not found")
 
-  // Generate the onboarding link
-  const headersList = await headers()
-  const origin = headersList.get("origin") || headersList.get("x-forwarded-host") || "http://localhost:3000"
-  const baseUrl = origin.startsWith("http") ? origin : `https://${origin}`
+    let accountId = studio.stripe_account_id as string | null
 
-  const link = await createAccountLink(
-    accountId,
-    `${baseUrl}/api/stripe/connect?account_id=${accountId}`,
-    `${baseUrl}/dashboard/settings`,
-  )
+    // Create connected account if one doesn't exist yet
+    if (!accountId) {
+      // Get the admin's email for the account
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user?.email) throw new Error("No email found for current user")
 
-  return { url: link.url }
+      const account = await createConnectedAccount(
+        studio.name as string,
+        user.email,
+      )
+      accountId = account.id
+
+      // Store the account ID
+      const { error: updateError } = await supabase
+        .from("studios")
+        .update({ stripe_account_id: accountId })
+        .eq("id", studioId)
+
+      if (updateError) throw new Error(updateError.message)
+    }
+
+    // Generate the onboarding link
+    const headersList = await headers()
+    const origin = headersList.get("origin") || headersList.get("x-forwarded-host") || "http://localhost:3000"
+    const baseUrl = origin.startsWith("http") ? origin : `https://${origin}`
+
+    const link = await createAccountLink(
+      accountId,
+      `${baseUrl}/api/stripe/connect?account_id=${accountId}`,
+      `${baseUrl}/dashboard/settings`,
+    )
+
+    return { url: link.url }
+  })
 }
 
 /**

@@ -9,6 +9,7 @@ import { deleteMembershipTier } from "@/app/actions/memberships"
 import { Button } from "@/components/ui/button"
 import { Plus } from "lucide-react"
 import { toast } from "sonner"
+import { unwrap } from "@/lib/action-result"
 
 interface TierRow {
   id: string
@@ -62,7 +63,7 @@ export function MembershipTiersTable({ tiers }: MembershipTiersTableProps) {
     if (!deletingTier) return
     setDeleteLoading(true)
     try {
-      await deleteMembershipTier(deletingTier.id)
+      unwrap(await deleteMembershipTier(deletingTier.id))
       toast.success("Membership tier archived")
       setDeleteOpen(false)
     } catch (e) {

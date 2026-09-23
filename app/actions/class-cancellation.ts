@@ -196,7 +196,7 @@ export async function cancelClassInstance(
       )
     }
 
-    // Send cancellation email (fire-and-forget)
+    // Send cancellation email
     const profile = booking.profiles as unknown as { full_name: string | null; email: string | null }
     if (profile?.email) {
       const { subject, html } = classCancelledEmail({
@@ -212,7 +212,7 @@ export async function cancelClassInstance(
         branding,
       })
 
-      sendStudioEmail(studioId, { to: profile.email, subject, html }).catch((err) =>
+      await sendStudioEmail(studioId, { to: profile.email, subject, html }).catch((err) =>
         console.error("[class-cancellation] Email failed:", err)
       )
     }

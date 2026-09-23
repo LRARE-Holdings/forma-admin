@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label"
 import { SubmitButton } from "@/components/shared/submit-button"
 import { updateMemberEmail } from "@/app/actions/members"
 import { toast } from "sonner"
+import { unwrap } from "@/lib/action-result"
 
 interface EditMemberDialogProps {
   open: boolean
@@ -37,7 +38,7 @@ export function EditMemberDialog({
 
   async function handleSubmit(formData: FormData) {
     try {
-      await updateMemberEmail(member!.id, formData)
+      unwrap(await updateMemberEmail(member!.id, formData))
       toast.success("Email updated")
       onOpenChange(false)
     } catch (e) {

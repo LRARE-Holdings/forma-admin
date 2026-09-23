@@ -26,6 +26,7 @@ import { updateInstructor, updateStaffRole, removeStaffMember, toggleInstructorR
 import { createClient } from "@/lib/supabase/client"
 import { getInitial } from "@/lib/utils"
 import { toast } from "sonner"
+import { unwrap } from "@/lib/action-result"
 
 const ROLE_OPTIONS = [
   { value: "staff", label: "Instructor", description: "Can view own schedule and attendee lists" },
@@ -186,7 +187,7 @@ export function EditInstructorDialog({
     if (!instructor) return
     if (photoUrl) formData.set("photo_url", photoUrl)
     try {
-      await updateInstructor(instructor.id, formData)
+      unwrap(await updateInstructor(instructor.id, formData))
       toast.success("Profile updated")
       onOpenChange(false)
     } catch (e) {
@@ -198,7 +199,7 @@ export function EditInstructorDialog({
     if (!instructor?.membershipId) return
     setDeleteLoading(true)
     try {
-      await removeStaffMember(instructor.membershipId)
+      unwrap(await removeStaffMember(instructor.membershipId))
       toast.success("Staff member removed")
       setDeleteOpen(false)
       onOpenChange(false)

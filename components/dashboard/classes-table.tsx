@@ -17,6 +17,7 @@ import {
   describeDiscountCoverage,
   formatPrice,
 } from "@/lib/pricing"
+import { unwrap } from "@/lib/action-result"
 
 interface ClassRow {
   id: string
@@ -63,7 +64,7 @@ export function ClassesTable({ classes, slotsByClass }: ClassesTableProps) {
     if (!deletingClass) return
     setDeleteLoading(true)
     try {
-      await deleteClass(deletingClass.id)
+      unwrap(await deleteClass(deletingClass.id))
       toast.success("Class deleted")
       setDeleteOpen(false)
     } catch (e) {

@@ -18,6 +18,7 @@ import { createClient } from "@/lib/supabase/client"
 import { getInitial } from "@/lib/utils"
 import { toast } from "sonner"
 import { Pencil } from "lucide-react"
+import { unwrap } from "@/lib/action-result"
 
 interface EditOwnProfileProps {
   instructor: {
@@ -92,7 +93,7 @@ export function EditOwnProfile({ instructor }: EditOwnProfileProps) {
   async function handleSubmit(formData: FormData) {
     if (photoUrl) formData.set("photo_url", photoUrl)
     try {
-      await updateOwnInstructorProfile(formData)
+      unwrap(await updateOwnInstructorProfile(formData))
       toast.success("Profile updated")
       setOpen(false)
     } catch (e) {

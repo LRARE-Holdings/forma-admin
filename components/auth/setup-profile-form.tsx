@@ -11,6 +11,7 @@ import { createClient } from "@/lib/supabase/client"
 import { getInitial } from "@/lib/utils"
 import { toast } from "sonner"
 import { Camera, Loader2 } from "lucide-react"
+import { unwrap } from "@/lib/action-result"
 
 interface SetupProfileFormProps {
   instructor: {
@@ -90,7 +91,7 @@ export function SetupProfileForm({ instructor, redirectTo }: SetupProfileFormPro
     const formData = new FormData(e.currentTarget)
     if (photoUrl) formData.set("photo_url", photoUrl)
     try {
-      await updateOwnInstructorProfile(formData)
+      unwrap(await updateOwnInstructorProfile(formData))
       toast.success("Profile saved")
       router.push(redirectTo)
     } catch (err) {

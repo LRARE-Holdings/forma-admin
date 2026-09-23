@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { getUser, getUserRole } from "@/lib/auth"
 import { getStudioId } from "@/lib/studio-context"
 import { ADMIN_ROLES, RECEPTION_ROLES } from "@/lib/types"
+import { confirmedCount, findEligiblePack } from "@/lib/booking-rules"
 
 /**
  * Check-in at the door, for classes and events.
@@ -108,42 +109,9 @@ async function walkInOptions(
     .maybeSingle()
   if (membership) options.push("membership")
 
-  if (await findEligiblePack(admin, studioId, classId, profileId)) options.push("pack_credit")
+  if ((await findEligiblePack(admin, studioId, classId, profileId)).ok) options.push("pack_credit")
   if (canComp) options.push("complimentary")
   return options
-}
-
-/** Oldest valid pack whose tier isn't excluded from this class — the member site's rule. */
-async function findEligiblePack(
-  admin: Admin,
-  studioId: string,
-  classId: string,
-  profileId: string,
-): Promise<string | null> {
-  const [{ data: excluded }, { data: packs }] = await Promise.all([
-    admin.from("pack_tier_excluded_classes").select("pack_tier_id").eq("class_id", classId),
-    admin
-      .from("class_packs")
-      .select("id, pack_tier_id")
-      .eq("studio_id", studioId)
-      .eq("profile_id", profileId)
-      .gt("credits_remaining", 0)
-      .gt("expires_at", new Date().toISOString())
-      .order("purchased_at", { ascending: true }),
-  ])
-  const excludedTiers = new Set((excluded ?? []).map((e) => e.pack_tier_id as string))
-  const pack = (packs ?? []).find((p) => !p.pack_tier_id || !excludedTiers.has(p.pack_tier_id as string))
-  return (pack?.id as string | undefined) ?? null
-}
-
-async function confirmedCount(admin: Admin, scheduleId: string, date: string): Promise<number> {
-  const { count } = await admin
-    .from("bookings")
-    .select("id", { count: "exact", head: true })
-    .eq("schedule_id", scheduleId)
-    .eq("date", date)
-    .eq("status", "confirmed")
-  return count ?? 0
 }
 
 function revalidateRegisters(scheduleId: string, date: string) {
@@ -255,8 +223,8 @@ export async function bookWalkIn(
     return { ok: false, message: "That way of paying isn't available for them any more." }
   }
 
-  const packId =
-    method === "pack_credit" ? await findEligiblePack(admin, auth.studioId, auth.classId, profileId) : null
+  const pack = method === "pack_credit" ? await findEligiblePack(admin, auth.studioId, auth.classId, profileId) : null
+  const packId = pack?.ok ? pack.packId : null
   const user = await getUser()
 
   const { data: booking, error } = await admin

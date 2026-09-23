@@ -76,10 +76,11 @@ export function ClassCheckIn({
     setPendingId(att.id)
     setOverrides((o) => ({ ...o, [att.id]: next }))
     try {
-      await markAttendance(att.id, next)
-    } catch {
+      const res = await markAttendance(att.id, next)
+      if (res.error) throw new Error(res.error)
+    } catch (err) {
       setOverrides((o) => ({ ...o, [att.id]: att.attendance_status }))
-      toast.error("Couldn't update the register. Please try again.")
+      toast.error(err instanceof Error ? err.message : "Couldn't update the register. Please try again.")
     } finally {
       setPendingId(null)
     }

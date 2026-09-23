@@ -34,7 +34,11 @@ export function AttendanceDropdown({
     if (newStatus === status) return
     setLoading(true)
     try {
-      await markAttendance(bookingId, newStatus)
+      const res = await markAttendance(bookingId, newStatus)
+      if (res.error) {
+        toast.error(res.error)
+        return
+      }
       setStatus(newStatus)
       onStatusChange?.(newStatus)
     } catch (err) {

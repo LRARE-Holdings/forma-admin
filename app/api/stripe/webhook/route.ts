@@ -646,7 +646,7 @@ async function handleChargeRefunded(
         .eq("studio_id", studioId)
 
       if (!skipRefundEmail) {
-        sendRefundEmailForBooking({
+        await sendRefundEmailForBooking({
           supabase, studioId, studioName, branding,
           profileId: bookingByPi.profile_id,
           scheduleId: bookingByPi.schedule_id,
@@ -665,7 +665,7 @@ async function handleChargeRefunded(
         .eq("studio_id", studioId)
 
       if (!skipRefundEmail) {
-        sendRefundEmailForPack({
+        await sendRefundEmailForPack({
           supabase, studioId, studioName, branding,
           profileId: packByPi.profile_id,
           creditsTotal: packByPi.credits_total,
@@ -707,7 +707,7 @@ async function handleChargeRefunded(
     .eq("studio_id", studioId)
 
   if (legacyBooking && !skipRefundEmail) {
-    sendRefundEmailForBooking({
+    await sendRefundEmailForBooking({
       supabase, studioId, studioName, branding,
       profileId: legacyBooking.profile_id,
       scheduleId: legacyBooking.schedule_id,
@@ -725,7 +725,7 @@ async function handleChargeRefunded(
       .eq("studio_id", studioId)
 
     if (legacyPack && !skipRefundEmail) {
-      sendRefundEmailForPack({
+      await sendRefundEmailForPack({
         supabase, studioId, studioName, branding,
         profileId: legacyPack.profile_id,
         creditsTotal: legacyPack.credits_total,

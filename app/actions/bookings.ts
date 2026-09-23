@@ -1,6 +1,7 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
+import { after } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { requireReception, requireManager, getUser, getUserRole } from "@/lib/auth"
 import { getStudioId } from "@/lib/studio-context"
@@ -15,6 +16,7 @@ import { sendBookingNotification } from "@/lib/email/booking-notification"
 import { sendBookingCancellationNotification } from "@/lib/email/booking-cancellation-notification"
 import { issueAdminRefund } from "@/lib/stripe/refunds"
 import type { AttendanceStatus } from "@/lib/types"
+import { confirmedCount, findEligiblePack, PACK_REFUSAL } from "@/lib/booking-rules"
 
 export interface SessionOption {
   scheduleId: string
@@ -66,7 +68,12 @@ export async function getSessionsForDate(
     }))
 }
 
-export async function createManualBooking(formData: FormData) {
+/**
+ * Book a member in from the dashboard. Returns `{ error }` rather than throwing
+ * so the message reaches the person booking (Next.js hides thrown messages in
+ * production).
+ */
+export async function createManualBooking(formData: FormData): Promise<{ error?: string }> {
   await requireReception()
   const studioId = await getStudioId()
   const supabase = await createClient()
@@ -77,30 +84,31 @@ export async function createManualBooking(formData: FormData) {
   const payment_method = formData.get("payment_method") as string
 
   if (!profile_id || !schedule_id || !date || !payment_method) {
-    throw new Error("All fields are required")
+    return { error: "All fields are required." }
   }
 
-  // If paying with pack credit, locate an available pack up front — but don't
-  // decrement it yet. We charge the credit only after the booking insert
-  // succeeds, so a failed insert (e.g. a duplicate booking) never silently
-  // burns a credit.
-  let packToCharge: { id: string; credits_remaining: number } | null = null
+  const { data: slot } = await supabase
+    .from("schedule")
+    .select("class_id, classes:class_id(capacity)")
+    .eq("id", schedule_id)
+    .eq("studio_id", studioId)
+    .maybeSingle()
+  if (!slot) return { error: "That class isn't on the timetable any more." }
+  const capacity = (slot.classes as unknown as { capacity: number | null } | null)?.capacity ?? 10
+
+  // The same limit the member site enforces.
+  if ((await confirmedCount(supabase, schedule_id, date)) >= capacity) {
+    return { error: "This class is full." }
+  }
+
+  // Pick the pack up front but charge it only after the booking is in, so a
+  // failed insert (e.g. a duplicate) never burns a credit. Same rule as the
+  // member site: oldest valid pack whose tier isn't excluded from this class.
+  let packId: string | null = null
   if (payment_method === "pack_credit") {
-    const { data: packs } = await supabase
-      .from("class_packs")
-      .select("id, credits_remaining")
-      .eq("studio_id", studioId)
-      .eq("profile_id", profile_id)
-      .gt("credits_remaining", 0)
-      .gte("expires_at", new Date().toISOString())
-      .order("expires_at", { ascending: true })
-      .limit(1)
-
-    if (!packs || packs.length === 0) {
-      throw new Error("This member has no available pack credits")
-    }
-
-    packToCharge = packs[0]
+    const pack = await findEligiblePack(supabase, studioId, slot.class_id as string, profile_id)
+    if (!pack.ok) return { error: PACK_REFUSAL[pack.reason] }
+    packId = pack.packId
   }
 
   const { data: booking, error } = await supabase
@@ -114,51 +122,45 @@ export async function createManualBooking(formData: FormData) {
       payment_method,
       // Recorded before the credit moves, so a later cancellation returns it to
       // the pack it actually came from instead of guessing at the member's packs.
-      class_pack_id: packToCharge?.id ?? null,
+      class_pack_id: packId,
     })
     .select("id")
     .single()
 
-  if (error) {
+  if (error || !booking) {
     // 23505 = unique_violation on bookings_unique_confirmed: this member already
     // has a confirmed booking for this session on this date.
-    if (error.code === "23505") {
-      throw new Error("This member is already booked into this session.")
-    }
+    if (error?.code === "23505") return { error: "This member is already booked into this session." }
     // 23514 = the pack weekly cap (Beginner's Course). Its message is written
     // for the person reading it, so pass it straight through.
-    if (error.code === "23514") {
-      throw new Error(error.message)
-    }
-    throw new Error(error.message)
+    if (error?.code === "23514") return { error: error.message }
+    console.error("[bookings] Manual booking failed:", error?.message)
+    return { error: "Couldn't create the booking. Please try again." }
   }
 
   // Booking is in — now charge the pack credit. The RPC locks the pack, so two
   // simultaneous bookings can't both spend the same last credit, and it records
   // the debit against this booking in the ledger.
-  if (packToCharge && booking) {
+  if (packId) {
     const { error: creditError } = await supabase.rpc("spend_pack_credit", {
-      p_pack_id: packToCharge.id,
+      p_pack_id: packId,
       p_booking_id: booking.id,
     })
-
     if (creditError) {
-      // The booking exists; don't fail the whole action over the credit. Surface
-      // it in logs so the balance can be reconciled.
-      console.error(
-        "[bookings] Booking created but pack credit decrement failed for pack",
-        packToCharge.id,
-        "—",
-        creditError.message
-      )
+      // Undo rather than leave a booking nobody paid for.
+      console.error("[bookings] Pack credit failed for pack", packId, "—", creditError.message)
+      await supabase.from("bookings").delete().eq("id", booking.id)
+      return { error: "Their pack credit couldn't be used, so they weren't booked in. Please try again." }
     }
   }
 
-  // Send booking emails — awaited to prevent serverless early termination
-  await Promise.allSettled([
-    sendBookingConfirmation(studioId, profile_id, schedule_id, date),
-    sendBookingNotification(studioId, profile_id, schedule_id, date, payment_method),
-  ]).then((results) => {
+  // Emails go out after the response, and Vercel keeps the function alive
+  // until they finish.
+  after(async () => {
+    const results = await Promise.allSettled([
+      sendBookingConfirmation(studioId, profile_id, schedule_id, date),
+      sendBookingNotification(studioId, profile_id, schedule_id, date, payment_method),
+    ])
     for (const r of results) {
       if (r.status === "rejected") console.error("[bookings] Email failed:", r.reason)
     }
@@ -167,6 +169,7 @@ export async function createManualBooking(formData: FormData) {
   revalidatePath("/dashboard/bookings")
   revalidatePath("/dashboard/timetable")
   revalidatePath("/dashboard")
+  return {}
 }
 
 export interface SlotAttendee {
@@ -236,7 +239,7 @@ export async function getDateAttendees(
   return grouped
 }
 
-export async function cancelBooking(bookingId: string) {
+export async function cancelBooking(bookingId: string): Promise<{ error?: string }> {
   await requireManager()
   const studioId = await getStudioId()
   const supabase = await createClient()
@@ -249,8 +252,8 @@ export async function cancelBooking(bookingId: string) {
     .eq("studio_id", studioId)
     .single()
 
-  if (!booking) throw new Error("Booking not found")
-  if (booking.status === "cancelled") throw new Error("Booking is already cancelled")
+  if (!booking) return { error: "Booking not found." }
+  if (booking.status === "cancelled") return { error: "This booking is already cancelled." }
 
   // Issue Stripe refund for drop-in payers
   let refundPence: number | null = null
@@ -300,7 +303,10 @@ export async function cancelBooking(bookingId: string) {
     .eq("id", bookingId)
     .eq("studio_id", studioId)
 
-  if (error) throw new Error(error.message)
+  if (error) {
+    console.error("[bookings] Cancel failed for booking", bookingId, "—", error.message)
+    return { error: "Couldn't cancel the booking. Please try again." }
+  }
 
   // Return the credit. This replaces an inline block that picked the member's
   // pack with the earliest expires_at — including long-expired ones — so 263 of
@@ -327,12 +333,15 @@ export async function cancelBooking(bookingId: string) {
     }
   }
 
-  // Promote next person on waitlist (fire-and-forget)
-  promoteNextInWaitlist(studioId, booking.schedule_id, booking.date).catch((err) =>
-    console.error("[bookings] Waitlist promotion failed:", err)
+  // Offer the place to the waitlist, and send the emails, after the response.
+  // after() keeps the function alive until they finish; an un-awaited promise
+  // can be cut off when the serverless function returns.
+  after(() =>
+    promoteNextInWaitlist(studioId, booking.schedule_id, booking.date).catch((err) =>
+      console.error("[bookings] Waitlist promotion failed:", err)
+    )
   )
 
-  // Send cancellation email (fire-and-forget)
   const profile = booking.profiles as unknown as { full_name: string | null; email: string | null }
   const schedule = booking.schedule as unknown as { start_time: string; classes: { name: string } } | null
   if (profile?.email && schedule) {
@@ -363,36 +372,42 @@ export async function cancelBooking(bookingId: string) {
       branding: studio?.branding as StudioBranding | null,
     })
 
-    sendStudioEmail(studioId, { to: profile.email, subject, html }).catch((err) =>
-      console.error("[bookings] Cancellation email failed:", err)
+    const to = profile.email
+    after(() =>
+      sendStudioEmail(studioId, { to, subject, html }).catch((err) =>
+        console.error("[bookings] Cancellation email failed:", err)
+      )
     )
   }
 
-  sendBookingCancellationNotification(
-    studioId,
-    booking.profile_id,
-    booking.schedule_id,
-    booking.date,
-    booking.payment_method,
-    "admin",
-  ).catch((err) =>
-    console.error("[bookings] Cancellation notification failed:", err)
+  after(() =>
+    sendBookingCancellationNotification(
+      studioId,
+      booking.profile_id,
+      booking.schedule_id,
+      booking.date,
+      booking.payment_method,
+      "admin",
+    ).catch((err) =>
+      console.error("[bookings] Cancellation notification failed:", err)
+    )
   )
 
   revalidatePath("/dashboard/bookings")
   revalidatePath("/dashboard/timetable")
   revalidatePath("/dashboard")
+  return {}
 }
 
 /** Mark attendance for a single booking. Staff can mark their own classes; reception+ can mark any. */
 export async function markAttendance(
   bookingId: string,
   status: AttendanceStatus | null
-) {
+): Promise<{ error?: string }> {
   const supabase = await createClient()
   const studioId = await getStudioId()
   const user = await getUser()
-  if (!user) throw new Error("Not authenticated")
+  if (!user) return { error: "Please sign in again." }
 
   const role = await getUserRole()
 
@@ -405,7 +420,7 @@ export async function markAttendance(
       .eq("studio_id", studioId)
       .single()
 
-    if (!booking) throw new Error("Booking not found")
+    if (!booking) return { error: "Booking not found." }
 
     const schedule = booking.schedule as unknown as {
       instructor_id: string
@@ -413,7 +428,7 @@ export async function markAttendance(
     }
 
     if (schedule.instructors.profile_id !== user.id) {
-      throw new Error("You can only mark attendance for your own classes")
+      return { error: "You can only mark attendance for your own classes." }
     }
   } else {
     // Non-staff: require at least reception role
@@ -431,10 +446,14 @@ export async function markAttendance(
     .eq("studio_id", studioId)
     .eq("status", "confirmed")
 
-  if (error) throw new Error(error.message)
+  if (error) {
+    console.error("[bookings] Attendance update failed:", error.message)
+    return { error: "Couldn't update attendance. Please try again." }
+  }
 
   revalidatePath("/dashboard/timetable")
   revalidatePath("/dashboard/analytics")
   revalidatePath("/dashboard")
   revalidatePath("/staff")
+  return {}
 }

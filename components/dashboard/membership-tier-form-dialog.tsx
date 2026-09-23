@@ -16,6 +16,7 @@ import {
   updateMembershipTier,
 } from "@/app/actions/memberships"
 import { toast } from "sonner"
+import { unwrap } from "@/lib/action-result"
 
 interface TierData {
   id: string
@@ -47,10 +48,10 @@ export function MembershipTierFormDialog({
   async function handleSubmit(formData: FormData) {
     try {
       if (isEditing) {
-        await updateMembershipTier(editingTier!.id, formData)
+        unwrap(await updateMembershipTier(editingTier!.id, formData))
         toast.success("Membership tier updated")
       } else {
-        await createMembershipTier(formData)
+        unwrap(await createMembershipTier(formData))
         toast.success("Membership tier created")
       }
       onOpenChange(false)

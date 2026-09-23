@@ -114,7 +114,11 @@ export function BookingFormDialog({
       return
     }
     try {
-      await createManualBooking(formData)
+      const res = await createManualBooking(formData)
+      if (res.error) {
+        toast.error(res.error)
+        return
+      }
       toast.success("Booking created")
       onOpenChange(false)
     } catch (e) {
