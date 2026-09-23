@@ -146,3 +146,19 @@ Found during a codebase review. Both applied the same day.
   Applied 2026-09-23; all 992 memberships got distinct codes. The check-in
   server code was then run against real temporary data (20/20 scenarios,
   including permissions and walk-ins), all of it deleted afterwards.
+
+## Emails, storage and instructor access (2026-09-23)
+
+- `20260923_10_lock_down_emails_storage_staff.sql` — from the completed audit:
+  the weekly-email cron jobs now send the Vault `CRON_SECRET` (the function
+  requires it; source now in `supabase/functions/send-weekly-emails`), the
+  retired launch-email jobs are removed, photo uploads are limited to admins
+  and each instructor's own photo (PNG/JPEG/WebP, 10 MB), and instructors only
+  see bookings and member profiles for the classes they teach. Applied after
+  12 rolled-back checks.
+- Edge functions `forma-announcement` and `migration-email` were replaced with
+  410 stubs (they exposed member emails to anyone). Delete them in the
+  dashboard when convenient.
+- **Open:** the edge-function secret `CRON_SECRET` does not match the Vault's,
+  so `waitlist-expiry` and `send-weekly-emails` get 401 from their cron jobs.
+  Set the edge-function secret to the Vault value.

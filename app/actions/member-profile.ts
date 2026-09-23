@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { getUserRole } from "@/lib/auth"
+import { getUser, getUserRole } from "@/lib/auth"
 import { getStudioId } from "@/lib/studio-context"
 import { DASHBOARD_ROLES } from "@/lib/types"
 
@@ -47,8 +47,28 @@ export async function getMemberProfile(
   const supabase = await createClient()
   const admin = createAdminClient()
 
-  // Confirm the target profile is a member of this studio
-  const { data: membership } = await supabase
+  // Instructors may only open members booked into a class they teach — the
+  // same rule the database applies to what they can read. (This used to look
+  // the membership up with the instructor's own client, which can't see other
+  // people's memberships, so the card always failed for instructors.)
+  if (role === "staff") {
+    const user = await getUser()
+    const { data: taught } = await admin
+      .from("bookings")
+      .select("id, schedule:schedule_id!inner(instructors:instructor_id!inner(profile_id))")
+      .eq("studio_id", studioId)
+      .eq("profile_id", profileId)
+      .eq("status", "confirmed")
+      .eq("schedule.instructors.profile_id", user?.id ?? "")
+      .limit(1)
+    if (!taught || taught.length === 0) {
+      return { error: "You can only view members booked into your classes" }
+    }
+  }
+
+  // Confirm the target profile is a member of this studio. The service client,
+  // because the check above (or the dashboard role) has already decided access.
+  const { data: membership } = await admin
     .from("studio_memberships")
     .select("role, created_at")
     .eq("studio_id", studioId)
