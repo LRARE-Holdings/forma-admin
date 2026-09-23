@@ -1,4 +1,4 @@
--- STATUS: NOT YET APPLIED — needs two Vault secrets first (see below).
+-- STATUS: APPLIED 2026-09-23 (event_jobs_cron), after the Vault secrets were set.
 --
 -- Calls forma-admin's /api/internal/event-jobs when, and only when, there is
 -- event work due:

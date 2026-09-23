@@ -65,9 +65,10 @@ Run as `DO` blocks ending in a deliberate exception, so they roll themselves bac
 
 ## Events and event tickets (2026-09-23)
 
-Step 1 applied on 2026-09-23 as `20260923145006` (`events_and_event_tickets`);
-the scenario suite was re-run against the applied functions and passed. Steps 2–3
-are still to do.
+All steps applied on 2026-09-23. Step 1 as `20260923145006`
+(`events_and_event_tickets`), with the scenario suite re-run against the applied
+functions. The `event-jobs` job was checked end to end before scheduling: a
+manual `net.http_post` with the Vault URL and secret got a 200 from forma-admin.
 
 1. `20260923_01_events.sql` — `events`, `event_tickets`, `event_waitlist`,
    `event_sale_alerts`, and the functions that decide who can buy
