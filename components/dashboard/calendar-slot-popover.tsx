@@ -245,7 +245,8 @@ export function CalendarSlotPopover({
             </DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-3 py-1">
+          {/* min-w-0: a long attendee row must truncate, not stretch the dialog past its edge */}
+          <div className="min-w-0 space-y-3 py-1">
             {/* Details */}
             <div className="space-y-1.5 text-[0.82rem]">
               <div className="flex justify-between">
@@ -309,23 +310,25 @@ export function CalendarSlotPopover({
                         <div className="flex h-6 w-6 items-center justify-center rounded-full bg-sand font-heading text-[0.65rem] font-semibold text-cocoa">
                           {getInitial(att.full_name)}
                         </div>
-                        <span className="flex-1 truncate font-medium text-cocoa">
+                        <span className="min-w-0 flex-1 truncate font-medium text-cocoa">
                           {att.full_name ?? "Unknown"}
                         </span>
-                        <AttendanceDropdown
-                          bookingId={att.id}
-                          currentStatus={att.attendance_status}
-                          onStatusChange={(newStatus) =>
-                            setAttendees((prev) =>
-                              prev.map((a) =>
-                                a.id === att.id ? { ...a, attendance_status: newStatus } : a
+                        <div className="shrink-0">
+                          <AttendanceDropdown
+                            bookingId={att.id}
+                            currentStatus={att.attendance_status}
+                            onStatusChange={(newStatus) =>
+                              setAttendees((prev) =>
+                                prev.map((a) =>
+                                  a.id === att.id ? { ...a, attendance_status: newStatus } : a
+                                )
                               )
-                            )
-                          }
-                          size="sm"
-                        />
+                            }
+                            size="sm"
+                          />
+                        </div>
                         <span
-                          className={`inline-block rounded-full px-1.5 py-0.5 text-[0.58rem] font-semibold uppercase ${paymentStyle(att.payment_method)}`}
+                          className={`inline-block shrink-0 rounded-full px-1.5 py-0.5 text-[0.58rem] font-semibold uppercase ${paymentStyle(att.payment_method)}`}
                         >
                           {paymentLabel(att.payment_method)}
                         </span>
