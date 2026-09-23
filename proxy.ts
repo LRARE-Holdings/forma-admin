@@ -18,16 +18,18 @@ async function resolveStudioId(host: string): Promise<string | null> {
     return cached.studioId
   }
 
-  // Look up studio by admin_domain using service role (no user session in middleware)
+  // Look up studio by admin_domain using service role (no user session in middleware).
+  // checkin.<studio domain> is the door check-in site, served by this same app.
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
+  const checkInDomain = checkInSiteDomain(host)
   const { data: studio } = await supabase
     .from("studios")
     .select("id")
-    .eq("admin_domain", host)
+    .eq(checkInDomain ? "domain" : "admin_domain", checkInDomain ?? host)
     .single()
 
   if (studio) {
@@ -35,6 +37,12 @@ async function resolveStudioId(host: string): Promise<string | null> {
   }
 
   return studio?.id ?? null
+}
+
+/** "burnmatstudio.co.uk" for checkin.burnmatstudio.co.uk, otherwise null. */
+function checkInSiteDomain(host: string): string | null {
+  const domain = host.split(":")[0]
+  return domain.startsWith("checkin.") ? domain.slice("checkin.".length) : null
 }
 
 // Matches the cookies @supabase/ssr writes: the base auth token, its numbered
@@ -197,10 +205,11 @@ export async function proxy(request: NextRequest) {
     return finalize(NextResponse.redirect(url))
   }
 
-  // Root page — redirect to dashboard (layout will handle role check)
+  // Root page — the check-in site opens on the door check-in; everywhere else
+  // on the dashboard (layouts handle the role check).
   if (pathname === "/") {
     const url = request.nextUrl.clone()
-    url.pathname = "/dashboard"
+    url.pathname = checkInSiteDomain(host) ? "/check-in" : "/dashboard"
     return finalize(NextResponse.redirect(url))
   }
 

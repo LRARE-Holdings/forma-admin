@@ -1,3 +1,4 @@
+import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { getUser, getUserRole } from "@/lib/auth"
 import { DASHBOARD_ROLES } from "@/lib/types"
@@ -14,7 +15,9 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<{ error?: string }>
 }) {
-  const [user, { error: errorCode }] = await Promise.all([getUser(), searchParams])
+  const [user, { error: errorCode }, requestHeaders] = await Promise.all([getUser(), searchParams, headers()])
+  // checkin.<studio domain>: the door check-in site, for instructors and the studio.
+  const isCheckInSite = (requestHeaders.get("host") ?? "").startsWith("checkin.")
 
   // Signed in with a dashboard role: straight through. Signed in without one
   // (a member, or someone from another studio) used to be shown the form again
@@ -22,6 +25,7 @@ export default async function LoginPage({
   let noAccessEmail: string | null = null
   if (user) {
     const role = await getUserRole()
+    if (isCheckInSite && role && (role === "staff" || DASHBOARD_ROLES.includes(role))) redirect("/check-in")
     if (role && DASHBOARD_ROLES.includes(role)) redirect("/dashboard")
     if (role === "staff") redirect("/staff")
     noAccessEmail = user.email ?? "this account"
@@ -52,7 +56,7 @@ export default async function LoginPage({
             {studioName}
           </h1>
           <p className="mt-1 text-sm text-warm-grey">
-            Sign in to your dashboard
+            {isCheckInSite ? "Sign in to check in your class" : "Sign in to your dashboard"}
           </p>
         </div>
         <div className="rounded-2xl border border-sand bg-white p-8">
