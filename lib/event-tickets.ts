@@ -395,7 +395,7 @@ export async function runEventJobs() {
         const { subject, html } = eventTicketsOnSaleEmail({
           ...emailBase(event, studio, member.firstName),
           priceText,
-          eventUrl: `${studio.publicBaseUrl}/#events`,
+          eventUrl: `${studio.publicBaseUrl}/events/${event.slug}`,
         })
         const result = await sendStudioEmail(event.studio_id, { to: member.email, subject, html })
         if (!result.success) throw new Error(result.error)

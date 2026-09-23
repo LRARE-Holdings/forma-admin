@@ -9,6 +9,7 @@ import { EventTicketsPanel, type TicketRow, type WaitlistRow } from "@/component
 import { formatEventWhen, formatPounds, formatUkInstant } from "@/lib/events"
 import type { StudioEvent } from "@/lib/types"
 import { ChevronLeft } from "lucide-react"
+import { CopyEventLink } from "@/components/dashboard/copy-event-link"
 
 type Person = { full_name: string | null; email: string | null } | null
 
@@ -22,14 +23,13 @@ export default async function EventTicketsPage({
   const supabase = await createClient()
   const studioId = await getStudioId()
 
-  const { data: event } = await supabase
-    .from("events")
-    .select("*")
-    .eq("id", id)
-    .eq("studio_id", studioId)
-    .maybeSingle()
+  const [{ data: event }, { data: studio }] = await Promise.all([
+    supabase.from("events").select("*").eq("id", id).eq("studio_id", studioId).maybeSingle(),
+    supabase.from("studios").select("domain").eq("id", studioId).single(),
+  ])
   if (!event) notFound()
   const ev = event as StudioEvent
+  const publicUrl = `https://${(studio?.domain as string | null) ?? "burnmatstudio.co.uk"}/events/${ev.slug}`
 
   const [{ data: tickets }, { data: waitlist }, { count: alertCount }] = await Promise.all([
     supabase
@@ -101,6 +101,13 @@ export default async function EventTicketsPage({
         title={ev.title}
         description={`${formatEventWhen(ev)}${ev.location ? ` · ${ev.location}` : ""} · ${formatPounds(ev.price_pence)} per ticket`}
       />
+
+      <div className="mb-6 rounded-2xl border border-sand bg-white p-4">
+        <p className="mb-2 text-[0.65rem] font-semibold uppercase tracking-[0.1em] text-warm-grey">
+          Shareable link — for social media and collaborators
+        </p>
+        <CopyEventLink url={publicUrl} published={ev.is_published} variant="full" />
+      </div>
 
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="Places sold" value={`${placesSold} / ${ev.capacity ?? 0}`} />
