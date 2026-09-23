@@ -79,7 +79,9 @@ are still to do.
    execute grants.
 2. Add Vault secret `forma_admin_url` (e.g. `https://admin.burnmatstudio.co.uk`)
    and check Vault's `CRON_SECRET` equals the forma-admin Vercel `CRON_SECRET`.
-3. `20260923_02_event_jobs_cron.sql` — every-minute `event-jobs` pg_cron job.
+3. `20260923_02_event_jobs_cron.sql` — the `event-jobs` pg_cron job. It checks
+   `event_jobs_due()` every minute in the database and only calls forma-admin
+   when an alert, a lapsed offer or a fillable waitlist place is actually due.
 
 Deploy forma-admin (webhook + `/api/internal/event-jobs`) before or with
 burn-public. Until step 3, tickets still sell correctly; only the "on sale"
@@ -89,6 +91,8 @@ and waitlist-offer emails wait.
 
 4. `20260923_03_event_ticket_wallet_token.sql` — `event_tickets.wallet_token`,
    the secret behind the "Add to Apple/Google Wallet" links in the ticket
-   confirmation email. Not applied yet. Apply before deploying burn-public's
-   `/api/wallet/*` routes and before switching on either `WALLET_*_ENABLED`
-   flag in forma-admin.
+   confirmation email. Applied 2026-09-23.
+5. `20260923_04_cron_history_cleanup.sql` — nightly `cron-history-cleanup`
+   job (03:30 UTC) keeping 7 days of `cron.job_run_details`. Applied
+   2026-09-23, after the project ran out of Disk IO budget and that table was
+   found to be 26 MB of a 49 MB database.
