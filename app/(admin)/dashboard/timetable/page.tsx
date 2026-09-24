@@ -5,6 +5,7 @@ import { HolidayBanner } from "@/components/dashboard/holiday-banner"
 import { TimetableShell } from "@/components/dashboard/timetable-shell"
 import { MonthCalendar } from "@/components/dashboard/month-calendar"
 import { getWeekData, getMonthData } from "@/lib/schedule-utils"
+import { getTimetableEvents } from "@/lib/timetable-events"
 import { dateToDateStr, localDateStr } from "@/lib/utils"
 
 // Page is automatically dynamic (reads searchParams).
@@ -69,6 +70,7 @@ export default async function TimetablePage({
         : todayStr.slice(0, 7)
 
     const monthData = await getMonthData(studioId, monthStr)
+    const events = await getTimetableEvents(studioId, monthData.gridStart, monthData.gridEnd)
 
     return (
       <>
@@ -84,6 +86,7 @@ export default async function TimetablePage({
           monthEnd={monthData.monthEnd}
           gridStart={monthData.gridStart}
           gridEnd={monthData.gridEnd}
+          events={events}
           classes={classes}
           instructors={instructors}
         />
@@ -100,6 +103,7 @@ export default async function TimetablePage({
   }
 
   const weekData = await getWeekData(studioId, weekStart)
+  const events = await getTimetableEvents(studioId, weekData.weekStart, weekData.weekEnd)
 
   const isCurrentWeek = weekStart === getMondayStr(new Date(localDateStr() + "T12:00:00Z"))
 
@@ -115,6 +119,7 @@ export default async function TimetablePage({
         holidays={weekData.holidays}
         weekStart={weekData.weekStart}
         weekEnd={weekData.weekEnd}
+        events={events}
         classes={classes}
         instructors={instructors}
         isCurrentWeek={isCurrentWeek}

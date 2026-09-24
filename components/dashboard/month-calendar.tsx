@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useMemo, useCallback, useTransition } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { CalendarSlotPopover } from "./calendar-slot-popover"
 import { AddClassDialog } from "./add-class-dialog"
@@ -8,11 +9,12 @@ import { ScheduleFormDialog } from "./schedule-form-dialog"
 import { ScheduleRuleDialog } from "./schedule-rule-dialog"
 import { getScheduleRule } from "@/app/actions/schedule-rules"
 import { ClassColorBar } from "@/components/shared/class-color-bar"
-import { ChevronLeft, ChevronRight, Plus, Repeat, Loader2 } from "lucide-react"
+import { eventTimes } from "./calendar-event-block"
+import { ChevronLeft, ChevronRight, Plus, Repeat, Loader2, Ticket } from "lucide-react"
 import { toast } from "sonner"
 import { formatTime, dateToDateStr, localDateStr } from "@/lib/utils"
 import { DAY_SHORT } from "@/lib/constants"
-import type { WeekSlot, StudioHoliday } from "@/lib/types"
+import type { WeekSlot, StudioHoliday, TimetableEvent } from "@/lib/types"
 
 interface ClassOption {
   id: string
@@ -35,6 +37,7 @@ interface MonthCalendarProps {
   monthEnd: string
   gridStart: string
   gridEnd: string
+  events: TimetableEvent[]
   classes: ClassOption[]
   instructors: InstructorOption[]
 }
@@ -63,6 +66,7 @@ export function MonthCalendar({
   monthEnd,
   gridStart,
   gridEnd,
+  events,
   classes,
   instructors,
 }: MonthCalendarProps) {
@@ -318,8 +322,26 @@ export function MonthCalendar({
                   </div>
                 )}
 
-                {/* Slot chips */}
+                {/* Slot chips (events first; they don't count towards the 4) */}
                 <div className="flex flex-col gap-0.5">
+                  {events
+                    .filter((ev) => ev.date === dateStr)
+                    .map((ev) => (
+                      <Link
+                        key={ev.id}
+                        href={`/dashboard/events/${ev.id}`}
+                        data-slot-chip
+                        onClick={(e) => e.stopPropagation()}
+                        title={`${ev.title} · ${eventTimes(ev)} · event`}
+                        className={`flex w-full items-center gap-1 rounded px-1 py-0.5 text-left text-[0.62rem] ${
+                          ev.isPublished ? "bg-cocoa text-cream hover:bg-cocoa/90" : "border border-dashed border-cocoa/50 text-cocoa"
+                        }`}
+                      >
+                        <Ticket className="h-2.5 w-2.5 shrink-0 text-gold" />
+                        {ev.startTime && <span className="shrink-0 font-semibold">{formatTime(ev.startTime)}</span>}
+                        <span className="truncate">{ev.title}</span>
+                      </Link>
+                    ))}
                   {daySlots.slice(0, 4).map((slot) => (
                     <button
                       key={slot.scheduleId + ":" + slot.date}
