@@ -3,7 +3,7 @@
 import { useState, useMemo, useCallback } from "react"
 import { WeekCalendar } from "./week-calendar"
 import { RealtimeBookingListener } from "./realtime-booking-listener"
-import type { WeekSlot, StudioHoliday } from "@/lib/types"
+import type { WeekSlot, StudioHoliday, TimetableEvent } from "@/lib/types"
 
 interface ClassOption {
   id: string
@@ -24,6 +24,7 @@ interface TimetableShellProps {
   holidays: StudioHoliday[]
   weekStart: string
   weekEnd: string
+  events: TimetableEvent[]
   classes: ClassOption[]
   instructors: InstructorOption[]
   isCurrentWeek: boolean
@@ -35,6 +36,7 @@ export function TimetableShell({
   holidays,
   weekStart,
   weekEnd,
+  events,
   classes,
   instructors,
   isCurrentWeek,
@@ -84,6 +86,7 @@ export function TimetableShell({
         holidays={holidays}
         weekStart={weekStart}
         weekEnd={weekEnd}
+        events={events}
         classes={classes}
         instructors={instructors}
         isCurrentWeek={isCurrentWeek}

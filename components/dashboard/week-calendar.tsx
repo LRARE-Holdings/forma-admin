@@ -14,7 +14,8 @@ import { DAY_SHORT } from "@/lib/constants"
 import { formatTime, localDateStr, dateToDateStr } from "@/lib/utils"
 import { ClassColorBar } from "@/components/shared/class-color-bar"
 import { ChevronLeft, ChevronRight, Plus, Repeat, Loader2 } from "lucide-react"
-import type { WeekSlot, StudioHoliday } from "@/lib/types"
+import type { WeekSlot, StudioHoliday, TimetableEvent } from "@/lib/types"
+import { CalendarEventBlock, CalendarAllDayEvent, EventListRow } from "./calendar-event-block"
 
 // --- Constants ---
 // The grid covers 06:00–21:00, stretched to fit any class outside that (a
@@ -42,6 +43,7 @@ interface WeekCalendarProps {
   holidays: StudioHoliday[]
   weekStart: string
   weekEnd: string
+  events: TimetableEvent[]
   classes: ClassOption[]
   instructors: InstructorOption[]
   isCurrentWeek: boolean
@@ -53,7 +55,14 @@ function toMinutes(time: string): number {
   return h * 60 + (m || 0)
 }
 
-function hourRange(slots: WeekSlot[]) {
+/** An event's end for layout: its end time, or an hour after it starts. */
+function eventEnd(e: TimetableEvent): string {
+  if (e.endTime) return e.endTime
+  const m = toMinutes(e.startTime!) + 60
+  return `${String(Math.min(Math.floor(m / 60), 24)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}:00`
+}
+
+function hourRange(slots: { startTime: string; endTime: string }[]) {
   let startHour = DEFAULT_START_HOUR
   let endHour = DEFAULT_END_HOUR
   for (const s of slots) {
@@ -85,7 +94,7 @@ function getSlotPosition(startTime: string, endTime: string, startHour: number) 
  * Each run of overlapping classes shares a lane count; a class takes the
  * first lane that's free when it starts.
  */
-function layoutLanes(daySlots: WeekSlot[]): Map<string, { lane: number; lanes: number }> {
+function layoutLanes(daySlots: { key: string; startTime: string; endTime: string }[]): Map<string, { lane: number; lanes: number }> {
   const result = new Map<string, { lane: number; lanes: number }>()
   const sorted = [...daySlots].sort((a, b) => a.startTime.localeCompare(b.startTime))
   let group: { id: string; lane: number }[] = []
@@ -107,7 +116,7 @@ function layoutLanes(daySlots: WeekSlot[]): Map<string, { lane: number; lanes: n
     } else {
       laneEnds[lane] = end
     }
-    group.push({ id: s.scheduleId, lane })
+    group.push({ id: s.key, lane })
     groupEnd = Math.max(groupEnd, end)
   }
   flush()
@@ -136,12 +145,20 @@ export function WeekCalendar({
   holidays,
   weekStart,
   weekEnd,
+  events,
   classes,
   instructors,
   isCurrentWeek,
 }: WeekCalendarProps) {
   const router = useRouter()
-  const { startHour, totalRows, timeLabels } = useMemo(() => hourRange(slots), [slots])
+  const { startHour, totalRows, timeLabels } = useMemo(
+    () =>
+      hourRange([
+        ...slots,
+        ...events.filter((e) => e.startTime).map((e) => ({ startTime: e.startTime!, endTime: eventEnd(e) })),
+      ]),
+    [slots, events]
+  )
   const [isPending, startTransition] = useTransition()
 
   const navigateToWeek = useCallback(
@@ -408,7 +425,14 @@ export function WeekCalendar({
               .filter((s) => s.dayOfWeek === dayOfWeek)
               .sort((a, b) => a.startTime.localeCompare(b.startTime))
 
-            const lanes = layoutLanes(daySlots)
+            const dayEvents = events.filter((e) => e.date === dateStr)
+            const timedEvents = dayEvents.filter((e) => e.startTime)
+            const allDayEvents = dayEvents.filter((e) => !e.startTime)
+            // Events share the side-by-side lanes with classes.
+            const lanes = layoutLanes([
+              ...daySlots.map((sl) => ({ key: sl.scheduleId, startTime: sl.startTime, endTime: sl.endTime })),
+              ...timedEvents.map((ev) => ({ key: `event:${ev.id}`, startTime: ev.startTime!, endTime: eventEnd(ev) })),
+            ])
             const dayHolidays = holidaysOnDate(dateStr)
             const allDay = dayHolidays.find((h) => !h.start_time && !h.end_time)
             const partials = dayHolidays.filter((h) => h.start_time && h.end_time)
@@ -458,6 +482,21 @@ export function WeekCalendar({
                       </div>
                     )
                   })}
+
+                {/* All-day events */}
+                {allDayEvents.map((ev) => (
+                  <CalendarAllDayEvent key={ev.id} event={ev} />
+                ))}
+
+                {/* Events */}
+                {timedEvents.map((ev) => (
+                  <CalendarEventBlock
+                    key={ev.id}
+                    event={ev}
+                    position={getSlotPosition(ev.startTime!, eventEnd(ev), startHour)}
+                    lane={lanes.get(`event:${ev.id}`)}
+                  />
+                ))}
 
                 {/* Slot blocks */}
                 {daySlots.map((slot) => (
@@ -557,12 +596,19 @@ export function WeekCalendar({
 
         {/* Day slots */}
         <div className="space-y-2">
+          {events
+            .filter((e) => e.date === mobileDayDate)
+            .map((ev) => (
+              <EventListRow key={ev.id} event={ev} />
+            ))}
           {mobileDaySlots.length === 0 ? (
+            events.some((e) => e.date === mobileDayDate) ? null : (
             <EmptyState
               icon="calendar"
               title="No classes"
               description="No classes scheduled for this day."
             />
+            )
           ) : (
             mobileDaySlots.map((slot) => (
               <button

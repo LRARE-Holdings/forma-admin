@@ -391,6 +391,19 @@ export interface WeekSlot {
   isPast: boolean
 }
 
+/** An event shown on the admin timetable alongside classes. */
+export interface TimetableEvent {
+  id: string
+  title: string
+  date: string
+  /** "HH:MM:SS", or null for an all-day event */
+  startTime: string | null
+  endTime: string | null
+  capacity: number
+  ticketsSold: number
+  isPublished: boolean
+}
+
 export interface WeekData {
   slots: WeekSlot[]
   holidays: StudioHoliday[]
