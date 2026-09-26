@@ -3,6 +3,7 @@
 import type { Studio, Profile } from "@/lib/types"
 import { getInitial } from "@/lib/utils"
 import { StaffSignOut } from "./staff-sign-out"
+import { StudioWordmark } from "@/components/shared/studio-wordmark"
 
 interface TopBarProps {
   studio: Studio
@@ -13,8 +14,8 @@ export function TopBar({ studio, profile }: TopBarProps) {
   return (
     <div className="sticky top-0 z-50 flex h-14 items-center justify-between bg-cocoa px-8">
       <div className="flex items-center gap-3">
-        <h1 className="font-heading text-[1.2rem] font-semibold text-wheat">
-          {studio.name?.replace(" Studio", "") ?? "Studio"}
+        <h1 className="text-[1.2rem]">
+          <StudioWordmark studio={studio} height={24} />
         </h1>
         <span className="rounded-full bg-gold px-2 py-0.5 text-[0.6rem] font-semibold uppercase tracking-[0.12em] text-cocoa">
           Instructor

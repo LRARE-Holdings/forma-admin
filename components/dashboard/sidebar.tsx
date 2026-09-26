@@ -21,6 +21,7 @@ import {
   PartyPopper,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
+import { StudioWordmark } from "@/components/shared/studio-wordmark"
 
 interface SidebarProps {
   studio: Studio
@@ -66,10 +67,10 @@ export function Sidebar({ studio, profile, role, onNavigate }: SidebarProps) {
     <nav className="fixed inset-y-0 left-0 z-50 flex w-[240px] flex-col bg-cocoa">
       {/* Brand */}
       <div className="border-b border-white/[0.06] px-5 pb-5 pt-6">
-        <h1 className="font-heading text-[1.3rem] font-semibold text-wheat">
-          {studio.name?.replace(" Studio", "") ?? "Studio"}
+        <h1 className="text-[1.3rem]">
+          <StudioWordmark studio={studio} height={30} />
         </h1>
-        <span className="text-[0.6rem] font-semibold uppercase tracking-[0.15em] text-warm-grey">
+        <span className="mt-2.5 block text-[0.6rem] font-semibold uppercase tracking-[0.15em] text-warm-grey">
           {ROLE_LABELS[role] ?? "Admin"} Dashboard
         </span>
       </div>

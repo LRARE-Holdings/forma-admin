@@ -5,6 +5,7 @@ import { Menu, X } from "lucide-react"
 import { Sidebar } from "./sidebar"
 import { getInitial } from "@/lib/utils"
 import type { Studio, Profile, UserRole } from "@/lib/types"
+import { StudioWordmark } from "@/components/shared/studio-wordmark"
 
 interface MobileSidebarProps {
   studio: Studio
@@ -44,8 +45,8 @@ export function MobileSidebar({ studio, profile, role }: MobileSidebarProps) {
           <Menu className="h-5 w-5" />
         </button>
 
-        <span className="font-heading text-[1rem] font-semibold text-wheat">
-          {studio.name?.replace(" Studio", "") ?? "Studio"}
+        <span className="text-[1rem]">
+          <StudioWordmark studio={studio} height={22} />
         </span>
 
         <div className="flex h-[30px] w-[30px] items-center justify-center rounded-full bg-gold font-heading text-[0.8rem] font-semibold text-cocoa">
