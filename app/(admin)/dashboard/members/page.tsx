@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server"
+import { fetchAllRows } from "@/lib/supabase/fetch-all"
 import { getStudioId } from "@/lib/studio-context"
 import { dateToDateStr, localDateStr } from "@/lib/utils"
 import { PageHeader } from "@/components/shared/page-header"
@@ -9,15 +10,17 @@ export default async function MembersPage() {
   const studioId = await getStudioId()
 
   // Get all members for this studio
-  const { data: memberships } = await supabase
-    .from("studio_memberships")
-    .select(
-      "profile_id, created_at, profiles:profile_id(id, full_name, email, phone, date_of_birth)",
-    )
-    .eq("studio_id", studioId)
-    .eq("role", "member")
-
-  const members = memberships ?? []
+  const members = await fetchAllRows((from, to) =>
+    supabase
+      .from("studio_memberships")
+      .select(
+        "profile_id, created_at, profiles:profile_id(id, full_name, email, phone, date_of_birth)",
+      )
+      .eq("studio_id", studioId)
+      .eq("role", "member")
+      .order("id")
+      .range(from, to),
+  )
 
   const memberIds = members
     .map((m) => {
@@ -43,32 +46,28 @@ export default async function MembersPage() {
     const todayStr = localDateStr()
     const monthStart = todayStr.slice(0, 8) + "01"
 
-    const [bookingsRes, allBookingsRes, lastBookingsRes, packsRes, membershipsRes] = await Promise.all([
-      supabase
-        .from("bookings")
-        .select("profile_id")
-        .eq("studio_id", studioId)
-        .eq("status", "confirmed")
-        .gte("date", monthStart),
-      // All-time confirmed bookings per member (total attendance)
-      supabase
-        .from("bookings")
-        .select("profile_id")
-        .eq("studio_id", studioId)
-        .eq("status", "confirmed"),
-      // Most recent confirmed booking per member (for at-risk calculation)
-      supabase
-        .from("bookings")
-        .select("profile_id, date")
-        .eq("studio_id", studioId)
-        .eq("status", "confirmed")
-        .order("date", { ascending: false }),
+    const [confirmedBookings, packs, membershipsRes] = await Promise.all([
+      // Every confirmed booking: all-time attendance, this month's count and
+      // the most recent date (for the at-risk calculation) all come from here
+      fetchAllRows((from, to) =>
+        supabase
+          .from("bookings")
+          .select("profile_id, date")
+          .eq("studio_id", studioId)
+          .eq("status", "confirmed")
+          .order("id")
+          .range(from, to),
+      ),
       // All packs for member balance management
-      supabase
-        .from("class_packs")
-        .select("id, profile_id, pack_type, credits_total, credits_remaining, expires_at")
-        .eq("studio_id", studioId)
-        .order("expires_at", { ascending: false }),
+      fetchAllRows((from, to) =>
+        supabase
+          .from("class_packs")
+          .select("id, profile_id, pack_type, credits_total, credits_remaining, expires_at")
+          .eq("studio_id", studioId)
+          .order("expires_at", { ascending: false })
+          .order("id")
+          .range(from, to),
+      ),
       // Active memberships with tier names
       supabase
         .from("memberships")
@@ -76,12 +75,13 @@ export default async function MembersPage() {
         .eq("studio_id", studioId),
     ])
 
-    for (const b of bookingsRes.data ?? []) {
-      bookingCounts[b.profile_id] = (bookingCounts[b.profile_id] ?? 0) + 1
-    }
-
-    for (const b of allBookingsRes.data ?? []) {
+    for (const b of confirmedBookings) {
       totalAttendance[b.profile_id] = (totalAttendance[b.profile_id] ?? 0) + 1
+      if (b.date >= monthStart) {
+        bookingCounts[b.profile_id] = (bookingCounts[b.profile_id] ?? 0) + 1
+      }
+      const last = lastBookingByProfile[b.profile_id]
+      if (!last || b.date > last) lastBookingByProfile[b.profile_id] = b.date
     }
 
     for (const m of membershipsRes.data ?? []) {
@@ -96,13 +96,7 @@ export default async function MembersPage() {
       }
     }
 
-    for (const b of lastBookingsRes.data ?? []) {
-      if (!lastBookingByProfile[b.profile_id]) {
-        lastBookingByProfile[b.profile_id] = b.date
-      }
-    }
-
-    for (const p of packsRes.data ?? []) {
+    for (const p of packs) {
       if (!packsByProfile[p.profile_id]) packsByProfile[p.profile_id] = []
       packsByProfile[p.profile_id].push({
         id: p.id as string,

@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server"
+import { fetchAllRows } from "@/lib/supabase/fetch-all"
 import { getUser, getUserRole } from "@/lib/auth"
 import { getStudioId } from "@/lib/studio-context"
 import { getGreeting, formatTime, formatPence, localDateStr, dateToDateStr, ukDayOfWeek } from "@/lib/utils"
@@ -65,7 +66,7 @@ export default async function OverviewPage() {
       : []
 
   // Fetch data in parallel
-  const [scheduleRes, bookingsTodayRes, membersRes, revenue, recentBookingsRes, studioRes, classesCountRes, scheduleCountRes, teamCountRes, allBookingsRes, bookingsLastWeekRes, newMembersThisWeekRes, newMembersLastWeekRes, prevMonthRevenue] =
+  const [scheduleRes, bookingsTodayRes, members, revenue, recentBookingsRes, studioRes, classesCountRes, scheduleCountRes, teamCountRes, allBookings, bookingsLastWeekRes, newMembersThisWeekRes, newMembersLastWeekRes, prevMonthRevenue] =
     await Promise.all([
       // Today's schedule (rule date window applied below)
       supabase
@@ -83,11 +84,15 @@ export default async function OverviewPage() {
         .eq("date", today)
         .eq("status", "confirmed"),
       // Active members (with profile details for at-risk section)
-      supabase
-        .from("studio_memberships")
-        .select("profile_id, created_at, profiles:profile_id(id, full_name, email)")
-        .eq("studio_id", studioId)
-        .eq("role", "member"),
+      fetchAllRows((from, to) =>
+        supabase
+          .from("studio_memberships")
+          .select("profile_id, created_at, profiles:profile_id(id, full_name, email)")
+          .eq("studio_id", studioId)
+          .eq("role", "member")
+          .order("id")
+          .range(from, to),
+      ),
       // Revenue this month from Stripe
       getMonthlyRevenue(),
       // Recent bookings for activity feed (confirmed only, last 20)
@@ -123,12 +128,16 @@ export default async function OverviewPage() {
         .neq("role", "member")
         .limit(2),
       // All confirmed bookings for at-risk calculation
-      supabase
-        .from("bookings")
-        .select("profile_id, date")
-        .eq("studio_id", studioId)
-        .eq("status", "confirmed")
-        .order("date", { ascending: false }),
+      fetchAllRows((from, to) =>
+        supabase
+          .from("bookings")
+          .select("profile_id, date")
+          .eq("studio_id", studioId)
+          .eq("status", "confirmed")
+          .order("date", { ascending: false })
+          .order("id")
+          .range(from, to),
+      ),
       // Bookings same day last week (for comparison)
       supabase
         .from("bookings")
@@ -166,7 +175,7 @@ export default async function OverviewPage() {
     return true
   })
   const bookingsTodayCount = bookingsTodayRes.data?.length ?? 0
-  const totalMembersCount = membersRes.data?.length ?? 0
+  const totalMembersCount = members.length
   const recentBookings = recentBookingsRes.data ?? []
   const { revenuePence, stripeConnected } = revenue
 
@@ -195,11 +204,11 @@ export default async function OverviewPage() {
 
   // At-risk members: no confirmed booking in 30+ days
   const memberIdSet = new Set(
-    (membersRes.data ?? []).map((m: Record<string, unknown>) => m.profile_id as string)
+    members.map((m: Record<string, unknown>) => m.profile_id as string)
   )
 
   const lastBookingByProfile: Record<string, string> = {}
-  for (const b of allBookingsRes.data ?? []) {
+  for (const b of allBookings) {
     if (memberIdSet.has(b.profile_id) && !lastBookingByProfile[b.profile_id]) {
       lastBookingByProfile[b.profile_id] = b.date
     }
@@ -218,7 +227,7 @@ export default async function OverviewPage() {
     daysSinceLastBooking: number | null
   }> = []
 
-  for (const m of membersRes.data ?? []) {
+  for (const m of members) {
     const profile = (m as Record<string, unknown>).profiles as {
       id: string
       full_name: string | null
