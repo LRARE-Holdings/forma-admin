@@ -15,12 +15,14 @@ import { SubmitButton } from "@/components/shared/submit-button"
 import { addMemberCredits, adjustMemberCredits } from "@/app/actions/packs"
 import { toast } from "sonner"
 import { unwrap } from "@/lib/action-result"
+import { localDateStr } from "@/lib/utils"
 
 interface PackRow {
   id: string
   pack_type: string
   credits_total: number
   credits_remaining: number
+  valid_from: string | null
   expires_at: string
 }
 
@@ -89,6 +91,7 @@ export function MemberPacksDialog({
           <div className="space-y-3">
             {packs.map((pack) => {
               const expired = new Date(pack.expires_at) < new Date()
+              const startsLater = !!pack.valid_from && pack.valid_from > localDateStr()
               return (
                 <div
                   key={pack.id}
@@ -101,6 +104,16 @@ export function MemberPacksDialog({
                       {pack.pack_type}-class pack
                     </div>
                     <div className="text-[0.7rem] text-warm-grey">
+                      {startsLater && (
+                        <>
+                          Starts{" "}
+                          {new Date(pack.valid_from + "T12:00:00Z").toLocaleDateString("en-GB", {
+                            day: "numeric",
+                            month: "short",
+                          })}
+                          {" · "}
+                        </>
+                      )}
                       Expires{" "}
                       {new Date(pack.expires_at).toLocaleDateString("en-GB", {
                         day: "numeric",
@@ -192,6 +205,13 @@ export function MemberPacksDialog({
                   min={1}
                   defaultValue={42}
                 />
+              </div>
+              <div className="col-span-2">
+                <Label htmlFor="add-valid-from">Starts on (optional)</Label>
+                <Input id="add-valid-from" name="valid_from" type="date" />
+                <p className="mt-1 text-[0.7rem] text-warm-grey">
+                  Credits only cover classes from this date. Validity counts from it.
+                </p>
               </div>
             </div>
             <div className="flex gap-2">

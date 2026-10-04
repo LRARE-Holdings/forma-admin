@@ -80,6 +80,16 @@ export function ukDayOfWeek(date: Date = new Date()): number {
 }
 
 /**
+ * The instant UK midnight starts on a YYYY-MM-DD date, as an ISO string.
+ * Midnight UK is 23:00 UTC the day before during BST.
+ */
+export function ukMidnightISO(dateStr: string): string {
+  const utcMidnight = new Date(`${dateStr}T00:00:00Z`)
+  const offsetHours = ukHour(utcMidnight) // 0 in GMT, 1 in BST
+  return new Date(utcMidnight.getTime() - offsetHours * 3_600_000).toISOString()
+}
+
+/**
  * Return the current hour in UK time (0–23).
  */
 export function ukHour(date: Date = new Date()): number {

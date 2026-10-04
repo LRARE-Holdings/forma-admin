@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { requireAdmin } from "@/lib/auth"
 import { getStudioId } from "@/lib/studio-context"
+import { ukMidnightISO } from "@/lib/utils"
 import { getStudioStripeAccount } from "@/lib/stripe/account"
 import {
   createStripeProduct,
@@ -245,13 +246,26 @@ export async function addMemberCredits(formData: FormData) {
     const profile_id = formData.get("profile_id") as string
     const credits = parseInt(formData.get("credits") as string)
     const validity_days = parseInt(formData.get("validity_days") as string) || 42
+    // Optional first class date (YYYY-MM-DD). Validity then counts from that
+    // day rather than from now, ending at UK midnight.
+    const valid_from = (formData.get("valid_from") as string | null) || null
 
     if (!profile_id || !credits) {
       throw new Error("Member and credits are required")
     }
+    if (valid_from && !/^\d{4}-\d{2}-\d{2}$/.test(valid_from)) {
+      throw new Error("Start date isn't a valid date")
+    }
 
-    const expires_at = new Date()
-    expires_at.setDate(expires_at.getDate() + validity_days)
+    let expires_at: Date
+    if (valid_from) {
+      const end = new Date(`${valid_from}T12:00:00Z`)
+      end.setUTCDate(end.getUTCDate() + validity_days)
+      expires_at = new Date(ukMidnightISO(end.toISOString().slice(0, 10)))
+    } else {
+      expires_at = new Date()
+      expires_at.setDate(expires_at.getDate() + validity_days)
+    }
 
     const { error } = await supabase.from("class_packs").insert({
       studio_id: studioId,
@@ -260,6 +274,7 @@ export async function addMemberCredits(formData: FormData) {
       credits_total: credits,
       credits_remaining: credits,
       purchased_at: new Date().toISOString(),
+      valid_from,
       expires_at: expires_at.toISOString(),
       stripe_session_id: null,
     })

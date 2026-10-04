@@ -38,6 +38,7 @@ export default async function MembersPage() {
     pack_type: string
     credits_total: number
     credits_remaining: number
+    valid_from: string | null
     expires_at: string
   }>> = {}
   let membershipByProfile: Record<string, { status: string; tierName: string }> = {}
@@ -62,7 +63,7 @@ export default async function MembersPage() {
       fetchAllRows((from, to) =>
         supabase
           .from("class_packs")
-          .select("id, profile_id, pack_type, credits_total, credits_remaining, expires_at")
+          .select("id, profile_id, pack_type, credits_total, credits_remaining, valid_from, expires_at")
           .eq("studio_id", studioId)
           .order("expires_at", { ascending: false })
           .order("id")
@@ -103,6 +104,7 @@ export default async function MembersPage() {
         pack_type: p.pack_type as string,
         credits_total: p.credits_total as number,
         credits_remaining: p.credits_remaining as number,
+        valid_from: p.valid_from as string | null,
         expires_at: p.expires_at as string,
       })
       if (p.credits_remaining > 0) {
