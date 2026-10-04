@@ -109,7 +109,7 @@ async function walkInOptions(
     .maybeSingle()
   if (membership) options.push("membership")
 
-  if ((await findEligiblePack(admin, studioId, classId, profileId)).ok) options.push("pack_credit")
+  if ((await findEligiblePack(admin, studioId, classId, profileId, date)).ok) options.push("pack_credit")
   if (canComp) options.push("complimentary")
   return options
 }
@@ -223,7 +223,7 @@ export async function bookWalkIn(
     return { ok: false, message: "That way of paying isn't available for them any more." }
   }
 
-  const pack = method === "pack_credit" ? await findEligiblePack(admin, auth.studioId, auth.classId, profileId) : null
+  const pack = method === "pack_credit" ? await findEligiblePack(admin, auth.studioId, auth.classId, profileId, date) : null
   const packId = pack?.ok ? pack.packId : null
   const user = await getUser()
 

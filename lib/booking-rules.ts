@@ -11,12 +11,16 @@ export type EligiblePack =
   | { ok: true; packId: string }
   | { ok: false; reason: "no_credits" | "class_excluded" }
 
-/** Oldest valid pack whose tier isn't excluded from this class. */
+/**
+ * Oldest valid pack whose tier isn't excluded from this class. A pack with a
+ * `valid_from` later than the class date doesn't count yet.
+ */
 export async function findEligiblePack(
   db: SupabaseClient,
   studioId: string,
   classId: string,
   profileId: string,
+  classDate: string,
 ): Promise<EligiblePack> {
   const [{ data: excluded }, { data: packs }] = await Promise.all([
     db.from("pack_tier_excluded_classes").select("pack_tier_id").eq("class_id", classId),
@@ -27,6 +31,7 @@ export async function findEligiblePack(
       .eq("profile_id", profileId)
       .gt("credits_remaining", 0)
       .gt("expires_at", new Date().toISOString())
+      .or(`valid_from.is.null,valid_from.lte.${classDate}`)
       .order("purchased_at", { ascending: true }),
   ])
   if (!packs || packs.length === 0) return { ok: false, reason: "no_credits" }

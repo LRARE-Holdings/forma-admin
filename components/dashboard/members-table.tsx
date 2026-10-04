@@ -17,6 +17,7 @@ interface PackRow {
   pack_type: string
   credits_total: number
   credits_remaining: number
+  valid_from: string | null
   expires_at: string
 }
 

@@ -211,6 +211,7 @@ export interface ClassPack {
   credits_total: number
   credits_remaining: number
   purchased_at: string
+  valid_from: string | null
   expires_at: string
   stripe_session_id: string
   created_at: string

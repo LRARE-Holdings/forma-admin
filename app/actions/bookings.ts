@@ -106,7 +106,7 @@ export async function createManualBooking(formData: FormData): Promise<{ error?:
   // member site: oldest valid pack whose tier isn't excluded from this class.
   let packId: string | null = null
   if (payment_method === "pack_credit") {
-    const pack = await findEligiblePack(supabase, studioId, slot.class_id as string, profile_id)
+    const pack = await findEligiblePack(supabase, studioId, slot.class_id as string, profile_id, date)
     if (!pack.ok) return { error: PACK_REFUSAL[pack.reason] }
     packId = pack.packId
   }
