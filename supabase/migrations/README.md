@@ -195,3 +195,15 @@ Found during a codebase review. Both applied the same day.
   longer overlap in October (the open-ended one ends 29 Sep and resumes from
   3 Nov). Dry run showed no duplicate class on any day to 30 Nov and no ruleless
   slots left. The remaining slotless rules are inert and were left alone.
+
+## Late cancellations (2026-10-07)
+
+- `20261007_16_late_cancel_keeps_credit.sql` — a member who cancels 24 hours
+  or less before the class no longer gets the pack credit back
+  (`is_late_member_cancel`, checked in `restore_pack_credit_for_booking`, so
+  the cancel trigger obeys it too). Card refunds for the same rule are skipped
+  in burn-public. Applies to member cancellations from 2026-10-07 only; earlier
+  late cancels keep the refund or credit they got. `credit_shortfalls()` counts
+  a forfeited credit as used so it never shows as owed. Dry run in a
+  rolled-back transaction: on-time cancel 0 → 1 credit, late cancel 2 → 2
+  (`late_cancel`), shortfall stayed 0.
