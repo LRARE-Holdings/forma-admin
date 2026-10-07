@@ -10,8 +10,10 @@ import type { ShortfallRow } from "@/lib/audit-types"
  * Find members who are missing credits.
  *
  * For every pack a member has bought, each credit should now be one of two
- * things: still on the balance, or spent on a confirmed booking. A credit that
- * is neither was taken by a cancellation that failed to give it back.
+ * things: still on the balance, or spent — on a confirmed booking, or on a
+ * class the member cancelled 24 hours or less before, which keeps its credit.
+ * A credit that is neither was taken by a cancellation that failed to give it
+ * back.
  *
  * Counted by `credit_shortfalls()` in the database rather than here. Tallying it
  * in application code meant fetching every pack-credit booking, and there are
