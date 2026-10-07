@@ -1,4 +1,4 @@
--- STATUS: NOT YET APPLIED — awaiting review.
+-- STATUS: APPLIED 2026-10-07 (late_cancel_keeps_credit).
 --
 -- Studio rule (Lucy, 2026-10-07): a member who cancels 24 hours or less before
 -- the class gets no refund. For a card payment that is decided in burn-public's

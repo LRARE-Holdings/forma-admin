@@ -206,4 +206,4 @@ Found during a codebase review. Both applied the same day.
   late cancels keep the refund or credit they got. `credit_shortfalls()` counts
   a forfeited credit as used so it never shows as owed. Dry run in a
   rolled-back transaction: on-time cancel 0 → 1 credit, late cancel 2 → 2
-  (`late_cancel`), shortfall stayed 0.
+  (`late_cancel`), shortfall stayed 0. Applied 2026-10-07.
