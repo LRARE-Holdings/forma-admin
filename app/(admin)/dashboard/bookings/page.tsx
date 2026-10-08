@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
+import { fetchAllRows } from "@/lib/supabase/fetch-all"
 import { getStudioId } from "@/lib/studio-context"
+import { localDateStr } from "@/lib/utils"
 import { PageHeader } from "@/components/shared/page-header"
 import { BookingsTable } from "@/components/dashboard/bookings-table"
 import { WaitlistSection } from "@/components/dashboard/waitlist-section"
@@ -18,15 +20,20 @@ export default async function BookingsPage() {
     .order("created_at", { ascending: false })
     .limit(50)
 
-  // Fetch members for the booking form
-  const { data: memberMemberships } = await supabase
-    .from("studio_memberships")
-    .select("profile_id, profiles:profile_id(id, full_name)")
-    .eq("studio_id", studioId)
-    .eq("role", "member")
+  // Fetch members for the booking form. Paged: the studio has more than the
+  // 1000 rows PostgREST returns in one go.
+  const memberMemberships = await fetchAllRows((from, to) =>
+    supabase
+      .from("studio_memberships")
+      .select("profile_id, profiles:profile_id(id, full_name)")
+      .eq("studio_id", studioId)
+      .eq("role", "member")
+      .order("id")
+      .range(from, to),
+  )
 
   // Get credits per member
-  const memberIds = (memberMemberships ?? [])
+  const memberIds = memberMemberships
     .map((m) => {
       const p = m.profiles as unknown as { id: string } | null
       return p?.id
@@ -42,7 +49,10 @@ export default async function BookingsPage() {
         .from("class_packs")
         .select("profile_id, credits_remaining")
         .eq("studio_id", studioId)
-        .gt("credits_remaining", 0),
+        .gt("credits_remaining", 0)
+        // Only credits that could be spent today: not expired, already started.
+        .gt("expires_at", new Date().toISOString())
+        .or(`valid_from.is.null,valid_from.lte.${localDateStr()}`),
       supabase
         .from("memberships")
         .select("profile_id")
@@ -60,7 +70,7 @@ export default async function BookingsPage() {
     }
   }
 
-  const members = (memberMemberships ?? []).map((m) => {
+  const members = memberMemberships.map((m) => {
     const p = m.profiles as unknown as { id: string; full_name: string | null }
     return {
       id: p.id,

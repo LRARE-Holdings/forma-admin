@@ -4,6 +4,7 @@ import { getStudioId } from "@/lib/studio-context"
 import { dateToDateStr, localDateStr } from "@/lib/utils"
 import { PageHeader } from "@/components/shared/page-header"
 import { MembersTable } from "@/components/dashboard/members-table"
+import { isPackUsableNow } from "@/lib/booking-rules"
 
 export default async function MembersPage() {
   const supabase = await createClient()
@@ -97,6 +98,7 @@ export default async function MembersPage() {
       }
     }
 
+    const today = localDateStr()
     for (const p of packs) {
       if (!packsByProfile[p.profile_id]) packsByProfile[p.profile_id] = []
       packsByProfile[p.profile_id].push({
@@ -107,7 +109,8 @@ export default async function MembersPage() {
         valid_from: p.valid_from as string | null,
         expires_at: p.expires_at as string,
       })
-      if (p.credits_remaining > 0) {
+      // Only credits that could be spent today count as remaining.
+      if (p.credits_remaining > 0 && isPackUsableNow(p, today)) {
         creditsByProfile[p.profile_id] =
           (creditsByProfile[p.profile_id] ?? 0) + p.credits_remaining
       }
