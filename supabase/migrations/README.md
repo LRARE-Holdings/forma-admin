@@ -207,3 +207,10 @@ Found during a codebase review. Both applied the same day.
   a forfeited credit as used so it never shows as owed. Dry run in a
   rolled-back transaction: on-time cancel 0 → 1 credit, late cancel 2 → 2
   (`late_cancel`), shortfall stayed 0. Applied 2026-10-07.
+- `20261008_17_reclaim_pre_cutover_late_credits.sql` — migration 16 went live
+  at 22:34 UK, but four late member cancels earlier on 7 Oct had already been
+  credited. At Lucy's request each got 1 credit taken back (Millie Pay 6 → 5,
+  Stella Jones 3 → 2, Jessie Kirk 1 → 0, Martha Cunningham 2 → 1; nobody below
+  zero), logged as `manual_adjustment` against the booking. `credit_shortfalls()`
+  now nets a booking's refunds and adjustments, so a reclaimed credit counts
+  as spent, not owed. Dry run then applied: shortfall stayed 0.
