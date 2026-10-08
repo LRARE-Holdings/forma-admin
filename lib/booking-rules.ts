@@ -7,6 +7,19 @@ import type { SupabaseClient } from "@supabase/supabase-js"
  * website would refuse, or into a class the website shows as full.
  */
 
+/**
+ * Can this pack pay for a class today? Not expired, and started (`valid_from`
+ * on or before today, UK date). For balances shown to admins: a credit on an
+ * expired or not-yet-started pack can't be spent, so it isn't "remaining".
+ */
+export function isPackUsableNow(
+  pack: { expires_at: string; valid_from: string | null },
+  ukToday: string,
+  now: Date = new Date(),
+): boolean {
+  return new Date(pack.expires_at) > now && (!pack.valid_from || pack.valid_from <= ukToday)
+}
+
 export type EligiblePack =
   | { ok: true; packId: string }
   | { ok: false; reason: "no_credits" | "class_excluded" }
