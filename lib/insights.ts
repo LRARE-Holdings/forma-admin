@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server"
+import type { SupabaseClient } from "@supabase/supabase-js"
 import { fetchAllRows } from "@/lib/supabase/fetch-all"
 import { ukMidnightISO } from "@/lib/utils"
 import { addDays } from "@/lib/member-activity"
@@ -42,9 +43,9 @@ export async function getAttendanceStats(
   studioId: string,
   from: string,
   to: string,
-  { instructorId }: { instructorId?: string } = {},
+  { instructorId, db }: { instructorId?: string; db?: SupabaseClient } = {},
 ): Promise<AttendanceStats> {
-  const supabase = await createClient()
+  const supabase = db ?? (await createClient())
   const bookings = await fetchAllRows((rf, rt) => {
     let q = supabase
       .from("bookings")
@@ -106,15 +107,19 @@ export async function getAttendanceStats(
     stats.keptPence += (data ?? []).reduce((s, r) => s + (r.amount as number), 0)
   }
   if (keptPacks.length > 0) {
-    const perCredit = await packCreditValues(studioId, [...new Set(keptPacks)])
+    const perCredit = await packCreditValues(studioId, [...new Set(keptPacks)], supabase)
     for (const id of keptPacks) stats.keptPence += perCredit.get(id) ?? 0
   }
   return stats
 }
 
 /** What one credit of each pack cost, in pence: its Stripe charge, or its tier's price. */
-async function packCreditValues(studioId: string, packIds: string[]): Promise<Map<string, number>> {
-  const supabase = await createClient()
+async function packCreditValues(
+  studioId: string,
+  packIds: string[],
+  db?: SupabaseClient,
+): Promise<Map<string, number>> {
+  const supabase = db ?? (await createClient())
   const out = new Map<string, number>()
   if (packIds.length === 0) return out
   const packs: Array<Record<string, unknown>> = []

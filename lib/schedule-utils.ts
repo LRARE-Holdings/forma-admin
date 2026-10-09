@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server"
+import type { SupabaseClient } from "@supabase/supabase-js"
 import { fetchAllRows } from "@/lib/supabase/fetch-all"
 import type { WeekData, WeekSlot, StudioHoliday, MonthData } from "@/lib/types"
 
@@ -55,9 +56,11 @@ function ruleAppliesToDate(
 export async function getRangeData(
   studioId: string,
   rangeStartStr: string,
-  rangeEndStr: string
+  rangeEndStr: string,
+  /** Pass a service-role client when there's no signed-in user (cron). */
+  db?: SupabaseClient,
 ): Promise<{ slots: WeekSlot[]; holidays: StudioHoliday[] }> {
-  const supabase = await createClient()
+  const supabase = db ?? (await createClient())
 
   const rangeStart = new Date(rangeStartStr + "T00:00:00")
   const rangeEnd = new Date(rangeEndStr + "T00:00:00")
