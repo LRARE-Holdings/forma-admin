@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server"
+import { fetchAllRows } from "@/lib/supabase/fetch-all"
 import { getStudioId } from "@/lib/studio-context"
 import { formatPence, dateToDateStr, localDateStr } from "@/lib/utils"
 import { PageHeader } from "@/components/shared/page-header"
@@ -6,7 +7,8 @@ import { StatCard } from "@/components/shared/stat-card"
 import { WeeklyRevenueChart } from "@/components/dashboard/analytics/weekly-revenue-chart"
 import { BookingsComparison } from "@/components/dashboard/analytics/bookings-comparison"
 import { RevenueByClass } from "@/components/dashboard/analytics/revenue-by-class"
-import { getWeeklyRevenue } from "@/lib/stripe/revenue"
+import { getStudioStripeAccount } from "@/lib/stripe/account"
+import { getLedgerSummary, salesByCategory } from "@/lib/money"
 
 export default async function AnalyticsPage() {
   const supabase = await createClient()
@@ -34,20 +36,45 @@ export default async function AnalyticsPage() {
 
   const toDateStr = (d: Date) => dateToDateStr(d)
 
-  // Fetch Stripe revenue and Supabase bookings in parallel
-  const [stripeRevenue, { data: bookings }] = await Promise.all([
-    getWeeklyRevenue(),
-    supabase
-      .from("bookings")
-      .select("date, payment_method, attendance_status, schedule:schedule_id(class_id, classes:class_id(name, price_pence))")
-      .eq("studio_id", studioId)
-      .eq("status", "confirmed")
-      .gte("date", toDateStr(eightWeeksAgo))
-      .lte("date", toDateStr(thisSunday)),
-  ])
+  // The 8 Mon–Sun weeks ending with this one, in UK dates
+  const weeks = Array.from({ length: 8 }, (_, i) => {
+    const monday = new Date(thisMonday)
+    monday.setDate(thisMonday.getDate() - (7 - i) * 7)
+    const sunday = new Date(monday)
+    sunday.setDate(monday.getDate() + 6)
+    return { from: toDateStr(monday), to: toDateStr(sunday), monday }
+  })
+  const rangeFrom = weeks[0].from
+  const rangeTo = toDateStr(thisSunday)
 
-  const { weeklyData, totalRevenue, stripeConnected } = stripeRevenue
-  const allBookings = bookings ?? []
+  // Card sales from the Stripe ledger; bookings paged past the 1,000-row cap
+  const [stripeAccount, allBookings] = await Promise.all([
+    getStudioStripeAccount(),
+    fetchAllRows((from, to) =>
+      supabase
+        .from("bookings")
+        .select("date, attendance_status")
+        .eq("studio_id", studioId)
+        .eq("status", "confirmed")
+        .gte("date", rangeFrom)
+        .lte("date", rangeTo)
+        .order("id")
+        .range(from, to),
+    ),
+  ])
+  const stripeConnected = !!stripeAccount
+  const [rangeSummary, ...weekSummaries] = stripeConnected
+    ? await Promise.all([
+        getLedgerSummary(studioId, rangeFrom, rangeTo),
+        ...weeks.map((w) => getLedgerSummary(studioId, w.from, w.to)),
+      ])
+    : []
+
+  const weeklyData = weeks.map((w, i) => ({
+    week: w.monday.toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
+    revenue: weekSummaries[i]?.gross_sales ?? 0,
+  }))
+  const totalRevenue = rangeSummary?.gross_sales ?? 0
 
   // --- This week vs last week bookings ---
   const thisWeekBookings = allBookings.filter(
@@ -67,33 +94,23 @@ export default async function AnalyticsPage() {
   const noShowCount = pastBookings.filter((b) => b.attendance_status === "no_show").length
   const lateCancelCount = pastBookings.filter((b) => b.attendance_status === "late_cancel").length
 
-  // --- Revenue by class (estimated from list prices) ---
-  const classTotals: Record<string, number> = {}
-  for (const b of allBookings) {
-    const schedule = b.schedule as unknown as { class_id: string; classes: { name: string; price_pence: number } } | null
-    if (!schedule?.classes) continue
-    if (b.payment_method !== "stripe" && b.payment_method !== "pack_credit") continue
-
-    const name = schedule.classes.name
-    classTotals[name] = (classTotals[name] ?? 0) + schedule.classes.price_pence
-  }
-
-  const revenueByClass = Object.entries(classTotals)
-    .map(([className, revenue]) => ({ className, revenue }))
-    .sort((a, b) => b.revenue - a.revenue)
+  // --- Sales by type: what members actually paid, by what they bought ---
+  const revenueByClass = rangeSummary
+    ? salesByCategory(rangeSummary).map((c) => ({ className: c.label, revenue: c.gross }))
+    : []
 
   return (
     <>
       <PageHeader
         title="Analytics"
-        description="Revenue and booking trends for the last 8 weeks."
+        description="Card sales and booking trends for the last 8 weeks. For accounts, use Money."
       />
 
       <div className="mb-7 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
-          label="Total revenue (8 weeks)"
+          label="Card sales (8 weeks)"
           value={stripeConnected ? `\u00A3${formatPence(totalRevenue)}` : "--"}
-          subtitle={stripeConnected ? "Net after refunds" : "Connect Stripe to track"}
+          subtitle={stripeConnected ? "Before fees and refunds" : "Connect Stripe to track"}
         />
         <StatCard
           label="Total bookings (8 weeks)"
@@ -121,10 +138,10 @@ export default async function AnalyticsPage() {
         <div className="overflow-hidden rounded-2xl border border-sand bg-white">
           <div className="border-b border-sand px-5 py-4">
             <h3 className="font-heading text-[1.05rem] font-semibold text-cocoa">
-              Weekly revenue
+              Weekly card sales
             </h3>
             <p className="mt-0.5 text-[0.7rem] text-warm-grey">
-              Last 8 weeks, net after Stripe fees
+              Last 8 weeks, Monday to Sunday, before fees and refunds
             </p>
           </div>
           <div className="p-4">
@@ -154,10 +171,10 @@ export default async function AnalyticsPage() {
           <div className="overflow-hidden rounded-2xl border border-sand bg-white">
             <div className="border-b border-sand px-5 py-4">
               <h3 className="font-heading text-[1.05rem] font-semibold text-cocoa">
-                Revenue by class
+                Sales by type
               </h3>
               <p className="mt-0.5 text-[0.7rem] text-warm-grey">
-                Estimated from list prices
+                Last 8 weeks, what members paid
               </p>
             </div>
             <div className="p-4">

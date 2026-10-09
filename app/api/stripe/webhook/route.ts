@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest, NextResponse, after } from "next/server"
 import { stripe } from "@/lib/stripe"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { sendBookingConfirmation } from "@/lib/email/booking-confirmation"
@@ -7,6 +7,7 @@ import { sendStudioEmail } from "@/lib/email/send"
 import { refundEmail } from "@/lib/email/templates"
 import { formatTime } from "@/lib/utils"
 import { issueAdminRefund, APP_REFUND_INITIATORS } from "@/lib/stripe/refunds"
+import { syncStripeLedger } from "@/lib/stripe/ledger"
 import {
   sendTicketConfirmation,
   refundUnconfirmedTicket,
@@ -68,6 +69,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Studio not found" }, { status: 500 })
   }
 
+  // Anything that moves money: refresh the ledger once the response is sent,
+  // so the Money page and dashboard don't wait for the nightly sync. A failure
+  // here only delays the figures until that sync.
+  if (connectedAccountId && LEDGER_EVENTS.has(event.type)) {
+    const ledgerStudioId = studioId
+    after(async () => {
+      try {
+        await syncStripeLedger(supabase, ledgerStudioId, connectedAccountId, { overlapDays: 1 })
+      } catch (err) {
+        console.error(`[webhook] Ledger sync after ${event.type} failed:`, err)
+      }
+    })
+  }
+
   try {
     switch (event.type) {
       case "payment_intent.succeeded":
@@ -106,6 +121,17 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({ received: true })
 }
+
+const LEDGER_EVENTS = new Set([
+  "payment_intent.succeeded",
+  "checkout.session.completed",
+  "charge.refunded",
+  "charge.dispute.created",
+  "invoice.paid",
+  "payout.created",
+  "payout.paid",
+  "payout.failed",
+])
 
 /**
  * Handle a successful PaymentIntent (the primary payment flow).

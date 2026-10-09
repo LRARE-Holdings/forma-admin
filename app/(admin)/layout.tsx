@@ -27,14 +27,16 @@ export default async function AdminLayout({
   return (
     <div className="min-h-screen">
       {/* Mobile: top bar + drawer sidebar */}
-      <MobileSidebar
-        studio={studio as Studio}
-        profile={profile as Profile}
-        role={role as UserRole}
-      />
+      <div className="print:hidden">
+        <MobileSidebar
+          studio={studio as Studio}
+          profile={profile as Profile}
+          role={role as UserRole}
+        />
+      </div>
 
       {/* Desktop: fixed sidebar */}
-      <div className="hidden md:block">
+      <div className="hidden md:block print:hidden">
         <Sidebar
           studio={studio as Studio}
           profile={profile as Profile}
@@ -43,7 +45,7 @@ export default async function AdminLayout({
       </div>
 
       {/* Main content */}
-      <main className="pt-14 p-4 md:ml-[240px] md:p-7 md:pt-7">
+      <main className="pt-14 p-4 md:ml-[240px] md:p-7 md:pt-7 print:m-0 print:p-0">
         {children}
       </main>
     </div>

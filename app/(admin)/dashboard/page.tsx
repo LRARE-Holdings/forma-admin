@@ -3,7 +3,8 @@ import { fetchAllRows } from "@/lib/supabase/fetch-all"
 import { getUser, getUserRole } from "@/lib/auth"
 import { getStudioId } from "@/lib/studio-context"
 import { getGreeting, formatTime, formatPence, localDateStr, dateToDateStr, ukDayOfWeek } from "@/lib/utils"
-import { getMonthlyRevenue, getPreviousMonthRevenue } from "@/lib/stripe/revenue"
+import { getStudioStripeAccount } from "@/lib/stripe/account"
+import { getLedgerSummary } from "@/lib/money"
 import { ADMIN_ROLES } from "@/lib/types"
 import { findStrandedBookings } from "@/lib/schedule-integrity"
 import { getSessionFill, summariseFill } from "@/lib/fill-rate"
@@ -65,6 +66,12 @@ export default async function OverviewPage() {
   // Active members now (last 30 days) and as of 30 days ago, for the change.
   const activeFrom = addDays(today, -ACTIVE_WINDOW_DAYS)
   const prevActiveFrom = addDays(today, -2 * ACTIVE_WINDOW_DAYS)
+  // Sales this month so far vs the same days of last month (capped at its end)
+  const monthStart = today.slice(0, 8) + "01"
+  const prevMonthStart = addDays(monthStart, -1).slice(0, 8) + "01"
+  const prevMonthEnd = addDays(monthStart, -1)
+  const prevMonthSameDay = `${prevMonthStart.slice(0, 8)}${today.slice(8)}`
+  const prevMonthTo = prevMonthSameDay < prevMonthEnd ? prevMonthSameDay : prevMonthEnd
 
   const [scheduleRes, bookingsTodayRes, members, revenue, recentBookingsRes, studioRes, classesCountRes, scheduleCountRes, teamCountRes, recentClassBookings, bookingsLastWeekRes, sessionFill, prevMonthRevenue] =
     await Promise.all([
@@ -93,8 +100,11 @@ export default async function OverviewPage() {
           .order("id")
           .range(from, to),
       ),
-      // Revenue this month from Stripe
-      getMonthlyRevenue(),
+      // Card sales this month, from the Stripe ledger
+      getStudioStripeAccount().then(async (account) => ({
+        stripeConnected: !!account,
+        revenuePence: account ? (await getLedgerSummary(studioId, monthStart, today)).gross_sales : 0,
+      })),
       // Recent bookings for activity feed (confirmed only, last 20)
       supabase
         .from("bookings")
@@ -148,8 +158,8 @@ export default async function OverviewPage() {
         .eq("status", "confirmed"),
       // Every class session in the last 8 weeks, with bookings and capacity
       getSessionFill(studioId, prevFillFrom, fillTo),
-      // Previous month revenue (same period) for comparison
-      getPreviousMonthRevenue(),
+      // Same days of last month, for comparison
+      getLedgerSummary(studioId, prevMonthStart, prevMonthTo).then((s) => s.gross_sales),
     ])
 
   // Drop today's slots whose parent rule's date window doesn't cover today.
@@ -283,14 +293,14 @@ export default async function OverviewPage() {
           change={membersChange}
         />
         <StatCard
-          label="Revenue this month"
+          label="Sales this month"
           value={revenuePence > 0 ? `\u00A3${formatPence(revenuePence)}` : "\u00A30"}
           subtitle={
             !stripeConnected
               ? "Connect Stripe to track revenue"
               : revenuePence === 0
                 ? "No revenue yet"
-                : "From Stripe this month"
+                : "Card sales, before fees and refunds"
           }
           change={revenueChange}
         />
