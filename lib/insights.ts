@@ -26,6 +26,10 @@ export interface AttendanceStats {
   cancels: number
   /** Member cancels with no cancel time (before 21 Sep 2026), so their notice is unknown. */
   untimedCancels: number
+  /** Different people with a confirmed booking. */
+  people: number
+  /** Of those, how many booked two or more classes in the period. */
+  returning: number
 }
 
 /** UK instant a class starts, from its date and "HH:MM:SS" start time. */
@@ -34,29 +38,37 @@ function classStartMs(date: string, startTime: string | null): number {
   return new Date(ukMidnightISO(date)).getTime() + (h * 60 + m) * 60_000
 }
 
-export async function getAttendanceStats(studioId: string, from: string, to: string): Promise<AttendanceStats> {
+export async function getAttendanceStats(
+  studioId: string,
+  from: string,
+  to: string,
+  { instructorId }: { instructorId?: string } = {},
+): Promise<AttendanceStats> {
   const supabase = await createClient()
-  const bookings = await fetchAllRows((rf, rt) =>
-    supabase
+  const bookings = await fetchAllRows((rf, rt) => {
+    let q = supabase
       .from("bookings")
-      .select("date, status, attendance_status, payment_method, cancelled_by, cancelled_at, stripe_session_id, class_pack_id, schedule:schedule_id(start_time)")
+      .select("profile_id, date, status, attendance_status, payment_method, cancelled_by, cancelled_at, stripe_session_id, class_pack_id, schedule:schedule_id!inner(start_time, instructor_id)")
       .eq("studio_id", studioId)
       .gte("date", from)
       .lte("date", to)
-      .order("id")
-      .range(rf, rt),
-  )
+    if (instructorId) q = q.eq("schedule.instructor_id", instructorId)
+    return q.order("id").range(rf, rt)
+  })
 
   const stats: AttendanceStats = {
     booked: 0, marked: 0, attended: 0, noShows: 0,
     lateCancels: 0, lateCancelsKept: 0, keptPence: 0, cancels: 0, untimedCancels: 0,
+    people: 0, returning: 0,
   }
+  const perPerson = new Map<string, number>()
   const keptStripe: string[] = []
   const keptPacks: string[] = []
 
   for (const b of bookings) {
     if (b.status === "confirmed") {
       stats.booked++
+      perPerson.set(b.profile_id, (perPerson.get(b.profile_id) ?? 0) + 1)
       if (b.attendance_status) stats.marked++
       if (b.attendance_status === "attended") stats.attended++
       if (b.attendance_status === "no_show") stats.noShows++
@@ -80,6 +92,9 @@ export async function getAttendanceStats(studioId: string, from: string, to: str
       if (b.payment_method === "pack_credit" && b.class_pack_id) keptPacks.push(b.class_pack_id as string)
     }
   }
+
+  stats.people = perPerson.size
+  stats.returning = [...perPerson.values()].filter((n) => n >= 2).length
 
   // Value what was kept: the drop-in's charge, or one credit of its pack.
   if (keptStripe.length > 0) {

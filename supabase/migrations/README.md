@@ -234,3 +234,7 @@ Found during a codebase review. Both applied the same day.
   RESTRICT. Deleting a class used to wipe its retired slots' bookings; the
   ledger found 32 paid drop-ins (Apr–Sep 2026, £388) whose bookings were lost
   that way. `deleteClass` now refuses when bookings exist either way.
+- `20261009_20_studio_accounting_settings.sql` — `studios.accounting_year_end`
+  (MM-DD, default `04-05`, the tax year; impossible or leap-only dates refused)
+  and `studios.accounting_software` (`none` | `xero` | `quickbooks` |
+  `freeagent`). Set from the Money page. Applied 2026-10-09.

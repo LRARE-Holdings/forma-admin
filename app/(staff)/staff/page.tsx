@@ -1,3 +1,4 @@
+import Link from "next/link"
 import { createClient } from "@/lib/supabase/server"
 import { getUser, getInstructorForUser } from "@/lib/auth"
 import { getStudioId } from "@/lib/studio-context"
@@ -65,7 +66,7 @@ export default async function StaffPage() {
   const slotIds = slots.map((s: { id: string }) => s.id)
 
   let weekBookings: { id: string; schedule_id: string; profile_id: string; date: string; payment_method: string; attendance_status: string | null }[] = []
-  let bookingProfiles: Record<string, { full_name: string | null }> = {}
+  const bookingProfiles: Record<string, { full_name: string | null }> = {}
 
   if (slotIds.length > 0) {
     const { data } = await supabase
@@ -156,7 +157,10 @@ export default async function StaffPage() {
           Hi {firstName}
         </h2>
         <p className="mt-0.5 text-[0.85rem] text-warm-grey">
-          Here are your classes for this week.
+          Here are your classes for this week.{" "}
+          <Link href="/staff/insights" className="font-semibold text-gold hover:text-ember">
+            Your class stats &rarr;
+          </Link>
         </p>
         <EditOwnProfile
           instructor={{

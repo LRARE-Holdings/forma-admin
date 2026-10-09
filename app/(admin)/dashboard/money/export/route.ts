@@ -3,7 +3,8 @@ import { requireAdmin } from "@/lib/auth"
 import { getStudioId } from "@/lib/studio-context"
 import { localDateStr } from "@/lib/utils"
 import { resolvePeriod } from "@/lib/money-periods"
-import { categoryOf, getLedgerLines, getPayouts } from "@/lib/money"
+import { categoryOf, getAccountingSettings, getLedgerLines, getPayouts } from "@/lib/money"
+import { renderStatement, statementLines, type StatementFormat } from "@/lib/accounting-export"
 
 const TYPE_LABELS: Record<string, string> = {
   charge: "Sale",
@@ -30,16 +31,39 @@ function ukTime(iso: string): string {
   return new Date(iso).toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" })
 }
 
-/** GET /dashboard/money/export?kind=transactions|payouts&from=YYYY-MM-DD&to=YYYY-MM-DD */
+const FORMATS: StatementFormat[] = ["csv", "xero", "quickbooks", "freeagent"]
+
+/**
+ * GET /dashboard/money/export?kind=transactions|payouts|statement&from=YYYY-MM-DD&to=YYYY-MM-DD
+ * `statement` takes &format=xero|quickbooks|freeagent|csv.
+ */
 export async function GET(request: Request) {
   await requireAdmin()
   const studioId = await getStudioId()
   const url = new URL(request.url)
-  const kind = url.searchParams.get("kind") === "payouts" ? "payouts" : "transactions"
+  const kindParam = url.searchParams.get("kind")
+  const kind = kindParam === "payouts" || kindParam === "statement" ? kindParam : "transactions"
+  const settings = await getAccountingSettings(studioId)
   const period = resolvePeriod(
     { from: url.searchParams.get("from") ?? undefined, to: url.searchParams.get("to") ?? undefined },
     localDateStr(),
+    settings.yearEnd,
   )
+
+  if (kind === "statement") {
+    const requested = url.searchParams.get("format") as StatementFormat | null
+    const format = requested && FORMATS.includes(requested) ? requested : "csv"
+    const lines = statementLines(await getLedgerLines(studioId, period.from, period.to))
+    // FreeAgent wants no byte-order mark; the others are fine either way.
+    const body = (format === "freeagent" ? "" : "\uFEFF") + renderStatement(lines, format)
+    return new NextResponse(body, {
+      headers: {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": `attachment; filename="stripe-statement-${format}-${period.from}-to-${period.to}.csv"`,
+        "Cache-Control": "no-store",
+      },
+    })
+  }
 
   let header: string[]
   let rows: Array<Array<string | number | null>>

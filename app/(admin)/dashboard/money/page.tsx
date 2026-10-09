@@ -7,12 +7,15 @@ import {
   getLedgerSummary,
   getPayouts,
   getUnusedPackCredits,
+  getAccountingSettings,
   salesByCategory,
   CREDIT_LEDGER_START,
 } from "@/lib/money"
 import { PageHeader } from "@/components/shared/page-header"
 import { PeriodPicker } from "@/components/dashboard/money/period-picker"
 import { PrintButton } from "@/components/dashboard/money/print-button"
+import { AccountingSettings } from "@/components/dashboard/money/accounting-settings"
+import { FORMAT_LABELS } from "@/lib/accounting-export"
 
 export const dynamic = "force-dynamic"
 
@@ -84,7 +87,8 @@ export default async function MoneyPage({
   await requireAdmin()
   const studioId = await getStudioId()
   const today = localDateStr()
-  const period = resolvePeriod(await searchParams, today)
+  const settings = await getAccountingSettings(studioId)
+  const period = resolvePeriod(await searchParams, today, settings.yearEnd)
   const asOf = effectiveEnd(period, today)
 
   const [summary, payouts, unused] = await Promise.all([
@@ -108,7 +112,7 @@ export default async function MoneyPage({
         action={<PrintButton />}
       />
 
-      <PeriodPicker presets={presetPeriods(today)} from={period.from} to={period.to} />
+      <PeriodPicker presets={presetPeriods(today, settings.yearEnd)} from={period.from} to={period.to} />
 
       <div className="grid grid-cols-1 gap-x-5 lg:grid-cols-2">
         <Section
@@ -248,21 +252,34 @@ export default async function MoneyPage({
 
       <Section
         title="For your accountant"
-        subtitle="Every Stripe transaction in this period, one row each, in a spreadsheet file."
-        action={
+        subtitle="Every Stripe transaction in this period. Not VAT-registered, so no VAT is shown. Pack sales count as income when paid."
+      >
+        <div className="flex flex-wrap gap-2 px-5 py-4 print:hidden">
+          {settings.software !== "none" && (
+            <a
+              href={`/dashboard/money/export?kind=statement&format=${settings.software}&${exportQuery}`}
+              className="flex items-center gap-1.5 rounded-lg border border-gold bg-cream px-3 py-1.5 text-[0.75rem] font-semibold text-cocoa transition-colors hover:border-ember"
+            >
+              <Download className="h-3.5 w-3.5" />
+              Stripe statement for {FORMAT_LABELS[settings.software]}
+            </a>
+          )}
           <a
             href={`/dashboard/money/export?kind=transactions&${exportQuery}`}
-            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-sand px-3 py-1.5 text-[0.75rem] font-semibold text-warm-grey transition-colors hover:border-gold hover:text-cocoa print:hidden"
+            className="flex items-center gap-1.5 rounded-lg border border-sand px-3 py-1.5 text-[0.75rem] font-semibold text-warm-grey transition-colors hover:border-gold hover:text-cocoa"
           >
             <Download className="h-3.5 w-3.5" />
             Transactions CSV
           </a>
-        }
-      >
-        <p className="px-5 py-4 text-[0.8rem] text-slate">
-          Includes the date, member, what was bought, the amount, Stripe&apos;s fee and the amount after fees.
-          Cash and complimentary bookings aren&apos;t included; only card payments through Stripe.
+        </div>
+        <p className="px-5 pb-4 text-[0.8rem] text-slate">
+          {settings.software !== "none"
+            ? `The Stripe statement imports into ${FORMAT_LABELS[settings.software]} as a bank account called "Stripe": every sale, fee, refund and payout is a line, and each payout matches a transfer on the business bank account. `
+            : "Choose your accounting software below to get a statement it can import. "}
+          The transactions CSV lists the member, what they bought, the amount, Stripe&apos;s fee and the amount after fees.
+          Cash and complimentary bookings aren&apos;t included, only card payments through Stripe.
         </p>
+        <AccountingSettings yearEnd={settings.yearEnd} software={settings.software} />
       </Section>
     </>
   )

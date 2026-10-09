@@ -323,3 +323,21 @@ export async function getWeeklySales(studioId: string, mondays: string[]): Promi
   }
   return mondays.map((m) => ({ monday: m, gross: totals.get(m)! }))
 }
+
+export interface AccountingSettings {
+  yearEnd: string
+  software: "none" | "xero" | "quickbooks" | "freeagent"
+}
+
+export async function getAccountingSettings(studioId: string): Promise<AccountingSettings> {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from("studios")
+    .select("accounting_year_end, accounting_software")
+    .eq("id", studioId)
+    .single()
+  return {
+    yearEnd: (data?.accounting_year_end as string | undefined) ?? "04-05",
+    software: ((data?.accounting_software as string | undefined) ?? "none") as AccountingSettings["software"],
+  }
+}

@@ -44,14 +44,39 @@ export function taxYearStartFor(dateStr: string): number {
   return dateStr.slice(5) >= "04-06" ? y : y - 1
 }
 
-/** The quick-pick list, newest first, relative to today. */
-export function presetPeriods(today: string): Array<Period & { key: string }> {
+/** The default accounting year end: 5 April, the UK tax year. */
+export const TAX_YEAR_END = "04-05"
+
+function addDays(dateStr: string, n: number): string {
+  const d = new Date(dateStr + "T12:00:00Z")
+  d.setUTCDate(d.getUTCDate() + n)
+  return d.toISOString().slice(0, 10)
+}
+
+/** The accounting year ending on `yearEnd` (MM-DD) in `endYear`. */
+export function financialYearPeriod(yearEnd: string, endYear: number): Period {
+  const to = `${endYear}-${yearEnd}`
+  return { from: addDays(`${endYear - 1}-${yearEnd}`, 1), to, label: `Year to ${formatUkDate(to)}` }
+}
+
+/** End year of the financial year containing `dateStr`. */
+export function financialYearEndFor(yearEnd: string, dateStr: string): number {
+  const y = Number(dateStr.slice(0, 4))
+  return dateStr.slice(5) <= yearEnd ? y : y + 1
+}
+
+/**
+ * The quick-pick list, relative to today. A studio whose year doesn't end on
+ * 5 April also gets its own financial years, after the tax years.
+ */
+export function presetPeriods(today: string, yearEnd: string = TAX_YEAR_END): Array<Period & { key: string }> {
   const y = Number(today.slice(0, 4))
   const m = Number(today.slice(5, 7))
   const q = Math.ceil(m / 3)
   const prevMonth = m === 1 ? monthPeriod(y - 1, 12) : monthPeriod(y, m - 1)
   const prevQuarter = q === 1 ? quarterPeriod(y - 1, 4) : quarterPeriod(y, q - 1)
   const ty = taxYearStartFor(today)
+  const fy = financialYearEndFor(yearEnd, today)
   return [
     { key: "this-month", ...monthPeriod(y, m) },
     { key: "last-month", ...prevMonth },
@@ -59,6 +84,12 @@ export function presetPeriods(today: string): Array<Period & { key: string }> {
     { key: "last-quarter", ...prevQuarter },
     { key: "this-tax-year", ...taxYearPeriod(ty) },
     { key: "last-tax-year", ...taxYearPeriod(ty - 1) },
+    ...(yearEnd === TAX_YEAR_END
+      ? []
+      : [
+          { key: "this-financial-year", ...financialYearPeriod(yearEnd, fy) },
+          { key: "last-financial-year", ...financialYearPeriod(yearEnd, fy - 1) },
+        ]),
   ]
 }
 
@@ -66,8 +97,9 @@ export function presetPeriods(today: string): Array<Period & { key: string }> {
 export function resolvePeriod(
   params: { from?: string; to?: string },
   today: string,
+  yearEnd: string = TAX_YEAR_END,
 ): Period {
-  const presets = presetPeriods(today)
+  const presets = presetPeriods(today, yearEnd)
   const { from, to } = params
   if (from && to && ISO_DATE.test(from) && ISO_DATE.test(to) && from <= to) {
     const preset = presets.find((p) => p.from === from && p.to === to)
