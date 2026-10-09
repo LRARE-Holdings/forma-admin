@@ -295,3 +295,31 @@ export async function getLedgerLines(studioId: string, from: string, to: string)
     }
   })
 }
+
+/**
+ * Card sales (before fees and refunds) per Monday–Sunday UK week, for weeks
+ * starting on each of `mondays`.
+ */
+export async function getWeeklySales(studioId: string, mondays: string[]): Promise<Array<{ monday: string; gross: number }>> {
+  if (mondays.length === 0) return []
+  const supabase = await createClient()
+  const rows = await fetchAllRows((rf, rt) =>
+    supabase
+      .from("stripe_balance_transactions")
+      .select("created_at, amount")
+      .eq("studio_id", studioId)
+      .in("type", ["charge", "payment"])
+      .gte("created_at", ukMidnightISO(mondays[0]))
+      .lt("created_at", ukMidnightISO(addDays(mondays[mondays.length - 1], 7)))
+      .order("id")
+      .range(rf, rt),
+  )
+  const totals = new Map(mondays.map((m) => [m, 0]))
+  for (const r of rows) {
+    const day = new Date(r.created_at as string).toLocaleDateString("en-CA", { timeZone: "Europe/London" })
+    // The latest Monday on or before the sale's UK date
+    const monday = [...mondays].reverse().find((m) => m <= day)
+    if (monday) totals.set(monday, totals.get(monday)! + (r.amount as number))
+  }
+  return mondays.map((m) => ({ monday: m, gross: totals.get(m)! }))
+}

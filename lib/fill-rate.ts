@@ -7,6 +7,12 @@ export interface SessionFill {
   date: string
   booked: number
   capacity: number
+  className: string
+  instructorName: string
+  /** 0 = Monday, matching schedule.day_of_week */
+  dayOfWeek: number
+  /** "HH:MM" */
+  startTime: string
 }
 
 /**
@@ -30,7 +36,7 @@ export async function getSessionFill(
     fetchAllRows((rangeFrom, rangeTo) =>
       supabase
         .from("bookings")
-        .select("schedule_id, date, schedule:schedule_id(classes:class_id(capacity))")
+        .select("schedule_id, date, schedule:schedule_id(day_of_week, start_time, classes:class_id(name, capacity), instructors:instructor_id(name))")
         .eq("studio_id", studioId)
         .eq("status", "confirmed")
         .gte("date", from)
@@ -48,6 +54,10 @@ export async function getSessionFill(
       date: s.date,
       booked: 0,
       capacity: s.capacity,
+      className: s.className,
+      instructorName: s.instructorName,
+      dayOfWeek: s.dayOfWeek,
+      startTime: s.startTime.slice(0, 5),
     })
   }
 
@@ -55,12 +65,21 @@ export async function getSessionFill(
     const key = `${b.schedule_id}:${b.date}`
     let session = sessions.get(key)
     if (!session) {
-      const schedule = b.schedule as unknown as { classes: { capacity: number | null } | null } | null
+      const schedule = b.schedule as unknown as {
+        day_of_week: number
+        start_time: string
+        classes: { name: string; capacity: number | null } | null
+        instructors: { name: string } | null
+      } | null
       session = {
         scheduleId: b.schedule_id,
         date: b.date,
         booked: 0,
         capacity: schedule?.classes?.capacity ?? 10,
+        className: schedule?.classes?.name ?? "Unknown class",
+        instructorName: schedule?.instructors?.name ?? "Unknown",
+        dayOfWeek: schedule?.day_of_week ?? 0,
+        startTime: (schedule?.start_time ?? "00:00").slice(0, 5),
       }
       sessions.set(key, session)
     }
@@ -70,13 +89,40 @@ export async function getSessionFill(
   return [...sessions.values()]
 }
 
+export interface FillTotals {
+  booked: number
+  capacity: number
+  sessions: number
+  rate: number | null
+}
+
 /** Places booked over places offered for sessions dated in [from, to]. */
-export function summariseFill(sessions: SessionFill[], from: string, to: string) {
+export function summariseFill(sessions: SessionFill[], from: string, to: string): FillTotals {
+  return totalFill(sessions.filter((s) => s.date >= from && s.date <= to))
+}
+
+/** Fill totals for a set of sessions, grouped by `key`, largest group first. */
+export function fillBy<K extends string>(
+  sessions: SessionFill[],
+  key: (s: SessionFill) => K,
+): Array<{ key: K } & FillTotals> {
+  const groups = new Map<K, SessionFill[]>()
+  for (const s of sessions) {
+    const k = key(s)
+    const list = groups.get(k) ?? []
+    list.push(s)
+    groups.set(k, list)
+  }
+  return [...groups.entries()]
+    .map(([k, list]) => ({ key: k, ...totalFill(list) }))
+    .sort((a, b) => b.sessions - a.sessions)
+}
+
+function totalFill(sessions: SessionFill[]): FillTotals {
   let booked = 0
   let capacity = 0
   let count = 0
   for (const s of sessions) {
-    if (s.date < from || s.date > to) continue
     // An overbooked class (manual add) is full, not more than full.
     booked += Math.min(s.booked, s.capacity)
     capacity += s.capacity
