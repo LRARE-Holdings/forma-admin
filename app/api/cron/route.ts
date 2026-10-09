@@ -3,6 +3,8 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { createStripeProduct, createStripePrice } from "@/lib/stripe/products"
 import { stripe } from "@/lib/stripe"
 import { syncStripeLedger, type LedgerSyncResult } from "@/lib/stripe/ledger"
+import { sendLapsedDigest } from "@/lib/email/lapsed-digest"
+import { localDateStr, ukDayOfWeek } from "@/lib/utils"
 import type { BillingInterval } from "@/lib/types"
 
 /**
@@ -10,6 +12,7 @@ import type { BillingInterval } from "@/lib/types"
  *
  * Daily cron (Vercel Hobby plan) — handles Stripe product/price sync and
  * copies each studio's Stripe transactions and payouts into the ledger tables.
+ * On Mondays (UK) it also sends each studio's admins the lapsed-regulars digest.
  * Waitlist expiry runs separately via Supabase Edge Function + pg_cron (every 5 min).
  */
 export async function GET(request: Request) {
@@ -176,7 +179,22 @@ export async function GET(request: Request) {
     }
     console.log("[cron] Ledger sync —", JSON.stringify(ledger))
 
-    return NextResponse.json({ ok: true, synced, failed, ledger })
+    // Runs at 03:00 UTC, so 03:00 or 04:00 on Monday in the UK.
+    const digest: Record<string, unknown> = {}
+    if (ukDayOfWeek() === 0) {
+      const { data: allStudios } = await supabase.from("studios").select("id").eq("active", true)
+      for (const s of allStudios ?? []) {
+        try {
+          digest[s.id] = await sendLapsedDigest(s.id, localDateStr())
+        } catch (e) {
+          console.error(`[cron] Lapsed digest failed for studio ${s.id}:`, e)
+          digest[s.id] = { error: e instanceof Error ? e.message : String(e) }
+        }
+      }
+      console.log("[cron] Lapsed digest —", JSON.stringify(digest))
+    }
+
+    return NextResponse.json({ ok: true, synced, failed, ledger, digest })
   } catch (err) {
     console.error("[cron] Stripe sync error:", err)
     return NextResponse.json(

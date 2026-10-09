@@ -433,3 +433,50 @@ export function waitlistOfferEmail(params: WaitlistOfferParams) {
     html: layout(studioName, body, branding),
   }
 }
+
+// --- Monday lapsed-regulars digest (for admins) ---
+
+interface LapsedDigestParams {
+  recipientName: string
+  members: Array<{ name: string; email: string; phone: string; lastClass: string; classes: number }>
+  totalLapsed: number
+  membersUrl: string
+  studioName: string
+  branding?: StudioBranding | null
+}
+
+const esc = (s: string) =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+
+export function lapsedDigestEmail(params: LapsedDigestParams) {
+  const { recipientName, members, totalLapsed, membersUrl, studioName, branding } = params
+  const c = resolveColors(branding)
+  const n = members.length
+
+  const rows = members
+    .map(
+      (m) => `
+      <tr><td style="padding:12px 0;border-bottom:1px solid ${c.sand};">
+        <p style="margin:0 0 2px;font-size:15px;font-weight:600;color:${c.cocoa};">${esc(m.name)}</p>
+        <p style="margin:0 0 4px;font-size:13px;color:${c.warmGrey};">Last came ${esc(m.lastClass)} &middot; ${m.classes} classes in all</p>
+        <p style="margin:0;font-size:13px;color:${c.cocoa};">${[m.phone, m.email].filter(Boolean).map(esc).join(" &middot; ")}</p>
+      </td></tr>`,
+    )
+    .join("")
+
+  const body = `
+    <p style="margin:0 0 16px;font-size:15px;color:${c.cocoa};">Hi ${esc(recipientName)},</p>
+    <p style="margin:0 0 20px;font-size:15px;color:${c.cocoa};">
+      ${n === 1 ? "One regular has" : `${n} regulars have`} gone quiet this week: they'd been to 3 or more classes, but haven't been for 30 days and have nothing booked. A quick hello might bring them back.
+    </p>
+    <table cellpadding="0" cellspacing="0" style="width:100%;">${rows}</table>
+    <p style="margin:24px 0 0;font-size:14px;color:${c.warmGrey};">
+      ${totalLapsed} lapsed regulars in total.
+      <a href="${membersUrl}" style="color:${c.gold};font-weight:600;">See them all on the Members page</a>.
+    </p>`
+
+  return {
+    subject: n === 1 ? `1 regular has gone quiet this week` : `${n} regulars have gone quiet this week`,
+    html: layout(studioName, body, branding),
+  }
+}

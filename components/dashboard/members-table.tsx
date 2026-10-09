@@ -74,9 +74,11 @@ type SortDir = "asc" | "desc"
 
 interface MembersTableProps {
   members: MemberRow[]
+  /** "lapsed" when opened from the Monday email's link */
+  initialFilter?: Filter
 }
 
-export function MembersTable({ members }: MembersTableProps) {
+export function MembersTable({ members, initialFilter = "all" }: MembersTableProps) {
   const [packsOpen, setPacksOpen] = useState(false)
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null)
   const [editOpen, setEditOpen] = useState(false)
@@ -85,7 +87,7 @@ export function MembersTable({ members }: MembersTableProps) {
   const [deletingMember, setDeletingMember] = useState<MemberRow | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
-  const [filter, setFilter] = useState<Filter>("all")
+  const [filter, setFilter] = useState<Filter>(initialFilter)
   const [sortKey, setSortKey] = useState<SortKey | null>(null)
   const [sortDir, setSortDir] = useState<SortDir>("asc")
   const [page, setPage] = useState(0)
