@@ -7,7 +7,12 @@ import { MembersTable } from "@/components/dashboard/members-table"
 import { isPackUsableNow } from "@/lib/booking-rules"
 import { activityByProfile, isActive, isLapsed, type MemberActivity } from "@/lib/member-activity"
 
-export default async function MembersPage() {
+export default async function MembersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ filter?: string }>
+}) {
+  const initialFilter = (await searchParams).filter === "lapsed" ? "lapsed" : "all"
   const supabase = await createClient()
   const studioId = await getStudioId()
 
@@ -160,7 +165,7 @@ export default async function MembersPage() {
         title="Members"
         description={`${rows.length} members, ${activeCount} active in the last 30 days.`}
       />
-      <MembersTable members={rows} />
+      <MembersTable members={rows} initialFilter={initialFilter} />
     </>
   )
 }
