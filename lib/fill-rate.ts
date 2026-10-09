@@ -28,27 +28,31 @@ export async function getSessionFill(
   studioId: string,
   from: string,
   to: string,
+  { instructorId }: { instructorId?: string } = {},
 ): Promise<SessionFill[]> {
   const supabase = await createClient()
 
   const [{ slots }, bookings] = await Promise.all([
     getRangeData(studioId, from, to),
-    fetchAllRows((rangeFrom, rangeTo) =>
-      supabase
+    fetchAllRows((rangeFrom, rangeTo) => {
+      // !inner so the instructor filter drops other instructors' bookings
+      // in the query, not afterwards.
+      let q = supabase
         .from("bookings")
-        .select("schedule_id, date, schedule:schedule_id(day_of_week, start_time, classes:class_id(name, capacity), instructors:instructor_id(name))")
+        .select("schedule_id, date, schedule:schedule_id!inner(instructor_id, day_of_week, start_time, classes:class_id(name, capacity), instructors:instructor_id(name))")
         .eq("studio_id", studioId)
         .eq("status", "confirmed")
         .gte("date", from)
         .lte("date", to)
-        .order("id")
-        .range(rangeFrom, rangeTo),
-    ),
+      if (instructorId) q = q.eq("schedule.instructor_id", instructorId)
+      return q.order("id").range(rangeFrom, rangeTo)
+    }),
   ])
 
   const sessions = new Map<string, SessionFill>()
   for (const s of slots) {
     if (s.isSkipped || s.isHoliday) continue
+    if (instructorId && s.instructorId !== instructorId) continue
     sessions.set(`${s.scheduleId}:${s.date}`, {
       scheduleId: s.scheduleId,
       date: s.date,
