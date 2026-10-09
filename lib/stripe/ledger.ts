@@ -56,6 +56,32 @@ async function latest(db: SupabaseClient, table: string, studioId: string): Prom
   return (data?.created_at as string | undefined) ?? null
 }
 
+function payoutRow(studioId: string, p: Stripe.Payout): Row {
+  return {
+    id: p.id,
+    studio_id: studioId,
+    amount: p.amount,
+    currency: p.currency,
+    status: p.status,
+    method: p.method,
+    automatic: p.automatic,
+    created_at: new Date(p.created * 1000).toISOString(),
+    arrival_date: new Date(p.arrival_date * 1000).toISOString(),
+    balance_transaction_id: idOf(p.balance_transaction as string | { id: string } | null),
+    statement_descriptor: p.statement_descriptor,
+    synced_at: new Date().toISOString(),
+  }
+}
+
+/**
+ * Store one payout exactly as a payout.* webhook describes it. The webhook's
+ * incremental sync only re-reads the last day, so a payout created days
+ * earlier would otherwise keep its old status until the nightly sync.
+ */
+export async function upsertPayout(db: SupabaseClient, studioId: string, payout: Stripe.Payout) {
+  await upsert(db, "stripe_payouts", [payoutRow(studioId, payout)])
+}
+
 /**
  * Sync one studio. `full` re-reads the account's whole history (the backfill);
  * otherwise it starts `overlapDays` before the newest row already stored.
@@ -180,20 +206,7 @@ export async function syncStripeLedger(
     { limit: 100, ...(created ? { created } : {}) },
     opts,
   )) {
-    payouts.push({
-      id: p.id,
-      studio_id: studioId,
-      amount: p.amount,
-      currency: p.currency,
-      status: p.status,
-      method: p.method,
-      automatic: p.automatic,
-      created_at: new Date(p.created * 1000).toISOString(),
-      arrival_date: new Date(p.arrival_date * 1000).toISOString(),
-      balance_transaction_id: idOf(p.balance_transaction as string | { id: string } | null),
-      statement_descriptor: p.statement_descriptor,
-      synced_at: new Date().toISOString(),
-    })
+    payouts.push(payoutRow(studioId, p))
   }
 
   await upsert(db, "stripe_balance_transactions", txns)

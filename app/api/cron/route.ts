@@ -7,6 +7,10 @@ import { sendWeeklySummary } from "@/lib/email/weekly-summary"
 import { localDateStr, ukDayOfWeek } from "@/lib/utils"
 import type { BillingInterval } from "@/lib/types"
 
+// Product sync, the ledger sync for every studio and, on Mondays, the weekly
+// summary run one after another; give them the full five minutes.
+export const maxDuration = 300
+
 /**
  * GET /api/cron
  *

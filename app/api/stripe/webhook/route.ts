@@ -7,7 +7,7 @@ import { sendStudioEmail } from "@/lib/email/send"
 import { refundEmail } from "@/lib/email/templates"
 import { formatTime } from "@/lib/utils"
 import { issueAdminRefund, APP_REFUND_INITIATORS } from "@/lib/stripe/refunds"
-import { syncStripeLedger } from "@/lib/stripe/ledger"
+import { syncStripeLedger, upsertPayout } from "@/lib/stripe/ledger"
 import {
   sendTicketConfirmation,
   refundUnconfirmedTicket,
@@ -76,6 +76,9 @@ export async function POST(request: NextRequest) {
     const ledgerStudioId = studioId
     after(async () => {
       try {
+        if (event.type.startsWith("payout.")) {
+          await upsertPayout(supabase, ledgerStudioId, event.data.object as Stripe.Payout)
+        }
         await syncStripeLedger(supabase, ledgerStudioId, connectedAccountId, { overlapDays: 1 })
       } catch (err) {
         console.error(`[webhook] Ledger sync after ${event.type} failed:`, err)

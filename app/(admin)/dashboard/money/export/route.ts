@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { csvCell } from "@/lib/csv"
 import { requireAdmin } from "@/lib/auth"
 import { getStudioId } from "@/lib/studio-context"
 import { localDateStr } from "@/lib/utils"
@@ -18,10 +19,6 @@ const TYPE_LABELS: Record<string, string> = {
 
 const pounds = (pence: number) => (pence / 100).toFixed(2)
 
-function csvCell(v: string | number | null | undefined): string {
-  const s = v === null || v === undefined ? "" : String(v)
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
-}
 
 function ukDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-CA", { timeZone: "Europe/London" }) // YYYY-MM-DD

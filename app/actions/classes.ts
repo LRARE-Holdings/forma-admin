@@ -173,11 +173,13 @@ export async function deleteClass(classId: string) {
     const retiredIds = (retiredSlots ?? []).map((s) => s.id as string)
 
     if (retiredIds.length > 0) {
-      const { count } = await supabase
+      const { count, error: countError } = await supabase
         .from("bookings")
         .select("id", { count: "exact", head: true })
         .in("schedule_id", retiredIds)
-      if (count && count > 0) {
+      // Never fall through to deleting slots without knowing the answer
+      if (countError || count === null) throw new Error("Couldn't check this class's bookings. Please try again.")
+      if (count > 0) {
         throw new Error(
           `This class has ${count} booking${count === 1 ? "" : "s"} on record, so it can't be deleted — they're part of your attendance and sales history. It's already off the timetable, so members can't book it.`,
         )
