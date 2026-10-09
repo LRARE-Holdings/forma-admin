@@ -161,6 +161,37 @@ export async function deleteClass(classId: string) {
       throw new Error("Cannot delete a class with active schedule slots. Remove the slots first.")
     }
 
+    // Bookings are the studio's attendance and sales record. Deleting a class
+    // used to cascade through its retired slots and wipe them — 32 paid
+    // drop-ins (Apr–Sep 2026) were lost that way. The database now refuses
+    // (migration 19); say why here instead of surfacing a constraint error.
+    const { data: retiredSlots } = await supabase
+      .from("schedule")
+      .select("id")
+      .eq("class_id", classId)
+      .eq("studio_id", studioId)
+    const retiredIds = (retiredSlots ?? []).map((s) => s.id as string)
+
+    if (retiredIds.length > 0) {
+      const { count } = await supabase
+        .from("bookings")
+        .select("id", { count: "exact", head: true })
+        .in("schedule_id", retiredIds)
+      if (count && count > 0) {
+        throw new Error(
+          `This class has ${count} booking${count === 1 ? "" : "s"} on record, so it can't be deleted — they're part of your attendance and sales history. It's already off the timetable, so members can't book it.`,
+        )
+      }
+
+      // Retired slots with no bookings: clear them so the class can go.
+      const { error: slotsError } = await supabase
+        .from("schedule")
+        .delete()
+        .in("id", retiredIds)
+        .eq("studio_id", studioId)
+      if (slotsError) throw new Error(slotsError.message)
+    }
+
     // Fetch Stripe IDs before deleting
     const { data: cls } = await supabase
       .from("classes")

@@ -215,7 +215,7 @@ Found during a codebase review. Both applied the same day.
   now nets a booking's refunds and adjustments, so a reclaimed credit counts
   as spent, not owed. Dry run then applied: shortfall stayed 0.
 
-## Stripe ledger (2026-10-09) — written, NOT yet applied
+## Stripe ledger (2026-10-09)
 
 - `20261009_18_stripe_ledger.sql` — `stripe_balance_transactions` and
   `stripe_payouts`: a local copy of every balance transaction and payout on the
@@ -227,4 +227,10 @@ Found during a codebase review. Both applied the same day.
   against Burn Mat's account (in memory, no DB writes): 1,439 transactions and
   142 payouts since 31 Mar 2026; the summed ledger (£92.97) equals Stripe's
   live balance to the penny; every sale and refund got a type and a payment
-  intent. After applying, run the backfill (`syncStripeLedger(..., { full: true })`).
+  intent. Applied 2026-10-09 and backfilled (1,439 / 142); database summary
+  for 2026 closes at £92.97, matching Stripe.
+- `20261009_19_keep_booking_history.sql` — **written, NOT yet applied.**
+  `bookings.schedule_id` and `schedule.class_id` go from ON DELETE CASCADE to
+  RESTRICT. Deleting a class used to wipe its retired slots' bookings; the
+  ledger found 32 paid drop-ins (Apr–Sep 2026, £388) whose bookings were lost
+  that way. `deleteClass` now refuses when bookings exist either way.
