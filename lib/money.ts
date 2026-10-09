@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server"
+import type { SupabaseClient } from "@supabase/supabase-js"
 import { fetchAllRows } from "@/lib/supabase/fetch-all"
 import { ukMidnightISO } from "@/lib/utils"
 import { addDays } from "@/lib/member-activity"
@@ -40,8 +41,13 @@ export function categoryOf(saleType: string | null): { key: string; label: strin
   return c ?? SALE_CATEGORIES[SALE_CATEGORIES.length - 1]
 }
 
-export async function getLedgerSummary(studioId: string, from: string, to: string): Promise<LedgerSummary> {
-  const supabase = await createClient()
+export async function getLedgerSummary(
+  studioId: string,
+  from: string,
+  to: string,
+  db?: SupabaseClient,
+): Promise<LedgerSummary> {
+  const supabase = db ?? (await createClient())
   const { data, error } = await supabase.rpc("stripe_ledger_summary", {
     p_studio_id: studioId,
     p_from: from,
@@ -77,8 +83,13 @@ export interface PayoutRow {
 }
 
 /** Payouts made in [from, to] (UK dates), newest first, with their fee. */
-export async function getPayouts(studioId: string, from: string, to: string): Promise<PayoutRow[]> {
-  const supabase = await createClient()
+export async function getPayouts(
+  studioId: string,
+  from: string,
+  to: string,
+  db?: SupabaseClient,
+): Promise<PayoutRow[]> {
+  const supabase = db ?? (await createClient())
   const payouts = await fetchAllRows((rf, rt) =>
     supabase
       .from("stripe_payouts")

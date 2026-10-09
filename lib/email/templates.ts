@@ -434,49 +434,161 @@ export function waitlistOfferEmail(params: WaitlistOfferParams) {
   }
 }
 
-// --- Monday lapsed-regulars digest (for admins) ---
+// --- Monday weekly summary (for admins) ---
 
-interface LapsedDigestParams {
+export interface WeeklySummaryParams {
   recipientName: string
-  members: Array<{ name: string; email: string; phone: string; lastClass: string; classes: number }>
-  totalLapsed: number
-  membersUrl: string
   studioName: string
   branding?: StudioBranding | null
+  /** e.g. "Mon 29 Sep – Sun 5 Oct" */
+  weekLabel: string
+  money: {
+    sales: number
+    prevSales: number
+    byType: Array<{ label: string; amount: number; count: number }>
+    refunds: number
+    refundCount: number
+    cardFees: number
+    net: number
+    paidOut: number
+    payoutCount: number
+    payoutFees: number
+  } | null
+  classes: {
+    held: number
+    booked: number
+    capacity: number
+    fillPct: number | null
+    prevFillPct: number | null
+    busiest: { label: string; pct: number } | null
+    quietest: { label: string; pct: number } | null
+    noShows: number
+    marked: number
+    lateCancels: number
+  }
+  members: {
+    firstTimers: number
+    prevFirstTimers: number
+    active30: number
+    totalLapsed: number
+  }
+  lapsed: Array<{ name: string; email: string; phone: string; lastClass: string; classes: number }>
+  ahead: { classes: number; booked: number; capacity: number }
+  links: { money: string; insights: string; lapsed: string }
 }
 
 const esc = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
 
-export function lapsedDigestEmail(params: LapsedDigestParams) {
-  const { recipientName, members, totalLapsed, membersUrl, studioName, branding } = params
-  const c = resolveColors(branding)
-  const n = members.length
+const gbp = (pence: number) =>
+  `${pence < 0 ? "&minus;" : ""}&pound;${(Math.abs(pence) / 100).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
-  const rows = members
+export function weeklySummaryEmail(p: WeeklySummaryParams) {
+  const c = resolveColors(p.branding)
+  const label = `margin:0 0 4px;font-size:11px;font-weight:600;color:${c.warmGrey};text-transform:uppercase;letter-spacing:0.08em;`
+  const h2 = `margin:28px 0 10px;font-size:13px;font-weight:700;color:${c.cocoa};text-transform:uppercase;letter-spacing:0.08em;`
+  const cell = `padding:7px 0;font-size:14px;color:${c.cocoa};border-bottom:1px solid ${c.sand};`
+  const num = `${cell}text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;`
+
+  // Change against last week, in words and an arrow; never colour alone
+  const change = (now: number, before: number, unit: "%" | "pts") => {
+    if (before === 0 && unit === "%") return now > 0 ? "new this week" : ""
+    const diff = unit === "%" ? Math.round(((now - before) / before) * 100) : now - before
+    if (diff === 0) return "same as last week"
+    return `${diff > 0 ? "&#9650; up" : "&#9660; down"} ${Math.abs(diff)}${unit === "%" ? "%" : " pts"} on last week`
+  }
+
+  const tile = (title: string, value: string, sub: string) => `
+    <td width="33%" valign="top" style="padding:14px 12px;background-color:${c.cream};border-radius:8px;">
+      <p style="${label}">${title}</p>
+      <p style="margin:0;font-size:22px;font-weight:700;color:${c.cocoa};">${value}</p>
+      <p style="margin:4px 0 0;font-size:12px;color:${c.warmGrey};">${sub}</p>
+    </td>`
+
+  const m = p.money
+  const k = p.classes
+  const headline = `
+    <table width="100%" cellpadding="0" cellspacing="0"><tr>
+      ${tile("Card sales", m ? gbp(m.sales) : "&ndash;", m ? change(m.sales, m.prevSales, "%") : "Stripe not connected")}
+      <td width="8"></td>
+      ${tile("Classes full", k.fillPct === null ? "&ndash;" : `${k.fillPct}%`, k.prevFillPct === null || k.fillPct === null ? `${k.held} classes` : change(k.fillPct, k.prevFillPct, "pts"))}
+      <td width="8"></td>
+      ${tile("New members", String(p.members.firstTimers), change(p.members.firstTimers, p.members.prevFirstTimers, "%") || "first class this week")}
+    </tr></table>`
+
+  const moneyRows = m
+    ? `
+    <p style="${h2}">Money</p>
+    <table width="100%" cellpadding="0" cellspacing="0">
+      ${m.byType.map((t) => `<tr><td style="${cell}">${esc(t.label)} <span style="color:${c.warmGrey};font-size:12px;">${t.count} sale${t.count === 1 ? "" : "s"}</span></td><td style="${num}">${gbp(t.amount)}</td></tr>`).join("")}
+      <tr><td style="${cell}font-weight:700;">Sales</td><td style="${num}font-weight:700;">${gbp(m.sales)}</td></tr>
+      ${m.refunds ? `<tr><td style="${cell}">Refunds <span style="color:${c.warmGrey};font-size:12px;">${m.refundCount}</span></td><td style="${num}">${gbp(-m.refunds)}</td></tr>` : ""}
+      <tr><td style="${cell}">Stripe card fees</td><td style="${num}">${gbp(-m.cardFees)}</td></tr>
+      <tr><td style="${cell}font-weight:700;">Net</td><td style="${num}font-weight:700;">${gbp(m.net)}</td></tr>
+    </table>
+    <p style="margin:10px 0 0;font-size:13px;color:${c.warmGrey};">
+      ${m.payoutCount ? `${gbp(m.paidOut)} paid to the bank in ${m.payoutCount} payout${m.payoutCount === 1 ? "" : "s"}${m.payoutFees ? `, with ${gbp(m.payoutFees)} in instant payout fees` : ""}.` : "Nothing paid to the bank this week."}
+      Card payments only; cash and complimentary classes aren't included.
+    </p>`
+    : ""
+
+  const classes = `
+    <p style="${h2}">Classes</p>
+    <p style="margin:0 0 6px;font-size:14px;color:${c.cocoa};">
+      ${k.held} classes, ${k.booked} of ${k.capacity} places booked${k.fillPct !== null ? ` (${k.fillPct}%)` : ""}.
+    </p>
+    ${k.busiest ? `<p style="margin:0 0 4px;font-size:14px;color:${c.cocoa};">Fullest: <strong>${esc(k.busiest.label)}</strong>, ${k.busiest.pct}%</p>` : ""}
+    ${k.quietest ? `<p style="margin:0 0 4px;font-size:14px;color:${c.cocoa};">Quietest: <strong>${esc(k.quietest.label)}</strong>, ${k.quietest.pct}%</p>` : ""}
+    <p style="margin:6px 0 0;font-size:13px;color:${c.warmGrey};">
+      ${k.marked ? `${k.noShows} no-show${k.noShows === 1 ? "" : "s"} from ${k.marked} marked bookings` : "No attendance marked"}, ${k.lateCancels} late cancel${k.lateCancels === 1 ? "" : "s"}.
+    </p>`
+
+  const lapsedRows = p.lapsed
     .map(
-      (m) => `
-      <tr><td style="padding:12px 0;border-bottom:1px solid ${c.sand};">
-        <p style="margin:0 0 2px;font-size:15px;font-weight:600;color:${c.cocoa};">${esc(m.name)}</p>
-        <p style="margin:0 0 4px;font-size:13px;color:${c.warmGrey};">Last came ${esc(m.lastClass)} &middot; ${m.classes} classes in all</p>
-        <p style="margin:0;font-size:13px;color:${c.cocoa};">${[m.phone, m.email].filter(Boolean).map(esc).join(" &middot; ")}</p>
+      (l) => `
+      <tr><td style="padding:10px 0;border-bottom:1px solid ${c.sand};">
+        <p style="margin:0 0 2px;font-size:14px;font-weight:600;color:${c.cocoa};">${esc(l.name)}</p>
+        <p style="margin:0 0 2px;font-size:12px;color:${c.warmGrey};">Last came ${esc(l.lastClass)} &middot; ${l.classes} classes in all</p>
+        <p style="margin:0;font-size:12px;color:${c.cocoa};">${[l.phone, l.email].filter(Boolean).map(esc).join(" &middot; ")}</p>
       </td></tr>`,
     )
     .join("")
 
-  const body = `
-    <p style="margin:0 0 16px;font-size:15px;color:${c.cocoa};">Hi ${esc(recipientName)},</p>
-    <p style="margin:0 0 20px;font-size:15px;color:${c.cocoa};">
-      ${n === 1 ? "One regular has" : `${n} regulars have`} gone quiet this week: they'd been to 3 or more classes, but haven't been for 30 days and have nothing booked. A quick hello might bring them back.
+  const members = `
+    <p style="${h2}">Members</p>
+    <p style="margin:0 0 6px;font-size:14px;color:${c.cocoa};">
+      ${p.members.firstTimers} came to their first class. ${p.members.active30} members have been in the last 30 days.
     </p>
-    <table cellpadding="0" cellspacing="0" style="width:100%;">${rows}</table>
-    <p style="margin:24px 0 0;font-size:14px;color:${c.warmGrey};">
-      ${totalLapsed} lapsed regulars in total.
-      <a href="${membersUrl}" style="color:${c.gold};font-weight:600;">See them all on the Members page</a>.
+    ${
+      p.lapsed.length
+        ? `<p style="margin:12px 0 4px;font-size:14px;color:${c.cocoa};">${p.lapsed.length === 1 ? "One regular has" : `${p.lapsed.length} regulars have`} gone quiet: 3 or more classes, nothing for 30 days, nothing booked. A quick hello might bring them back.</p>
+           <table width="100%" cellpadding="0" cellspacing="0">${lapsedRows}</table>
+           <p style="margin:10px 0 0;font-size:13px;color:${c.warmGrey};">${p.members.totalLapsed} lapsed regulars in total. <a href="${p.links.lapsed}" style="color:${c.gold};font-weight:600;">See them all</a></p>`
+        : `<p style="margin:0;font-size:13px;color:${c.warmGrey};">No regulars went quiet this week.</p>`
+    }`
+
+  const ahead = `
+    <p style="${h2}">This week</p>
+    <p style="margin:0;font-size:14px;color:${c.cocoa};">
+      ${p.ahead.classes} classes on the timetable, ${p.ahead.booked} of ${p.ahead.capacity} places booked so far${p.ahead.capacity ? ` (${Math.round((p.ahead.booked / p.ahead.capacity) * 100)}%)` : ""}.
     </p>`
 
-  return {
-    subject: n === 1 ? `1 regular has gone quiet this week` : `${n} regulars have gone quiet this week`,
-    html: layout(studioName, body, branding),
-  }
+  const body = `
+    <p style="margin:0 0 4px;font-size:15px;color:${c.cocoa};">Hi ${esc(p.recipientName)},</p>
+    <p style="margin:0 0 20px;font-size:15px;color:${c.cocoa};">Here's how last week went, ${esc(p.weekLabel)}.</p>
+    ${headline}
+    ${moneyRows}
+    ${classes}
+    ${members}
+    ${ahead}
+    <p style="margin:28px 0 0;font-size:13px;color:${c.warmGrey};">
+      More detail: <a href="${p.links.money}" style="color:${c.gold};font-weight:600;">Money</a> &middot;
+      <a href="${p.links.insights}" style="color:${c.gold};font-weight:600;">Insights</a>
+    </p>`
+
+  const subject = m
+    ? `Your week: ${gbp(m.sales).replace("&pound;", "£").replace("&minus;", "-")} in sales, classes ${k.fillPct ?? "–"}% full`
+    : `Your week: classes ${k.fillPct ?? "–"}% full, ${p.members.firstTimers} new members`
+
+  return { subject, html: layout(p.studioName, body, p.branding) }
 }

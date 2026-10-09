@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server"
+import type { SupabaseClient } from "@supabase/supabase-js"
 import { fetchAllRows } from "@/lib/supabase/fetch-all"
 import { getRangeData } from "@/lib/schedule-utils"
 
@@ -28,12 +29,12 @@ export async function getSessionFill(
   studioId: string,
   from: string,
   to: string,
-  { instructorId }: { instructorId?: string } = {},
+  { instructorId, db }: { instructorId?: string; db?: SupabaseClient } = {},
 ): Promise<SessionFill[]> {
-  const supabase = await createClient()
+  const supabase = db ?? (await createClient())
 
   const [{ slots }, bookings] = await Promise.all([
-    getRangeData(studioId, from, to),
+    getRangeData(studioId, from, to, supabase),
     fetchAllRows((rangeFrom, rangeTo) => {
       // !inner so the instructor filter drops other instructors' bookings
       // in the query, not afterwards.
