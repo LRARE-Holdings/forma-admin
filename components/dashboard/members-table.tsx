@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react"
 import { Search, Download, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown } from "lucide-react"
 import { localDateStr } from "@/lib/utils"
+import { csvCell } from "@/lib/csv"
 import { formatUKPhoneDisplay } from "@/lib/phone-utils"
 import { EmptyState } from "@/components/shared/empty-state"
 import { MemberPacksDialog } from "./member-packs-dialog"
@@ -162,10 +163,7 @@ export function MembersTable({ members, initialFilter = "all" }: MembersTablePro
       "Active (last 30 days)",
       "Lapsed regular",
     ]
-    const escape = (v: string) =>
-      v.includes(",") || v.includes('"') || v.includes("\n")
-        ? `"${v.replace(/"/g, '""')}"`
-        : v
+    const escape = csvCell
     const rows = members.map((m) =>
       [
         escape(m.name),

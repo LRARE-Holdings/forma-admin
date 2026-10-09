@@ -47,6 +47,7 @@ export default async function OverviewPage() {
   const lastWeekSameDayStr = dateToDateStr(lastWeekSameDay)
 
   const role = await getUserRole(studioId)
+  const canSeeMoney = !!role && ADMIN_ROLES.includes(role)
 
   // Bookings pointing at a slot that is no longer live. Checked on every
   // dashboard load because this failure produces no error and no log — the
@@ -65,7 +66,8 @@ export default async function OverviewPage() {
   const prevFillFrom = addDays(today, -56)
   // Active members now (last 30 days) and as of 30 days ago, for the change.
   const activeFrom = addDays(today, -ACTIVE_WINDOW_DAYS)
-  const prevActiveFrom = addDays(today, -2 * ACTIVE_WINDOW_DAYS)
+  // Same length as the current window, which includes today: 31 days each
+  const prevActiveFrom = addDays(today, -2 * ACTIVE_WINDOW_DAYS - 1)
   // Sales this month so far vs the same days of last month (capped at its end)
   const monthStart = today.slice(0, 8) + "01"
   const prevMonthStart = addDays(monthStart, -1).slice(0, 8) + "01"
@@ -100,11 +102,17 @@ export default async function OverviewPage() {
           .order("id")
           .range(from, to),
       ),
-      // Card sales this month, from the Stripe ledger
-      getStudioStripeAccount().then(async (account) => ({
-        stripeConnected: !!account,
-        revenuePence: account ? (await getLedgerSummary(studioId, monthStart, today)).gross_sales : 0,
-      })),
+      // Card sales this month, from the Stripe ledger. Money is for owners
+      // and admins only (RLS hides the ledger from managers and reception),
+      // and a ledger error shows £0 rather than breaking the overview.
+      canSeeMoney
+        ? getStudioStripeAccount().then(async (account) => ({
+            stripeConnected: !!account,
+            revenuePence: account
+              ? await getLedgerSummary(studioId, monthStart, today).then((s) => s.gross_sales, () => 0)
+              : 0,
+          }))
+        : Promise.resolve({ stripeConnected: false, revenuePence: 0 }),
       // Recent bookings for activity feed (confirmed only, last 20)
       supabase
         .from("bookings")
@@ -159,7 +167,9 @@ export default async function OverviewPage() {
       // Every class session in the last 8 weeks, with bookings and capacity
       getSessionFill(studioId, prevFillFrom, fillTo),
       // Same days of last month, for comparison
-      getLedgerSummary(studioId, prevMonthStart, prevMonthTo).then((s) => s.gross_sales),
+      canSeeMoney
+        ? getLedgerSummary(studioId, prevMonthStart, prevMonthTo).then((s) => s.gross_sales, () => 0)
+        : Promise.resolve(0),
     ])
 
   // Drop today's slots whose parent rule's date window doesn't cover today.
@@ -292,7 +302,7 @@ export default async function OverviewPage() {
           }
           change={membersChange}
         />
-        <StatCard
+        {canSeeMoney && <StatCard
           label="Sales this month"
           value={revenuePence > 0 ? `\u00A3${formatPence(revenuePence)}` : "\u00A30"}
           subtitle={
@@ -303,7 +313,7 @@ export default async function OverviewPage() {
                 : "Card sales, before fees and refunds"
           }
           change={revenueChange}
-        />
+        />}
         <StatCard
           label="Class fill rate"
           value={fillPct !== null ? `${fillPct}%` : "--"}

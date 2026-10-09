@@ -55,7 +55,7 @@ export async function updateAccountingSettings(yearEnd: string, software: string
 
     // A date that exists every year: no 29 Feb, no 31 Apr.
     const valid =
-      /^\d{2}-\d{2}$/.test(yearEnd) &&
+      /^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(yearEnd) &&
       yearEnd !== "02-29" &&
       new Date(`2001-${yearEnd}T12:00:00Z`).toISOString().slice(5, 10) === yearEnd
     if (!valid) throw new Error("Choose a year-end date that exists every year.")

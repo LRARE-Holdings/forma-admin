@@ -1,4 +1,5 @@
 import { categoryOf, type LedgerLine } from "@/lib/money"
+import { csvCell, neutraliseFormula } from "@/lib/csv"
 
 // The Stripe account as a bank statement, for importing into accounting
 // software as its own "Stripe" bank account. Each sale, Stripe fee, refund,
@@ -71,13 +72,10 @@ export function statementLines(lines: LedgerLine[]): StatementLine[] {
 const pounds = (pence: number) => (pence / 100).toFixed(2)
 const dmy = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}`
 
-function csvCell(v: string): string {
-  return /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v
-}
 
 /** FreeAgent refuses commas and quote marks anywhere in a field. */
 function freeAgentText(v: string): string {
-  return v.replace(/[",\r\n]/g, " ").replace(/\s+/g, " ").trim()
+  return neutraliseFormula(v.replace(/[",\r\n]/g, " ").replace(/\s+/g, " ").trim())
 }
 
 export const FORMAT_LABELS: Record<Exclude<StatementFormat, "csv">, string> = {
