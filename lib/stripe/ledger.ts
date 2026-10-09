@@ -7,9 +7,10 @@ import { stripe } from "@/lib/stripe"
  * stripe_balance_transactions / stripe_payouts. Idempotent: rows are upserted
  * by Stripe ID, so re-running over the same window only refreshes them.
  *
- * Incremental runs re-read the last 14 days, which covers transactions moving
+ * The nightly run re-reads the last 14 days, which covers transactions moving
  * from pending to available (Burn Mat's payout delay is 3 days) and payouts
- * changing status after they're created.
+ * changing status after they're created. The webhook re-reads just the last
+ * day, so a sale is in the ledger seconds after it's paid.
  */
 const OVERLAP_DAYS = 14
 const UPSERT_BATCH = 500
@@ -57,25 +58,26 @@ async function latest(db: SupabaseClient, table: string, studioId: string): Prom
 
 /**
  * Sync one studio. `full` re-reads the account's whole history (the backfill);
- * otherwise it starts OVERLAP_DAYS before the newest row already stored.
+ * otherwise it starts `overlapDays` before the newest row already stored.
  * `db` must be a service-role client: the tables have no write policies.
  */
 export async function syncStripeLedger(
   db: SupabaseClient,
   studioId: string,
   stripeAccountId: string,
-  { full = false }: { full?: boolean } = {},
+  { full = false, overlapDays = OVERLAP_DAYS }: { full?: boolean; overlapDays?: number } = {},
 ): Promise<LedgerSyncResult> {
   const newest = full ? null : await latest(db, "stripe_balance_transactions", studioId)
   const gte = newest
-    ? Math.floor(new Date(newest).getTime() / 1000) - OVERLAP_DAYS * 86400
+    ? Math.floor(new Date(newest).getTime() / 1000) - overlapDays * 86400
     : undefined
   const created = gte !== undefined ? { gte } : undefined
   const opts = { stripeAccount: stripeAccountId }
 
   // Charges seen in this run, so a refund can take its sale's type without
   // another API call when both fall in the same window.
-  const chargeInfo = new Map<string, { paymentIntentId: string | null; saleType: string | null }>()
+  type ChargeInfo = { paymentIntentId: string | null; saleType: string | null; metadata: Record<string, string> }
+  const chargeInfo = new Map<string, ChargeInfo>()
   const refundsNeedingCharge: Row[] = []
   const txns: Row[] = []
 
@@ -116,6 +118,7 @@ export async function syncStripeLedger(
         chargeInfo.set(charge.id, {
           paymentIntentId: row.payment_intent_id as string | null,
           saleType: row.sale_type as string | null,
+          metadata: charge.metadata ?? {},
         })
       } else if (src.object === "refund") {
         const refund = src as unknown as Stripe.Refund
@@ -134,7 +137,7 @@ export async function syncStripeLedger(
     txns.push(row)
   }
 
-  // Give each refund its sale's type: from this run, then from rows already
+  // Give each refund its sale's type and details: from this run, then from rows already
   // stored, then from Stripe as a last resort.
   const missing = refundsNeedingCharge.filter(
     (r) => r.charge_id && !chargeInfo.has(r.charge_id as string),
@@ -143,19 +146,24 @@ export async function syncStripeLedger(
     const ids = [...new Set(missing.map((r) => r.charge_id as string))]
     const { data } = await db
       .from("stripe_balance_transactions")
-      .select("charge_id, payment_intent_id, sale_type")
+      .select("charge_id, payment_intent_id, sale_type, metadata")
       .in("charge_id", ids)
       .in("type", ["charge", "payment"])
     for (const d of data ?? []) {
       chargeInfo.set(d.charge_id as string, {
         paymentIntentId: d.payment_intent_id as string | null,
         saleType: d.sale_type as string | null,
+        metadata: (d.metadata ?? {}) as Record<string, string>,
       })
     }
     for (const id of ids) {
       if (chargeInfo.has(id)) continue
       const charge = await stripe.charges.retrieve(id, opts)
-      chargeInfo.set(id, { paymentIntentId: idOf(charge.payment_intent), saleType: saleTypeOf(charge) })
+      chargeInfo.set(id, {
+        paymentIntentId: idOf(charge.payment_intent),
+        saleType: saleTypeOf(charge),
+        metadata: charge.metadata ?? {},
+      })
     }
   }
   for (const r of refundsNeedingCharge) {
@@ -163,6 +171,8 @@ export async function syncStripeLedger(
     if (!info) continue
     r.sale_type = info.saleType
     r.payment_intent_id ??= info.paymentIntentId
+    // Who and what was refunded lives on the sale, not the refund.
+    r.metadata = { ...info.metadata, ...(r.metadata as Record<string, string>) }
   }
 
   const payouts: Row[] = []
