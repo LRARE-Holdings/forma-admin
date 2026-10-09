@@ -6,6 +6,8 @@ import { getGreeting, formatTime, formatPence, localDateStr, dateToDateStr, ukDa
 import { getMonthlyRevenue, getPreviousMonthRevenue } from "@/lib/stripe/revenue"
 import { ADMIN_ROLES } from "@/lib/types"
 import { findStrandedBookings } from "@/lib/schedule-integrity"
+import { getSessionFill, summariseFill } from "@/lib/fill-rate"
+import { ACTIVE_WINDOW_DAYS, addDays } from "@/lib/member-activity"
 import { StatCard } from "@/components/shared/stat-card"
 import { ClassColorBar } from "@/components/shared/class-color-bar"
 import { EmptyState } from "@/components/shared/empty-state"
@@ -43,18 +45,6 @@ export default async function OverviewPage() {
   lastWeekSameDay.setDate(ukToday.getDate() - 7)
   const lastWeekSameDayStr = dateToDateStr(lastWeekSameDay)
 
-  // This Monday and last Monday for new-member comparison
-  const jsDow = ukToday.getDay() // 0 = Sunday
-  const mondayOffset = jsDow === 0 ? -6 : 1 - jsDow
-  const thisMonday = new Date(ukToday)
-  thisMonday.setDate(ukToday.getDate() + mondayOffset)
-  thisMonday.setHours(0, 0, 0, 0)
-  const thisMondayISO = thisMonday.toISOString()
-
-  const lastMonday = new Date(thisMonday)
-  lastMonday.setDate(thisMonday.getDate() - 7)
-  const lastMondayISO = lastMonday.toISOString()
-
   const role = await getUserRole(studioId)
 
   // Bookings pointing at a slot that is no longer live. Checked on every
@@ -66,7 +56,17 @@ export default async function OverviewPage() {
       : []
 
   // Fetch data in parallel
-  const [scheduleRes, bookingsTodayRes, members, revenue, recentBookingsRes, studioRes, classesCountRes, scheduleCountRes, teamCountRes, allBookings, bookingsLastWeekRes, newMembersThisWeekRes, newMembersLastWeekRes, prevMonthRevenue] =
+  // Fill rate compares the last 4 complete weeks with the 4 before, ending
+  // yesterday so today's half-run classes don't drag it down.
+  const fillTo = addDays(today, -1)
+  const fillFrom = addDays(today, -28)
+  const prevFillTo = addDays(today, -29)
+  const prevFillFrom = addDays(today, -56)
+  // Active members now (last 30 days) and as of 30 days ago, for the change.
+  const activeFrom = addDays(today, -ACTIVE_WINDOW_DAYS)
+  const prevActiveFrom = addDays(today, -2 * ACTIVE_WINDOW_DAYS)
+
+  const [scheduleRes, bookingsTodayRes, members, revenue, recentBookingsRes, studioRes, classesCountRes, scheduleCountRes, teamCountRes, recentClassBookings, bookingsLastWeekRes, sessionFill, prevMonthRevenue] =
     await Promise.all([
       // Today's schedule (rule date window applied below)
       supabase
@@ -83,11 +83,11 @@ export default async function OverviewPage() {
         .eq("studio_id", studioId)
         .eq("date", today)
         .eq("status", "confirmed"),
-      // Active members (with profile details for at-risk section)
+      // Members, to tell their bookings apart from staff test bookings
       fetchAllRows((from, to) =>
         supabase
           .from("studio_memberships")
-          .select("profile_id, created_at, profiles:profile_id(id, full_name, email)")
+          .select("profile_id")
           .eq("studio_id", studioId)
           .eq("role", "member")
           .order("id")
@@ -127,14 +127,15 @@ export default async function OverviewPage() {
         .eq("studio_id", studioId)
         .neq("role", "member")
         .limit(2),
-      // All confirmed bookings for at-risk calculation
+      // Classes in the last 60 days, for active members now vs 30 days ago
       fetchAllRows((from, to) =>
         supabase
           .from("bookings")
           .select("profile_id, date")
           .eq("studio_id", studioId)
           .eq("status", "confirmed")
-          .order("date", { ascending: false })
+          .gte("date", prevActiveFrom)
+          .lte("date", today)
           .order("id")
           .range(from, to),
       ),
@@ -145,21 +146,8 @@ export default async function OverviewPage() {
         .eq("studio_id", studioId)
         .eq("date", lastWeekSameDayStr)
         .eq("status", "confirmed"),
-      // New members this week (since Monday)
-      supabase
-        .from("studio_memberships")
-        .select("id")
-        .eq("studio_id", studioId)
-        .eq("role", "member")
-        .gte("created_at", thisMondayISO),
-      // New members last week (last Monday to this Monday)
-      supabase
-        .from("studio_memberships")
-        .select("id")
-        .eq("studio_id", studioId)
-        .eq("role", "member")
-        .gte("created_at", lastMondayISO)
-        .lt("created_at", thisMondayISO),
+      // Every class session in the last 8 weeks, with bookings and capacity
+      getSessionFill(studioId, prevFillFrom, fillTo),
       // Previous month revenue (same period) for comparison
       getPreviousMonthRevenue(),
     ])
@@ -181,8 +169,6 @@ export default async function OverviewPage() {
 
   // Week-over-week comparison calculations
   const bookingsLastWeekCount = bookingsLastWeekRes.data?.length ?? 0
-  const newMembersThisWeek = newMembersThisWeekRes.data?.length ?? 0
-  const newMembersLastWeek = newMembersLastWeekRes.data?.length ?? 0
   const prevMonthRevenuePence = prevMonthRevenue
 
   function percentChange(current: number, previous: number): number {
@@ -194,77 +180,33 @@ export default async function OverviewPage() {
     ? { value: percentChange(bookingsTodayCount, bookingsLastWeekCount), label: "vs last week" }
     : undefined
 
-  const membersChange = newMembersLastWeek > 0 || newMembersThisWeek > 0
-    ? { value: percentChange(newMembersThisWeek, newMembersLastWeek), label: "new vs last week" }
-    : undefined
 
   const revenueChange = stripeConnected && (prevMonthRevenuePence > 0 || revenuePence > 0)
     ? { value: percentChange(revenuePence, prevMonthRevenuePence), label: "vs last month" }
     : undefined
 
-  // At-risk members: no confirmed booking in 30+ days
-  const memberIdSet = new Set(
-    members.map((m: Record<string, unknown>) => m.profile_id as string)
-  )
-
-  const lastBookingByProfile: Record<string, string> = {}
-  for (const b of allBookings) {
-    if (memberIdSet.has(b.profile_id) && !lastBookingByProfile[b.profile_id]) {
-      lastBookingByProfile[b.profile_id] = b.date
-    }
+  // Active members: booked a class dated in the last 30 days, compared with
+  // the same count as it stood 30 days ago
+  const memberIdSet = new Set(members.map((m) => m.profile_id as string))
+  const activeNow = new Set<string>()
+  const activeBefore = new Set<string>()
+  for (const b of recentClassBookings) {
+    if (!memberIdSet.has(b.profile_id)) continue
+    if (b.date >= activeFrom) activeNow.add(b.profile_id)
+    else activeBefore.add(b.profile_id)
   }
+  const activeMembersCount = activeNow.size
+  const membersChange = activeBefore.size > 0
+    ? { value: percentChange(activeNow.size, activeBefore.size), label: "vs previous 30 days" }
+    : undefined
 
-  const thirtyDaysAgo = new Date(ukToday)
-  thirtyDaysAgo.setDate(ukToday.getDate() - 30)
-  const thirtyDaysAgoStr = dateToDateStr(thirtyDaysAgo)
-
-  const nowMs = Date.now()
-  const atRiskMembers: Array<{
-    id: string
-    name: string
-    email: string
-    lastBookingDate: string | null
-    daysSinceLastBooking: number | null
-  }> = []
-
-  for (const m of members) {
-    const profile = (m as Record<string, unknown>).profiles as {
-      id: string
-      full_name: string | null
-      email: string | null
-    } | null
-    if (!profile) continue
-    // Skip members who joined less than 30 days ago — they're still new
-    const joinedAt = (m as Record<string, unknown>).created_at as string | null
-    if (joinedAt && new Date(joinedAt).getTime() > thirtyDaysAgo.getTime()) continue
-    const lastDate = lastBookingByProfile[profile.id]
-    if (!lastDate || lastDate < thirtyDaysAgoStr) {
-      const daysSince = lastDate
-        ? Math.floor(
-            (nowMs - new Date(lastDate + "T00:00:00").getTime()) /
-              (1000 * 60 * 60 * 24)
-          )
-        : null
-      atRiskMembers.push({
-        id: profile.id,
-        name: profile.full_name ?? "Unknown",
-        email: profile.email ?? "",
-        lastBookingDate: lastDate ?? null,
-        daysSinceLastBooking: daysSince,
-      })
-    }
-  }
-
-  // Sort: longest-absent first, never-booked last
-  atRiskMembers.sort((a, b) => {
-    if (a.daysSinceLastBooking === null && b.daysSinceLastBooking === null) return 0
-    if (a.daysSinceLastBooking === null) return 1
-    if (b.daysSinceLastBooking === null) return -1
-    return b.daysSinceLastBooking - a.daysSinceLastBooking
-  })
-
-  const atRiskCount = atRiskMembers.length
-  const activeMembersCount = totalMembersCount - atRiskCount
+  // Class fill rate: places booked out of places offered
+  const fill = summariseFill(sessionFill, fillFrom, fillTo)
+  const prevFill = summariseFill(sessionFill, prevFillFrom, prevFillTo)
+  const fillPct = fill.rate !== null ? Math.round(fill.rate * 100) : null
+  const fillChange = fill.rate !== null && prevFill.rate !== null
+    ? { value: fillPct! - Math.round(prevFill.rate * 100), label: "vs previous 4 weeks", unit: " pts" }
+    : undefined
 
   // Get booking counts per schedule slot for today
   const { data: todayBookings } = await supabase
@@ -336,9 +278,7 @@ export default async function OverviewPage() {
           subtitle={
             totalMembersCount === 0
               ? "No members yet"
-              : atRiskCount > 0
-                ? `${atRiskCount} at risk excluded`
-                : undefined
+              : `Booked in the last ${ACTIVE_WINDOW_DAYS} days`
           }
           change={membersChange}
         />
@@ -355,14 +295,14 @@ export default async function OverviewPage() {
           change={revenueChange}
         />
         <StatCard
-          label="At risk"
-          value={atRiskCount}
+          label="Class fill rate"
+          value={fillPct !== null ? `${fillPct}%` : "--"}
           subtitle={
-            atRiskCount === 0
-              ? "All members active"
-              : "No booking in 30+ days"
+            fill.sessions === 0
+              ? "No classes in the last 4 weeks"
+              : `${fill.booked} of ${fill.capacity} places, last 4 weeks`
           }
-          subtitleClassName={atRiskCount > 0 ? "text-ember" : "text-warm-grey"}
+          change={fillChange}
         />
       </div>
 
@@ -506,68 +446,6 @@ export default async function OverviewPage() {
           </div>
         </div>
       </div>
-      {/* At risk members */}
-      {atRiskMembers.length > 0 && (
-        <div className="mb-6 overflow-hidden rounded-2xl border border-sand bg-white">
-          <div className="flex items-center justify-between border-b border-sand px-5 py-4">
-            <h3 className="font-heading text-[1.15rem] font-semibold text-cocoa">
-              At risk members
-            </h3>
-            <a
-              href="/dashboard/members"
-              className="text-[0.7rem] font-semibold uppercase tracking-[0.04em] text-gold hover:text-ember"
-            >
-              View all members
-            </a>
-          </div>
-          <div>
-            {atRiskMembers.slice(0, 8).map((m) => (
-              <div
-                key={m.id}
-                className="flex items-center gap-3 border-b border-sand/40 px-5 py-2.5 last:border-b-0"
-              >
-                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-ember/10 font-heading text-[0.7rem] font-semibold text-ember">
-                  {m.name.charAt(0).toUpperCase()}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[0.82rem] font-semibold text-cocoa">
-                    {m.name}
-                  </div>
-                  <div className="truncate text-[0.7rem] text-warm-grey">
-                    {m.email}
-                  </div>
-                </div>
-                <div className="shrink-0 text-right">
-                  <div className="text-[0.75rem] font-semibold text-ember">
-                    {m.daysSinceLastBooking !== null
-                      ? `${m.daysSinceLastBooking}d ago`
-                      : "Never booked"}
-                  </div>
-                  {m.lastBookingDate && (
-                    <div className="text-[0.65rem] text-warm-grey">
-                      {new Date(m.lastBookingDate + "T00:00:00").toLocaleDateString("en-GB", {
-                        day: "numeric",
-                        month: "short",
-                      })}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-          {atRiskMembers.length > 8 && (
-            <div className="border-t border-sand px-5 py-3 text-center">
-              <a
-                href="/dashboard/members"
-                className="text-[0.75rem] font-semibold text-gold hover:text-ember"
-              >
-                +{atRiskMembers.length - 8} more at risk members
-              </a>
-            </div>
-          )}
-        </div>
-      )}
-
       <RealtimeBookingListener studioId={studioId} />
     </>
   )

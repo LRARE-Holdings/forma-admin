@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server"
+import { fetchAllRows } from "@/lib/supabase/fetch-all"
 import type { WeekData, WeekSlot, StudioHoliday, MonthData } from "@/lib/types"
 
 /** Format a Date as YYYY-MM-DD in local time (avoids toISOString UTC shift). */
@@ -49,9 +50,9 @@ function ruleAppliesToDate(
 /**
  * Compute which schedule slots appear within [rangeStart, rangeEnd] inclusive,
  * including skip exceptions, holidays, and booking counts. Shared by the
- * weekly and monthly views.
+ * weekly and monthly views and the fill-rate stat.
  */
-async function getRangeData(
+export async function getRangeData(
   studioId: string,
   rangeStartStr: string,
   rangeEndStr: string
@@ -61,7 +62,7 @@ async function getRangeData(
   const rangeStart = new Date(rangeStartStr + "T00:00:00")
   const rangeEnd = new Date(rangeEndStr + "T00:00:00")
 
-  const [scheduleRes, rulesRes, exceptionsRes, holidaysRes, bookingsRes] =
+  const [scheduleRes, rulesRes, exceptionsRes, holidaysRes, bookings] =
     await Promise.all([
       supabase
         .from("schedule")
@@ -87,13 +88,18 @@ async function getRangeData(
         .eq("studio_id", studioId)
         .lte("start_date", rangeEndStr)
         .gte("end_date", rangeStartStr),
-      supabase
-        .from("bookings")
-        .select("schedule_id, date")
-        .eq("studio_id", studioId)
-        .eq("status", "confirmed")
-        .gte("date", rangeStartStr)
-        .lte("date", rangeEndStr),
+      // Paged: a six-week month grid holds ~700 bookings, close to the cap.
+      fetchAllRows((from, to) =>
+        supabase
+          .from("bookings")
+          .select("schedule_id, date")
+          .eq("studio_id", studioId)
+          .eq("status", "confirmed")
+          .gte("date", rangeStartStr)
+          .lte("date", rangeEndStr)
+          .order("id")
+          .range(from, to),
+      ),
     ])
 
   // Build lookup maps
@@ -123,7 +129,7 @@ async function getRangeData(
   }
 
   const bookingCounts = new Map<string, number>()
-  for (const b of bookingsRes.data ?? []) {
+  for (const b of bookings) {
     const key = `${b.schedule_id}:${b.date}`
     bookingCounts.set(key, (bookingCounts.get(key) ?? 0) + 1)
   }

@@ -2,12 +2,14 @@ import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createStripeProduct, createStripePrice } from "@/lib/stripe/products"
 import { stripe } from "@/lib/stripe"
+import { syncStripeLedger, type LedgerSyncResult } from "@/lib/stripe/ledger"
 import type { BillingInterval } from "@/lib/types"
 
 /**
  * GET /api/cron
  *
- * Daily cron (Vercel Hobby plan) — handles Stripe product/price sync.
+ * Daily cron (Vercel Hobby plan) — handles Stripe product/price sync and
+ * copies each studio's Stripe transactions and payouts into the ledger tables.
  * Waitlist expiry runs separately via Supabase Edge Function + pg_cron (every 5 min).
  */
 export async function GET(request: Request) {
@@ -160,7 +162,21 @@ export async function GET(request: Request) {
     }
 
     console.log(`[cron] Stripe sync — Synced: ${synced}, Failed: ${failed}`)
-    return NextResponse.json({ ok: true, synced, failed })
+
+    // Ledger copy runs for every connected studio, charges enabled or not:
+    // refunds and payouts still happen on a paused account.
+    const ledger: Record<string, LedgerSyncResult | { error: string }> = {}
+    for (const studio of studios ?? []) {
+      try {
+        ledger[studio.id] = await syncStripeLedger(supabase, studio.id, studio.stripe_account_id as string)
+      } catch (e) {
+        console.error(`[cron] Ledger sync failed for studio ${studio.id}:`, e)
+        ledger[studio.id] = { error: e instanceof Error ? e.message : String(e) }
+      }
+    }
+    console.log("[cron] Ledger sync —", JSON.stringify(ledger))
+
+    return NextResponse.json({ ok: true, synced, failed, ledger })
   } catch (err) {
     console.error("[cron] Stripe sync error:", err)
     return NextResponse.json(

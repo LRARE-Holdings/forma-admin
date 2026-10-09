@@ -1,10 +1,11 @@
 import { createClient } from "@/lib/supabase/server"
 import { fetchAllRows } from "@/lib/supabase/fetch-all"
 import { getStudioId } from "@/lib/studio-context"
-import { dateToDateStr, localDateStr } from "@/lib/utils"
+import { localDateStr } from "@/lib/utils"
 import { PageHeader } from "@/components/shared/page-header"
 import { MembersTable } from "@/components/dashboard/members-table"
 import { isPackUsableNow } from "@/lib/booking-rules"
+import { activityByProfile, isActive, isLapsed, type MemberActivity } from "@/lib/member-activity"
 
 export default async function MembersPage() {
   const supabase = await createClient()
@@ -30,11 +31,11 @@ export default async function MembersPage() {
     })
     .filter(Boolean) as string[]
 
-  let bookingCounts: Record<string, number> = {}
-  let totalAttendance: Record<string, number> = {}
-  let creditsByProfile: Record<string, number> = {}
-  let lastBookingByProfile: Record<string, string> = {}
-  let packsByProfile: Record<string, Array<{
+  const bookingCounts: Record<string, number> = {}
+  const totalAttendance: Record<string, number> = {}
+  const creditsByProfile: Record<string, number> = {}
+  let activity = new Map<string, MemberActivity>()
+  const packsByProfile: Record<string, Array<{
     id: string
     pack_type: string
     credits_total: number
@@ -42,15 +43,16 @@ export default async function MembersPage() {
     valid_from: string | null
     expires_at: string
   }>> = {}
-  let membershipByProfile: Record<string, { status: string; tierName: string }> = {}
+  const membershipByProfile: Record<string, { status: string; tierName: string }> = {}
+
+  const todayStr = localDateStr()
 
   if (memberIds.length > 0) {
-    const todayStr = localDateStr()
     const monthStart = todayStr.slice(0, 8) + "01"
 
     const [confirmedBookings, packs, membershipsRes] = await Promise.all([
       // Every confirmed booking: all-time attendance, this month's count and
-      // the most recent date (for the at-risk calculation) all come from here
+      // active/lapsed status all come from here
       fetchAllRows((from, to) =>
         supabase
           .from("bookings")
@@ -82,9 +84,8 @@ export default async function MembersPage() {
       if (b.date >= monthStart) {
         bookingCounts[b.profile_id] = (bookingCounts[b.profile_id] ?? 0) + 1
       }
-      const last = lastBookingByProfile[b.profile_id]
-      if (!last || b.date > last) lastBookingByProfile[b.profile_id] = b.date
     }
+    activity = activityByProfile(confirmedBookings, todayStr)
 
     for (const m of membershipsRes.data ?? []) {
       const tier = m.membership_tiers as unknown as { name: string } | null
@@ -117,11 +118,6 @@ export default async function MembersPage() {
     }
   }
 
-  const ukToday = new Date(localDateStr() + "T12:00:00Z")
-  const thirtyDaysAgo = new Date(ukToday)
-  thirtyDaysAgo.setDate(ukToday.getDate() - 30)
-  const thirtyDaysAgoStr = dateToDateStr(thirtyDaysAgo)
-
   const rows = members.map((m) => {
     const profile = m.profiles as unknown as {
       id: string
@@ -130,7 +126,7 @@ export default async function MembersPage() {
       phone: string | null
       date_of_birth: string | null
     }
-    const lastBooking = lastBookingByProfile[profile.id] ?? null
+    const a = activity.get(profile.id) ?? null
     const membership = membershipByProfile[profile.id] ?? null
     return {
       id: profile.id,
@@ -147,23 +143,22 @@ export default async function MembersPage() {
       }),
       joinedRaw: m.created_at as string,
       packs: packsByProfile[profile.id] ?? [],
-      lastBookingDate: lastBooking,
+      lastBookingDate: a?.lastBookingDate ?? null,
+      lastClassDate: a?.lastClassDate ?? null,
       membershipStatus: membership?.status ?? null,
       membershipTier: membership?.tierName ?? null,
-      atRisk:
-        // Only flag as at-risk if they joined 30+ days ago
-        new Date(m.created_at as string).getTime() <= thirtyDaysAgo.getTime() &&
-        (!lastBooking || lastBooking < thirtyDaysAgoStr),
+      active: a ? isActive(a, todayStr) : false,
+      lapsed: a ? isLapsed(a, todayStr) : false,
     }
   })
 
-  const activeCount = rows.filter((r) => !r.atRisk).length
+  const activeCount = rows.filter((r) => r.active).length
 
   return (
     <>
       <PageHeader
         title="Members"
-        description={`${activeCount} active member${activeCount !== 1 ? "s" : ""}.`}
+        description={`${rows.length} members, ${activeCount} active in the last 30 days.`}
       />
       <MembersTable members={rows} />
     </>

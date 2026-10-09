@@ -8,6 +8,8 @@ interface StatCardProps {
   change?: {
     value: number
     label?: string
+    /** Shown after the number. "%" by default; " pts" for a change in a rate. */
+    unit?: string
   }
 }
 
@@ -41,7 +43,7 @@ export function StatCard({
             <>
               <span className="flex items-center gap-0.5 rounded-full bg-success/10 px-1.5 py-0.5 text-[0.65rem] font-semibold text-success">
                 <ArrowUp className="h-3 w-3" />
-                +{Math.abs(change.value)}%
+                +{Math.abs(change.value)}{change.unit ?? "%"}
               </span>
               <span className="text-[0.6rem] text-warm-grey">{change.label ?? "vs last week"}</span>
             </>
@@ -50,7 +52,7 @@ export function StatCard({
             <>
               <span className="flex items-center gap-0.5 rounded-full bg-ember/10 px-1.5 py-0.5 text-[0.65rem] font-semibold text-ember">
                 <ArrowDown className="h-3 w-3" />
-                -{Math.abs(change.value)}%
+                -{Math.abs(change.value)}{change.unit ?? "%"}
               </span>
               <span className="text-[0.6rem] text-warm-grey">{change.label ?? "vs last week"}</span>
             </>

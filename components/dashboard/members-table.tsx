@@ -34,9 +34,20 @@ interface MemberRow {
   joinedRaw: string
   packs: PackRow[]
   lastBookingDate: string | null
+  lastClassDate: string | null
   membershipStatus: string | null
   membershipTier: string | null
-  atRisk: boolean
+  active: boolean
+  lapsed: boolean
+}
+
+type Filter = "all" | "lapsed"
+
+function formatShortDate(dateStr: string): string {
+  return new Date(dateStr + "T12:00:00Z").toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+  })
 }
 
 function formatDOB(dob: string | null): string {
@@ -74,6 +85,7 @@ export function MembersTable({ members }: MembersTableProps) {
   const [deletingMember, setDeletingMember] = useState<MemberRow | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
+  const [filter, setFilter] = useState<Filter>("all")
   const [sortKey, setSortKey] = useState<SortKey | null>(null)
   const [sortDir, setSortDir] = useState<SortDir>("asc")
   const [page, setPage] = useState(0)
@@ -91,7 +103,7 @@ export function MembersTable({ members }: MembersTableProps) {
   }
 
   const filteredMembers = useMemo(() => {
-    let result = members
+    let result = filter === "lapsed" ? members.filter((m) => m.lapsed) : members
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase()
       result = result.filter(
@@ -115,7 +127,9 @@ export function MembersTable({ members }: MembersTableProps) {
       })
     }
     return result
-  }, [members, searchTerm, sortKey, sortDir])
+  }, [members, filter, searchTerm, sortKey, sortDir])
+
+  const lapsedCount = useMemo(() => members.filter((m) => m.lapsed).length, [members])
 
   const totalPages = Math.ceil(filteredMembers.length / pageSize)
   const paginatedMembers = filteredMembers.slice(page * pageSize, (page + 1) * pageSize)
@@ -141,8 +155,10 @@ export function MembersTable({ members }: MembersTableProps) {
       "Pack credits",
       "Membership status",
       "Membership tier",
-      "Last booking",
-      "At risk",
+      "Last class",
+      "Next or last booking",
+      "Active (last 30 days)",
+      "Lapsed regular",
     ]
     const escape = (v: string) =>
       v.includes(",") || v.includes('"') || v.includes("\n")
@@ -160,8 +176,10 @@ export function MembersTable({ members }: MembersTableProps) {
         String(m.credits),
         m.membershipStatus ?? "",
         m.membershipTier ?? "",
+        m.lastClassDate ?? "",
         m.lastBookingDate ?? "",
-        m.atRisk ? "Yes" : "No",
+        m.active ? "Yes" : "No",
+        m.lapsed ? "Yes" : "No",
       ].join(",")
     )
     const csv = [headers.join(","), ...rows].join("\n")
@@ -215,8 +233,9 @@ export function MembersTable({ members }: MembersTableProps) {
           />
         ) : (
           <>
-            {/* Search + Export */}
-            <div className="flex items-center justify-between border-b border-sand px-5 py-3">
+            {/* Search + Filter + Export */}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-sand px-5 py-3">
+              <div className="flex flex-wrap items-center gap-3">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-warm-grey" />
                 <input
@@ -226,6 +245,36 @@ export function MembersTable({ members }: MembersTableProps) {
                   onChange={(e) => { setSearchTerm(e.target.value); setPage(0) }}
                   className="h-9 w-full max-w-sm rounded-lg border border-sand bg-cream/50 pl-9 pr-3 text-[0.82rem] text-cocoa placeholder:text-warm-grey/60 outline-none transition-colors focus:border-gold focus:bg-white"
                 />
+              </div>
+              <div
+                role="group"
+                aria-label="Filter members"
+                className="flex rounded-lg border border-sand p-0.5 text-[0.75rem] font-semibold"
+              >
+                {([
+                  { value: "all", label: "All" },
+                  { value: "lapsed", label: `Lapsed (${lapsedCount})` },
+                ] as const).map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    aria-pressed={filter === opt.value}
+                    title={
+                      opt.value === "lapsed"
+                        ? "Came to 3 or more classes, but nothing in the last 30 days and nothing booked"
+                        : undefined
+                    }
+                    onClick={() => { setFilter(opt.value); setPage(0) }}
+                    className={`rounded-md px-2.5 py-1 transition-colors ${
+                      filter === opt.value
+                        ? "bg-cream text-cocoa"
+                        : "text-warm-grey hover:text-cocoa"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
               </div>
               <button
                 onClick={exportCsv}
@@ -239,7 +288,9 @@ export function MembersTable({ members }: MembersTableProps) {
             {filteredMembers.length === 0 ? (
               <div className="px-5 py-12 text-center">
                 <p className="text-[0.82rem] text-warm-grey">
-                  No members match &ldquo;{searchTerm}&rdquo;
+                  {searchTerm.trim()
+                    ? <>No members match &ldquo;{searchTerm}&rdquo;</>
+                    : "No lapsed regulars right now."}
                 </p>
               </div>
             ) : (
@@ -296,9 +347,9 @@ export function MembersTable({ members }: MembersTableProps) {
                             <MemberNameButton profileId={m.id}>
                               <strong className="text-cocoa">{m.name}</strong>
                             </MemberNameButton>
-                            {m.atRisk && (
-                              <span className="inline-block rounded-full bg-ember/15 px-2 py-0.5 text-[0.6rem] font-semibold uppercase tracking-[0.04em] text-ember">
-                                At risk
+                            {m.lapsed && m.lastClassDate && (
+                              <span className="inline-block whitespace-nowrap rounded-full bg-warm-grey/10 px-2 py-0.5 text-[0.65rem] text-warm-grey">
+                                Last came {formatShortDate(m.lastClassDate)}
                               </span>
                             )}
                           </div>
