@@ -214,3 +214,17 @@ Found during a codebase review. Both applied the same day.
   zero), logged as `manual_adjustment` against the booking. `credit_shortfalls()`
   now nets a booking's refunds and adjustments, so a reclaimed credit counts
   as spent, not owed. Dry run then applied: shortfall stayed 0.
+
+## Stripe ledger (2026-10-09) — written, NOT yet applied
+
+- `20261009_18_stripe_ledger.sql` — `stripe_balance_transactions` and
+  `stripe_payouts`: a local copy of every balance transaction and payout on the
+  studio's connected account, written only by the service role (nightly in
+  `/api/cron` via `lib/stripe/ledger.ts`), readable by owners and admins.
+  `stripe_ledger_summary(studio, from, to)` gives one statement for any period
+  with Europe/London day boundaries; its buckets satisfy opening + net sales −
+  payouts − payout fees + other = closing. Additive only. Dry run of the sync
+  against Burn Mat's account (in memory, no DB writes): 1,439 transactions and
+  142 payouts since 31 Mar 2026; the summed ledger (£92.97) equals Stripe's
+  live balance to the penny; every sale and refund got a type and a payment
+  intent. After applying, run the backfill (`syncStripeLedger(..., { full: true })`).
