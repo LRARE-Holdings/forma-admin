@@ -229,7 +229,7 @@ Found during a codebase review. Both applied the same day.
   live balance to the penny; every sale and refund got a type and a payment
   intent. Applied 2026-10-09 and backfilled (1,439 / 142); database summary
   for 2026 closes at £92.97, matching Stripe.
-- `20261009_19_keep_booking_history.sql` — **written, NOT yet applied.**
+- `20261009_19_keep_booking_history.sql` — applied 2026-10-09.
   `bookings.schedule_id` and `schedule.class_id` go from ON DELETE CASCADE to
   RESTRICT. Deleting a class used to wipe its retired slots' bookings; the
   ledger found 32 paid drop-ins (Apr–Sep 2026, £388) whose bookings were lost

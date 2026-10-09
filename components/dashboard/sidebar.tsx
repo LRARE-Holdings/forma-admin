@@ -49,7 +49,7 @@ const navItems: NavItem[] = [
   { href: "/dashboard/events", label: "Events", icon: PartyPopper, minRoles: ADMIN_ROLES },
   { href: "/dashboard/packages", label: "Packages", icon: Package, minRoles: ADMIN_ROLES },
   { href: "/dashboard/memberships", label: "Memberships", icon: Repeat, minRoles: ADMIN_ROLES },
-  { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3, minRoles: ADMIN_ROLES },
+  { href: "/dashboard/analytics", label: "Insights", icon: BarChart3, minRoles: ADMIN_ROLES },
   { href: "/dashboard/money", label: "Money", icon: PoundSterling, minRoles: ADMIN_ROLES },
   { href: "/dashboard/team", label: "Team", icon: User, minRoles: ADMIN_ROLES },
   { href: "/dashboard/settings", label: "Settings", icon: Settings, minRoles: ADMIN_ROLES },
