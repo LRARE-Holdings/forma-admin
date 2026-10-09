@@ -43,3 +43,33 @@ export async function updateFirstClassFree(enabled: boolean) {
     revalidatePath("/dashboard/settings")
   })
 }
+
+const ACCOUNTING_SOFTWARE = ["none", "xero", "quickbooks", "freeagent"] as const
+export type AccountingSoftware = (typeof ACCOUNTING_SOFTWARE)[number]
+
+/** Year end as MM-DD, plus which accounting package the Money page exports for. */
+export async function updateAccountingSettings(yearEnd: string, software: string) {
+  return runAction(async () => {
+    await requireAdmin()
+    const studioId = await getStudioId()
+
+    // A date that exists every year: no 29 Feb, no 31 Apr.
+    const valid =
+      /^\d{2}-\d{2}$/.test(yearEnd) &&
+      yearEnd !== "02-29" &&
+      new Date(`2001-${yearEnd}T12:00:00Z`).toISOString().slice(5, 10) === yearEnd
+    if (!valid) throw new Error("Choose a year-end date that exists every year.")
+    if (!(ACCOUNTING_SOFTWARE as readonly string[]).includes(software)) {
+      throw new Error("Unknown accounting software.")
+    }
+
+    const supabase = await createClient()
+    const { error } = await supabase
+      .from("studios")
+      .update({ accounting_year_end: yearEnd, accounting_software: software })
+      .eq("id", studioId)
+
+    if (error) throw new Error(error.message)
+    revalidatePath("/dashboard/money")
+  })
+}
