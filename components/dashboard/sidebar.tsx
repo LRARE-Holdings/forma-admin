@@ -20,6 +20,7 @@ import {
   ScrollText,
   PartyPopper,
   PoundSterling,
+  Gift,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { StudioWordmark } from "@/components/shared/studio-wordmark"
@@ -48,6 +49,7 @@ const navItems: NavItem[] = [
   { href: "/dashboard/classes", label: "Classes", icon: Star, minRoles: ADMIN_ROLES },
   { href: "/dashboard/events", label: "Events", icon: PartyPopper, minRoles: ADMIN_ROLES },
   { href: "/dashboard/packages", label: "Packages", icon: Package, minRoles: ADMIN_ROLES },
+  { href: "/dashboard/gift-cards", label: "Gift cards", icon: Gift, minRoles: ADMIN_ROLES },
   { href: "/dashboard/memberships", label: "Memberships", icon: Repeat, minRoles: ADMIN_ROLES },
   { href: "/dashboard/analytics", label: "Insights", icon: BarChart3, minRoles: ADMIN_ROLES },
   { href: "/dashboard/money", label: "Money", icon: PoundSterling, minRoles: ADMIN_ROLES },

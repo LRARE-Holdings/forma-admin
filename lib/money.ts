@@ -140,6 +140,8 @@ export interface UnusedCredits {
   valuePence: number
   /** Credits on packs with no known price (e.g. migrated or gifted packs). */
   unpricedCredits: number
+  /** Gift cards paid for but not yet claimed at that moment (not in the figures above). */
+  giftCards: { count: number; credits: number; paidPence: number }
 }
 
 /**
@@ -152,13 +154,13 @@ export interface UnusedCredits {
  * entry; failing that (no activity since), its current balance.
  */
 export async function getUnusedPackCredits(studioId: string, asOf: string): Promise<UnusedCredits> {
-  const empty = { asOf, packs: 0, credits: 0, valuePence: 0, unpricedCredits: 0 }
+  const empty = { asOf, packs: 0, credits: 0, valuePence: 0, unpricedCredits: 0, giftCards: { count: 0, credits: 0, paidPence: 0 } }
   if (asOf < CREDIT_LEDGER_START) return { ...empty, supported: false }
 
   const supabase = await createClient()
   const cutoff = ukMidnightISO(addDays(asOf, 1))
 
-  const [packs, ledger, tiers, sales] = await Promise.all([
+  const [packs, ledger, tiers, sales, gifts] = await Promise.all([
     fetchAllRows((rf, rt) =>
       supabase
         .from("class_packs")
@@ -185,11 +187,21 @@ export async function getUnusedPackCredits(studioId: string, asOf: string): Prom
         .from("stripe_balance_transactions")
         .select("payment_intent_id, amount")
         .eq("studio_id", studioId)
-        .eq("sale_type", "pack_tier")
+        // A claimed gift card's pack carries the gift's payment intent.
+        .in("sale_type", ["pack_tier", "gift_card"])
         .in("type", ["charge", "payment"])
         .order("id")
         .range(rf, rt),
     ),
+    // Gift cards paid by then, still claimable then, and not claimed by then.
+    // A refunded card has no refund date, so it's left out altogether.
+    supabase
+      .from("gift_cards")
+      .select("credits, amount_pence, status, redeemed_at")
+      .eq("studio_id", studioId)
+      .in("status", ["paid", "redeemed"])
+      .lt("paid_at", cutoff)
+      .gte("expires_at", cutoff),
   ])
 
   const byPack = new Map<string, Array<{ delta: number; balance_after: number; created_at: string }>>()
@@ -220,6 +232,13 @@ export async function getUnusedPackCredits(studioId: string, asOf: string): Prom
     const total = p.credits_total as number
     if (paid !== undefined && total > 0) out.valuePence += Math.round((paid * balance) / total)
     else out.unpricedCredits += balance
+  }
+
+  for (const g of gifts.data ?? []) {
+    if (g.status === "redeemed" && g.redeemed_at && (g.redeemed_at as string) < cutoff) continue
+    out.giftCards.count++
+    out.giftCards.credits += g.credits as number
+    out.giftCards.paidPence += g.amount_pence as number
   }
   return out
 }

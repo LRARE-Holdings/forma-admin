@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises"
 import path from "node:path"
 import { ImageResponse } from "next/og"
 import { PDFDocument } from "pdf-lib"
+import { fitVoucherFontSize } from "./fit"
 
 /**
  * Lucy's gift voucher template with the blanks filled in, as a one-page PDF.
@@ -64,17 +65,6 @@ export function formatVoucherDate(iso: string): string {
   })
 }
 
-/**
- * Shrink long names so they stay on their line. Cormorant italic runs about
- * 0.43em per character; never below 45% of the design size (past that the
- * box clips with an ellipsis). Names are capped at 30 characters anyway.
- */
-function fitSize(text: string, size: number, maxW: number): number {
-  const estimate = text.length * 0.43 * size
-  if (estimate <= maxW) return size
-  return Math.max(Math.floor(maxW / (text.length * 0.43)), Math.round(size * 0.45))
-}
-
 async function renderTextLayer(v: VoucherFields, serif: Buffer, sans: Buffer): Promise<Uint8Array> {
   const field = (key: keyof typeof FIELDS, text: string) => {
     const f = FIELDS[key]
@@ -91,7 +81,7 @@ async function renderTextLayer(v: VoucherFields, serif: Buffer, sans: Buffer): P
           display: "flex",
           alignItems: "flex-end",
           fontFamily: "Cormorant",
-          fontSize: fitSize(text, f.size, f.maxW),
+          fontSize: fitVoucherFontSize(text, f.size, f.maxW),
           lineHeight: 1.2,
           color: INK,
           whiteSpace: "nowrap",

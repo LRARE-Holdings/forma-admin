@@ -194,6 +194,12 @@ export default async function MoneyPage({
             Credit records start on {formatUkDate(CREDIT_LEDGER_START)}, so this can only be worked out for periods ending on or after that date.
           </p>
         )}
+        {unused.supported && unused.giftCards.count > 0 && (
+          <p className="border-t border-sand px-5 py-3 text-[0.7rem] text-warm-grey">
+            Plus {unused.giftCards.count} gift card{unused.giftCards.count === 1 ? "" : "s"} not yet claimed:{" "}
+            {unused.giftCards.credits} class{unused.giftCards.credits === 1 ? "" : "es"}, {gbp(unused.giftCards.paidPence)} paid. They turn into pack credits when claimed.
+          </p>
+        )}
         {unused.supported && unused.unpricedCredits > 0 && (
           <p className="border-t border-sand px-5 py-3 text-[0.7rem] text-warm-grey">
             {unused.unpricedCredits} of these credits are on packs with no recorded price (added by hand or carried over), so they aren&apos;t in the &ldquo;Paid for&rdquo; figure.

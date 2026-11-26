@@ -7,6 +7,7 @@ const nextConfig: NextConfig = {
     "/api/stripe/webhook": ["./lib/gift-cards/assets/**"],
     "/api/cron/gift-cards": ["./lib/gift-cards/assets/**"],
     "/api/internal/gift-voucher": ["./lib/gift-cards/assets/**"],
+    "/dashboard/gift-cards/[id]/voucher": ["./lib/gift-cards/assets/**"],
   },
   experimental: {
     staleTimes: {

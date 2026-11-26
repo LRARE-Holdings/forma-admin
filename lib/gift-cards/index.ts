@@ -4,6 +4,7 @@ import { giftCardBuyerEmail, giftCardRecipientEmail } from "@/lib/email/gift-car
 import { localDateStr } from "@/lib/utils"
 import type { StudioBranding } from "@/lib/types"
 import { renderVoucherPdf, formatVoucherDate } from "./voucher"
+import { giftClaimDeadline } from "./dates"
 
 /**
  * Gift cards: paid for on the public site, confirmed here by the Stripe
@@ -84,48 +85,102 @@ export async function giftCardVoucherById(id: string) {
 }
 
 /**
- * The Stripe webhook's half: turn a held card into a paid one, then send the
- * emails that are due. Safe to run twice (Stripe retries): the update only
- * matches a pending card for this payment, and each email is claimed before
- * it is sent.
+ * The Stripe webhook's half: turn a held card into a paid one. Emails are
+ * sent separately (deliverGiftCardEmails), after the webhook has answered
+ * Stripe, so a slow PDF render can't make Stripe time out and retry.
+ *
+ * Safe to run twice (Stripe retries): only a pending card is updated. The
+ * card is matched by id; its stored payment intent must be this one or not
+ * yet recorded (the public site saves it straight after creating the
+ * payment, and that save could in theory fail).
+ *
+ * Returns the card id when the card is paid (now or already), else null.
  */
 export async function confirmGiftCardPayment(
   studioId: string,
   giftCardId: string,
-  paymentIntentId: string,
-) {
+  payment: { id: string; amount_received: number },
+): Promise<string | null> {
   const supabase = createAdminClient()
   const card = await loadCard(supabase, giftCardId)
-  if (!card || card.studio_id !== studioId) return
+  if (!card || card.studio_id !== studioId) {
+    console.error(`[gift-cards] Payment ${payment.id} names gift card ${giftCardId}, which isn't at this studio`)
+    return null
+  }
+  if (card.stripe_payment_intent_id && card.stripe_payment_intent_id !== payment.id) {
+    console.error(`[gift-cards] Gift card ${card.id} belongs to ${card.stripe_payment_intent_id}, not ${payment.id}`)
+    return null
+  }
+  if (payment.amount_received !== card.amount_pence) {
+    // Can't happen through our checkout (the server sets the amount), so
+    // flag it loudly, but still honour what the buyer paid for.
+    console.error(`[gift-cards] Gift card ${card.id}: paid ${payment.amount_received}p, expected ${card.amount_pence}p`)
+  }
 
   if (card.status === "pending") {
     const paidAt = new Date()
-    const expiresAt = new Date(paidAt)
-    expiresAt.setMonth(expiresAt.getMonth() + card.claim_months)
+    const expiresAt = giftClaimDeadline(paidAt, card.claim_months)
 
     const { error } = await supabase
       .from("gift_cards")
-      .update({ status: "paid", paid_at: paidAt.toISOString(), expires_at: expiresAt.toISOString() })
+      .update({
+        status: "paid",
+        paid_at: paidAt.toISOString(),
+        expires_at: expiresAt.toISOString(),
+        stripe_payment_intent_id: payment.id,
+      })
       .eq("id", card.id)
       .eq("status", "pending")
-      .eq("stripe_payment_intent_id", paymentIntentId)
     // Throwing makes Stripe retry, which is right for a transient DB error.
     if (error) throw new Error(`gift card confirm failed: ${error.message}`)
+    return card.id
   }
 
-  await deliverGiftCardEmails(card.id).catch((err) =>
-    console.error("[gift-cards] Email delivery failed:", err),
-  )
+  return card.status === "paid" || card.status === "redeemed" ? card.id : null
 }
 
-/** Mark a refunded card so it can no longer be claimed. */
-export async function markGiftCardRefunded(paymentIntentId: string) {
+/**
+ * A full refund or a chargeback on a gift card's payment. Returns false when
+ * the payment wasn't for a gift card, so the caller carries on with its own
+ * handling.
+ *
+ * - Not yet claimed: the card is marked refunded and can no longer be claimed.
+ * - Already claimed: its pack's unused credits are cleared (classes already
+ *   booked stay booked). The recipient isn't emailed: they never paid, and a
+ *   "your pack was refunded" email would only confuse them. The buyer gets
+ *   Stripe's refund receipt.
+ *
+ * A partial refund changes nothing on the card, but still returns true so the
+ * caller doesn't treat the payment as a class pack.
+ */
+export async function voidGiftCardPayment(
+  studioId: string,
+  paymentIntentId: string,
+  { full }: { full: boolean },
+): Promise<boolean> {
   const supabase = createAdminClient()
-  await supabase
+  const { data } = await supabase
     .from("gift_cards")
-    .update({ status: "refunded" })
+    .select("id, status, class_pack_id")
+    .eq("studio_id", studioId)
     .eq("stripe_payment_intent_id", paymentIntentId)
-    .in("status", ["pending", "paid"])
+    .maybeSingle()
+  if (!data) return false
+  if (!full) return true
+
+  if (data.status === "redeemed" && data.class_pack_id) {
+    const { error } = await supabase
+      .from("class_packs")
+      .update({ credits_remaining: 0 })
+      .eq("id", data.class_pack_id)
+      .eq("studio_id", studioId)
+    if (error) throw new Error(`gift pack void failed: ${error.message}`)
+  }
+  if (data.status !== "refunded") {
+    const { error } = await supabase.from("gift_cards").update({ status: "refunded" }).eq("id", data.id)
+    if (error) throw new Error(`gift card void failed: ${error.message}`)
+  }
+  return true
 }
 
 /**
@@ -146,21 +201,8 @@ async function releaseEmail(supabase: Admin, id: string, column: "buyer_emailed_
   await supabase.from("gift_cards").update({ [column]: null }).eq("id", id)
 }
 
-/**
- * Send whatever is due for one card: the buyer's copy (straight after
- * payment) and the recipient's (from the morning of the date the buyer chose).
- */
-export async function deliverGiftCardEmails(id: string) {
-  const supabase = createAdminClient()
-  const card = await loadCard(supabase, id)
-  if (!card || card.status !== "paid" || !card.expires_at) return
-
-  const today = localDateStr()
-  const buyerDue = !card.buyer_emailed_at
-  const recipientDue =
-    !!card.recipient_email && !card.recipient_emailed_at && !!card.send_on && card.send_on <= today
-  if (!buyerDue && !recipientDue) return
-
+/** The voucher attachment and the fields both emails share. */
+async function prepareEmail(supabase: Admin, card: GiftCard & { expires_at: string }) {
   const studio = await loadStudio(supabase, card.studio_id)
   const pdf = Buffer.from(await giftCardVoucherPdf(card, studio.domain))
   const attachment = {
@@ -178,35 +220,70 @@ export async function deliverGiftCardEmails(id: string) {
     studioName: studio.name,
     branding: studio.branding,
   }
+  // The recipient email's header: the top of the voucher artwork, served by
+  // the public site (burn-mat-studio public/gift/email-hero.jpg).
+  const heroImageUrl = `${studio.publicBaseUrl}/gift/email-hero.jpg`
+  return { attachment, base, heroImageUrl }
+}
+
+async function buyerProfile(supabase: Admin, card: GiftCard) {
+  const { data } = await supabase
+    .from("profiles")
+    .select("full_name, email")
+    .eq("id", card.buyer_profile_id)
+    .single()
+  return {
+    firstName: ((data?.full_name as string | null) ?? "").split(" ")[0] || "there",
+    email: (data?.email as string | null) ?? null,
+  }
+}
+
+function buyerEmailContent(
+  card: GiftCard,
+  base: Awaited<ReturnType<typeof prepareEmail>>["base"],
+  buyerFirstName: string,
+) {
+  const today = localDateStr()
+  const sendsOn =
+    card.recipient_email && card.send_on && card.send_on > today && !card.recipient_emailed_at
+      ? new Date(card.send_on + "T12:00:00Z").toLocaleDateString("en-GB", {
+          weekday: "long",
+          day: "numeric",
+          month: "long",
+          timeZone: "UTC",
+        })
+      : null
+  return giftCardBuyerEmail({ ...base, buyerFirstName, sendsOn })
+}
+
+/**
+ * Send whatever is due for one card: the buyer's copy (straight after
+ * payment) and the recipient's (from the morning of the date the buyer chose).
+ */
+export async function deliverGiftCardEmails(id: string) {
+  const supabase = createAdminClient()
+  const card = await loadCard(supabase, id)
+  if (!card || card.status !== "paid" || !card.expires_at) return
+
+  const today = localDateStr()
+  const buyerDue = !card.buyer_emailed_at
+  const recipientDue =
+    !!card.recipient_email && !card.recipient_emailed_at && !!card.send_on && card.send_on <= today
+  if (!buyerDue && !recipientDue) return
+
+  const { attachment, base, heroImageUrl } = await prepareEmail(supabase, { ...card, expires_at: card.expires_at })
 
   if (buyerDue && (await claimEmail(supabase, card.id, "buyer_emailed_at"))) {
-    const { data: buyer } = await supabase
-      .from("profiles")
-      .select("full_name, email")
-      .eq("id", card.buyer_profile_id)
-      .single()
-    const sendsOn =
-      card.recipient_email && card.send_on && card.send_on > today
-        ? new Date(card.send_on + "T12:00:00Z").toLocaleDateString("en-GB", {
-            weekday: "long",
-            day: "numeric",
-            month: "long",
-            timeZone: "UTC",
-          })
-        : null
-    const { subject, html } = giftCardBuyerEmail({
-      ...base,
-      buyerFirstName: ((buyer?.full_name as string | null) ?? "").split(" ")[0] || "there",
-      sendsOn,
-    })
-    const result = buyer?.email
-      ? await sendStudioEmail(card.studio_id, { to: buyer.email as string, subject, html, attachments: [attachment] })
+    const buyer = await buyerProfile(supabase, card)
+    const { subject, html } = buyerEmailContent(card, base, buyer.firstName)
+    const result = buyer.email
+      ? await sendStudioEmail(card.studio_id, { to: buyer.email, subject, html, attachments: [attachment] })
       : { success: false }
     if (!result.success) await releaseEmail(supabase, card.id, "buyer_emailed_at")
   }
 
   if (recipientDue && (await claimEmail(supabase, card.id, "recipient_emailed_at"))) {
-    const { subject, html } = giftCardRecipientEmail(base)
+    const { subject, html } = giftCardRecipientEmail({ ...base, heroImageUrl })
     const result = await sendStudioEmail(card.studio_id, {
       to: card.recipient_email!,
       subject,
@@ -215,6 +292,50 @@ export async function deliverGiftCardEmails(id: string) {
     })
     if (!result.success) await releaseEmail(supabase, card.id, "recipient_emailed_at")
   }
+}
+
+/**
+ * The dashboard's "Send again": email the voucher now, to the buyer or the
+ * recipient, at the address given. Sending to the recipient at a new address
+ * also saves that address on the card (the buyer may have mistyped it), and
+ * counts as the recipient's email, so the morning job won't send it twice.
+ * Only for cards that are paid and not yet claimed.
+ */
+export async function resendGiftCardVoucher(
+  studioId: string,
+  id: string,
+  who: "buyer" | "recipient",
+  to: string,
+) {
+  const supabase = createAdminClient()
+  const card = await loadCard(supabase, id)
+  if (!card || card.studio_id !== studioId) throw new Error("Gift card not found")
+  if (card.status !== "paid" || !card.expires_at) {
+    throw new Error(
+      card.status === "redeemed"
+        ? "This gift card has already been claimed."
+        : card.status === "refunded"
+          ? "This gift card was refunded."
+          : "This gift card hasn't been paid for.",
+    )
+  }
+
+  const { attachment, base, heroImageUrl } = await prepareEmail(supabase, { ...card, expires_at: card.expires_at })
+  const { subject, html } =
+    who === "buyer"
+      ? buyerEmailContent(card, base, (await buyerProfile(supabase, card)).firstName)
+      : giftCardRecipientEmail({ ...base, heroImageUrl })
+
+  const result = await sendStudioEmail(card.studio_id, { to, subject, html, attachments: [attachment] })
+  if (!result.success) throw new Error(result.error ?? "The email didn't send. Please try again.")
+
+  const now = new Date().toISOString()
+  const update =
+    who === "buyer"
+      ? { buyer_emailed_at: now }
+      : { recipient_email: to, send_on: card.send_on ?? localDateStr(), recipient_emailed_at: now }
+  const { error } = await supabase.from("gift_cards").update(update).eq("id", card.id)
+  if (error) console.error("[gift-cards] Sent, but couldn't record it on", card.id, error.message)
 }
 
 /** Daily: every card with an email still owed. */
