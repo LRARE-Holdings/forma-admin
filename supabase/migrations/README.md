@@ -245,6 +245,9 @@ Found during a codebase review. Both applied the same day.
   `redeem_gift_card()` (service role only). Seeds the £13.50 one-class card;
   the 5 and 10-class cards have no price yet. Claim path tested in a
   rolled-back DO block. Applied 2026-11-26.
-- `20261126_22_black_friday_promotion.sql` — the Black Friday row, 27 Nov to
-  end of 5 Dec 2026. **Not applied**: the percentage is NULL until Lucy
-  confirms it.
+- `20261126_22_black_friday_promotion.sql` — Black Friday 2026: £10 off every
+  pack from 26 Nov to the end of 5 Dec. Applied 2026-11-26, after 23 and the
+  public-site deploy that reads fixed-amount offers.
+- `20261126_23_fixed_amount_promotions_instructor_titles.sql` —
+  `promotions.pack_discount_pence` (exactly one of percent / pence) and
+  `instructors.title` for the website. Applied 2026-11-26.
