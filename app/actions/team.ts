@@ -455,25 +455,78 @@ export async function revokeInvite(
     .maybeSingle()
 
   if (profile) {
-    // Remove studio membership
-    await adminClient
-      .from("studio_memberships")
-      .delete()
-      .eq("profile_id", profile.id)
-      .eq("studio_id", studioId)
-
-    // Remove instructor record if any
-    await adminClient
-      .from("instructors")
-      .delete()
-      .eq("profile_id", profile.id)
-      .eq("studio_id", studioId)
-
-    // Delete the auth user if they've never signed in
     const { data: authUserData } = await adminClient.auth.admin.getUserById(profile.id)
-    if (authUserData?.user && !authUserData.user.last_sign_in_at) {
-      await adminClient.auth.admin.deleteUser(profile.id)
-      await adminClient.from("profiles").delete().eq("id", profile.id)
+    // A real customer, not just the account the invite created: they've
+    // signed in, or they have bookings or packs (members carried over from the
+    // old system may never have signed in).
+    const [{ count: bookingCount }, { count: packCount }] = await Promise.all([
+      adminClient.from("bookings").select("id", { count: "exact", head: true }).eq("profile_id", profile.id),
+      adminClient.from("class_packs").select("id", { count: "exact", head: true }).eq("profile_id", profile.id),
+    ])
+    const hasSignedIn =
+      !!authUserData?.user?.last_sign_in_at || (bookingCount ?? 0) > 0 || (packCount ?? 0) > 0
+
+    // Their instructor record, if the invite made one. Same rules as removing
+    // a team member: refuse while they're down to teach upcoming classes,
+    // archive if past classes point at it, delete only if nothing does.
+    // (Deleting used to cascade to their timetable rows, or fail silently
+    // where those rows had bookings.)
+    let instructorKept = false
+    const { data: instructor } = await adminClient
+      .from("instructors")
+      .select("id, name")
+      .eq("profile_id", profile.id)
+      .eq("studio_id", studioId)
+      .is("archived_at", null)
+      .maybeSingle()
+    if (instructor) {
+      try {
+        const upcoming = await upcomingTeaching(adminClient, studioId, instructor.id)
+        if (upcoming.length > 0) {
+          return {
+            error: `${instructor.name} is already down to teach ${upcoming.length} class${upcoming.length === 1 ? "" : "es"}. Reassign them on the timetable before cancelling the invite.`,
+          }
+        }
+        const [{ count: slots }, { count: rules }] = await Promise.all([
+          adminClient.from("schedule").select("id", { count: "exact", head: true }).eq("instructor_id", instructor.id),
+          adminClient.from("schedule_rules").select("id", { count: "exact", head: true }).eq("instructor_id", instructor.id),
+        ])
+        if ((slots ?? 0) + (rules ?? 0) > 0) {
+          await archiveInstructorRow(adminClient, studioId, { id: instructor.id })
+          instructorKept = true
+        } else {
+          const { error } = await adminClient.from("instructors").delete().eq("id", instructor.id)
+          if (error) return { error: error.message }
+        }
+      } catch (e) {
+        return { error: e instanceof Error ? e.message : "Could not update the instructor record" }
+      }
+    }
+
+    if (hasSignedIn) {
+      // An existing customer (often a member who was invited onto the team):
+      // take the staff role away but keep them at the studio as a member.
+      // This used to delete their membership outright.
+      const { error } = await adminClient
+        .from("studio_memberships")
+        .update({ role: "member" })
+        .eq("profile_id", profile.id)
+        .eq("studio_id", studioId)
+      if (error) return { error: error.message }
+    } else {
+      const { error } = await adminClient
+        .from("studio_memberships")
+        .delete()
+        .eq("profile_id", profile.id)
+        .eq("studio_id", studioId)
+      if (error) return { error: error.message }
+
+      // Never signed in: remove the account the invite created, unless an
+      // archived instructor record still needs the profile.
+      if (!instructorKept && authUserData?.user) {
+        await adminClient.auth.admin.deleteUser(profile.id)
+        await adminClient.from("profiles").delete().eq("id", profile.id)
+      }
     }
   }
 
