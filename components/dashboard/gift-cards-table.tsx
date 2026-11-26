@@ -35,6 +35,8 @@ export interface GiftCardRow {
   buyerName: string | null
   buyerEmail: string | null
   claimerName: string | null
+  /** Single-class cards only. */
+  className: string | null
 }
 
 type Shown = "unclaimed" | "claimed" | "refunded" | "expired"
@@ -54,7 +56,8 @@ const BADGE: Record<Shown, { label: string; className: string }> = {
 }
 
 const pounds = (p: number) => `£${(p / 100).toFixed(2)}`
-const value = (credits: number) => (credits === 1 ? "1 class" : `${credits} classes`)
+const value = (credits: number, className: string | null) =>
+  className ? `1 ${className} class` : credits === 1 ? "1 class" : `${credits} classes`
 
 function day(iso: string | null, withYear = false) {
   if (!iso) return ""
@@ -97,7 +100,7 @@ export function GiftCardsTable({ cards, now }: { cards: GiftCardRow[]; now: numb
     // Codes get read out over the phone with or without the dashes.
     const bare = term.replace(/[^a-z0-9]/g, "")
     return cards.filter((c) =>
-      [c.code, c.recipientName, c.senderName, c.recipientEmail, c.buyerName, c.buyerEmail, c.claimerName]
+      [c.code, c.recipientName, c.senderName, c.recipientEmail, c.buyerName, c.buyerEmail, c.claimerName, c.className]
         .filter(Boolean)
         .some((f) => {
           const v = (f as string).toLowerCase()
@@ -172,7 +175,7 @@ export function GiftCardsTable({ cards, now }: { cards: GiftCardRow[]; now: numb
                       </span>
                     </div>
                     <div className="mt-0.5 text-[0.75rem] text-warm-grey">
-                      {value(c.credits)} · {pounds(c.amountPence)} · bought {day(c.paidAt)}
+                      {value(c.credits, c.className)} · {pounds(c.amountPence)} · bought {day(c.paidAt)}
                       {c.buyerName ? ` by ${c.buyerName}` : ""}
                     </div>
                     <div className="mt-0.5 text-[0.72rem] text-warm-grey">

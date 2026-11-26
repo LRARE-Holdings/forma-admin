@@ -152,12 +152,9 @@ async function handlePaymentIntentSucceeded(
   paymentIntent: Stripe.PaymentIntent,
 ) {
   const metadata = paymentIntent.metadata ?? {}
-  const profileId = metadata.profile_id
-  if (!profileId) return
 
-  // Guard against duplicate processing — check if we already handled this PI
-  const piId = paymentIntent.id
-
+  // Gift cards first: a guest can buy one without an account, so there may
+  // be no profile_id on the payment. (Every other purchase needs one.)
   if (metadata.type === "gift_card") {
     const giftCardId = metadata.gift_card_id
     if (!giftCardId) return
@@ -173,6 +170,12 @@ async function handlePaymentIntentSucceeded(
     }
     return
   }
+
+  const profileId = metadata.profile_id
+  if (!profileId) return
+
+  // Guard against duplicate processing — check if we already handled this PI
+  const piId = paymentIntent.id
 
   if (metadata.type === "event_ticket") {
     const ticketId = metadata.event_ticket_id

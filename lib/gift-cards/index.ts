@@ -22,7 +22,10 @@ export interface GiftCard {
   amount_pence: number
   pack_validity_days: number
   claim_months: number
-  buyer_profile_id: string
+  /** null for a guest buyer (no account): see buyer_email / buyer_name. */
+  buyer_profile_id: string | null
+  buyer_email: string | null
+  buyer_name: string | null
   recipient_name: string
   sender_name: string
   recipient_email: string | null
@@ -33,9 +36,14 @@ export interface GiftCard {
   expires_at: string | null
   buyer_emailed_at: string | null
   recipient_emailed_at: string | null
+  /** Single-class cards: the class it's for, and its name. */
+  class_id: string | null
+  className: string | null
 }
 
-export function giftValue(credits: number): string {
+/** "5 classes", or "1 Barre class" for a single-class card. */
+export function giftValue(credits: number, className?: string | null): string {
+  if (className) return credits === 1 ? `1 ${className} class` : `${credits} ${className} classes`
   return credits === 1 ? "1 class" : `${credits} classes`
 }
 
@@ -60,8 +68,12 @@ async function loadStudio(supabase: Admin, studioId: string) {
 }
 
 async function loadCard(supabase: Admin, id: string): Promise<GiftCard | null> {
-  const { data } = await supabase.from("gift_cards").select("*").eq("id", id).maybeSingle()
-  return (data as GiftCard | null) ?? null
+  const { data } = await supabase.from("gift_cards").select("*, classes(name)").eq("id", id).maybeSingle()
+  if (!data) return null
+  const cls = (Array.isArray(data.classes) ? data.classes[0] : data.classes) as { name: string } | null
+  const { classes: _classes, ...card } = data
+  void _classes
+  return { ...(card as GiftCard), className: cls?.name ? cls.name.replace(/\s+/g, " ").trim() : null }
 }
 
 /** The voucher PDF for a paid card. */
@@ -71,7 +83,7 @@ export async function giftCardVoucherPdf(card: GiftCard, domain?: string) {
   return renderVoucherPdf({
     recipientName: card.recipient_name,
     senderName: card.sender_name,
-    value: giftValue(card.credits),
+    value: giftValue(card.credits, card.className),
     expiresAt: card.expires_at,
     code: card.code,
     claimUrl: `${claimDomain}/gift`,
@@ -212,7 +224,8 @@ async function prepareEmail(supabase: Admin, card: GiftCard & { expires_at: stri
   const base = {
     recipientName: card.recipient_name,
     senderName: card.sender_name,
-    value: giftValue(card.credits),
+    value: giftValue(card.credits, card.className),
+    classOnly: !!card.className,
     claimBy: formatVoucherDate(card.expires_at),
     packValidity: packValidity(card.pack_validity_days),
     code: card.code,
@@ -226,15 +239,22 @@ async function prepareEmail(supabase: Admin, card: GiftCard & { expires_at: stri
   return { attachment, base, heroImageUrl }
 }
 
+/** Who bought it: their account if they had one, else what a guest typed at checkout. */
 async function buyerProfile(supabase: Admin, card: GiftCard) {
-  const { data } = await supabase
-    .from("profiles")
-    .select("full_name, email")
-    .eq("id", card.buyer_profile_id)
-    .single()
+  let fullName = card.buyer_name
+  let email = card.buyer_email
+  if (card.buyer_profile_id) {
+    const { data } = await supabase
+      .from("profiles")
+      .select("full_name, email")
+      .eq("id", card.buyer_profile_id)
+      .single()
+    fullName = (data?.full_name as string | null) ?? fullName
+    email = (data?.email as string | null) ?? email
+  }
   return {
-    firstName: ((data?.full_name as string | null) ?? "").split(" ")[0] || "there",
-    email: (data?.email as string | null) ?? null,
+    firstName: (fullName ?? "").trim().split(/\s+/)[0] || "there",
+    email: email ?? null,
   }
 }
 

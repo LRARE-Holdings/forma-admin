@@ -39,7 +39,7 @@ export async function findEligiblePack(
     db.from("pack_tier_excluded_classes").select("pack_tier_id").eq("class_id", classId),
     db
       .from("class_packs")
-      .select("id, pack_tier_id")
+      .select("id, pack_tier_id, only_class_id")
       .eq("studio_id", studioId)
       .eq("profile_id", profileId)
       .gt("credits_remaining", 0)
@@ -49,7 +49,12 @@ export async function findEligiblePack(
   ])
   if (!packs || packs.length === 0) return { ok: false, reason: "no_credits" }
   const excludedTiers = new Set((excluded ?? []).map((e) => e.pack_tier_id as string))
-  const pack = packs.find((p) => !p.pack_tier_id || !excludedTiers.has(p.pack_tier_id as string))
+  const pack = packs.find(
+    (p) =>
+      // A single-class gift card's pack pays for that class only.
+      (!p.only_class_id || p.only_class_id === classId) &&
+      (!p.pack_tier_id || !excludedTiers.has(p.pack_tier_id as string)),
+  )
   return pack ? { ok: true, packId: pack.id as string } : { ok: false, reason: "class_excluded" }
 }
 
