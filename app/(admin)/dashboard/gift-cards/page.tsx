@@ -22,7 +22,7 @@ export default async function GiftCardsPage() {
       .select(
         `id, code, credits, amount_pence, status, recipient_name, sender_name,
          recipient_email, send_on, paid_at, expires_at, buyer_emailed_at,
-         recipient_emailed_at, redeemed_at,
+         recipient_emailed_at, redeemed_at, classes(name),
          buyer:profiles!gift_cards_buyer_profile_id_fkey(full_name, email),
          claimer:profiles!gift_cards_redeemed_by_fkey(full_name, email)`,
       )
@@ -37,6 +37,7 @@ export default async function GiftCardsPage() {
   const cards: GiftCardRow[] = rows.map((r) => {
     const buyer = one(r.buyer)
     const claimer = one(r.claimer)
+    const cls = (Array.isArray(r.classes) ? r.classes[0] : r.classes) as { name: string } | null
     return {
       id: r.id as string,
       code: r.code as string,
@@ -55,6 +56,7 @@ export default async function GiftCardsPage() {
       buyerName: buyer?.full_name ?? null,
       buyerEmail: buyer?.email ?? null,
       claimerName: claimer?.full_name ?? claimer?.email ?? null,
+      className: cls?.name ? cls.name.replace(/\s+/g, " ").trim() : null,
     }
   })
 

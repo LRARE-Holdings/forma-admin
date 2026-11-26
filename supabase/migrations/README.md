@@ -251,3 +251,8 @@ Found during a codebase review. Both applied the same day.
 - `20261126_23_fixed_amount_promotions_instructor_titles.sql` —
   `promotions.pack_discount_pence` (exactly one of percent / pence) and
   `instructors.title` for the website. Applied 2026-11-26.
+- `20261126_24_single_class_gift_cards.sql` — single-class gift cards:
+  `gift_card_tiers.priced_by_class`, `gift_cards.class_id`,
+  `class_packs.only_class_id`, the `trg_enforce_pack_only_class` booking
+  guard, and `redeem_gift_card()` setting the class lock. Applied 2026-11-26;
+  guard and full flow tested (rolled back / cleaned up).

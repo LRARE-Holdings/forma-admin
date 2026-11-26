@@ -13,8 +13,10 @@ function esc(value: string): string {
 interface GiftEmailBase {
   recipientName: string
   senderName: string
-  /** "5 classes" */
+  /** "5 classes", or "1 Barre class" */
   value: string
+  /** A single-class card: the credit only books that class. */
+  classOnly: boolean
   /** "26 May 2027" */
   claimBy: string
   /** "6 weeks" */
@@ -32,7 +34,7 @@ function details(c: ReturnType<typeof resolveColors>, p: GiftEmailBase) {
   return `
     <table cellpadding="0" cellspacing="0" style="background-color:${c.cream};border-radius:8px;padding:16px 20px;width:100%;">
       <tr><td>
-        ${row("Gift", `${esc(p.value)} · any class`)}
+        ${row("Gift", p.classOnly ? esc(p.value) : `${esc(p.value)} · any class`)}
         ${row("Code", `<span style="font-family:Menlo,Consolas,monospace;font-size:16px;letter-spacing:0.12em;font-weight:600;">${esc(p.code)}</span>`)}
         ${row("Claim by", esc(p.claimBy), true)}
       </td></tr>
@@ -118,7 +120,7 @@ export function giftCardRecipientEmail(params: GiftEmailBase & { heroImageUrl: s
         <tr><td style="padding:34px 36px 6px;">
           <p style="margin:0 0 10px;font-family:${sans};font-size:11px;font-weight:700;letter-spacing:0.22em;text-transform:uppercase;color:${GOLD};">A gift for ${r}</p>
           <h1 style="margin:0 0 14px;font-family:${serif};font-size:32px;line-height:1.15;font-weight:normal;font-style:italic;color:${INK};">${from} got you ${value} at Burn.</h1>
-          <p style="margin:0;font-family:${sans};font-size:15px;line-height:1.6;color:${SOFT};">Good for any class on the timetable. Your voucher is attached too, if you'd like to print it or stick it on the fridge.</p>
+          <p style="margin:0;font-family:${sans};font-size:15px;line-height:1.6;color:${SOFT};">${params.classOnly ? "Book it whenever that class is on the timetable." : "Good for any class on the timetable."} Your voucher is attached too, if you'd like to print it or stick it on the fridge.</p>
         </td></tr>
 
         <tr><td style="padding:26px 36px 4px;">
@@ -139,7 +141,9 @@ export function giftCardRecipientEmail(params: GiftEmailBase & { heroImageUrl: s
           <table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr>
             ${step("1", "Tap the button", "Or type your code on the claim page.")}
             ${step("2", "Log in or sign up", "It takes a minute if you're new to Burn.")}
-            ${step("3", "Book any class", `You'll have ${esc(params.packValidity)} to use your classes.`)}
+            ${params.classOnly
+              ? step("3", "Book your class", `You'll have ${esc(params.packValidity)} to use it.`)
+              : step("3", "Book any class", `You'll have ${esc(params.packValidity)} to use your classes.`)}
           </tr></table>
         </td></tr>
 
