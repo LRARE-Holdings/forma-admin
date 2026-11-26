@@ -21,6 +21,7 @@ export default async function TeamPage() {
     .from("instructors")
     .select("*")
     .eq("studio_id", studioId)
+    .is("archived_at", null)
     .order("name")
 
   // Get schedule slots per instructor to show their classes
@@ -67,6 +68,8 @@ export default async function TeamPage() {
     role: string
     classNames: string
     hasInstructorRecord: boolean
+    instructorId: string | null
+    showOnSite: boolean
   }[] = []
 
   for (const sm of staffMemberships ?? []) {
@@ -86,6 +89,8 @@ export default async function TeamPage() {
         role: sm.role,
         classNames: classes ? Array.from(classes).join(", ") : "No classes assigned",
         hasInstructorRecord: true,
+        instructorId: inst.id as string,
+        showOnSite: (inst.show_on_site as boolean) ?? true,
       })
     } else {
       team.push({
@@ -98,6 +103,8 @@ export default async function TeamPage() {
         role: sm.role,
         classNames: "",
         hasInstructorRecord: false,
+        instructorId: null,
+        showOnSite: false,
       })
     }
   }
@@ -116,6 +123,8 @@ export default async function TeamPage() {
       role: "staff",
       classNames: classes ? Array.from(classes).join(", ") : "No classes assigned",
       hasInstructorRecord: true,
+      instructorId: inst.id as string,
+      showOnSite: (inst.show_on_site as boolean) ?? true,
     })
   }
 

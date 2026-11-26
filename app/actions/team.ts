@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { requireAdmin } from "@/lib/auth"
 import { getStudioId } from "@/lib/studio-context"
+import { localDateStr } from "@/lib/utils"
 
 const VALID_INVITE_ROLES = ["staff", "reception", "manager", "admin"]
 const INSTRUCTOR_ROLES = ["staff"]
@@ -29,6 +30,24 @@ async function insertInstructorRecord(
   profileId: string,
   name: string
 ): Promise<{ error?: string }> {
+  // Someone coming back keeps their old record (and its photo and bio)
+  // rather than getting a second one.
+  const { data: existing, error: lookupError } = await client
+    .from("instructors")
+    .select("id, archived_at")
+    .eq("studio_id", studioId)
+    .eq("profile_id", profileId)
+    .maybeSingle()
+  if (lookupError) return { error: lookupError.message }
+  if (existing) {
+    if (!existing.archived_at) return {}
+    const { error } = await client
+      .from("instructors")
+      .update({ archived_at: null })
+      .eq("id", existing.id)
+    return error ? { error: error.message } : {}
+  }
+
   const base =
     name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") ||
     "instructor"
@@ -51,6 +70,89 @@ async function insertInstructorRecord(
   return {
     error: `Could not create an instructor record for ${name} — too many similar names`,
   }
+}
+
+const WEEKDAYS = ["Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays", "Sundays"]
+
+function formatShortDate(dateStr: string): string {
+  return new Date(dateStr + "T12:00:00Z").toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  })
+}
+
+/**
+ * Classes an instructor is still down to teach from today on, as lines like
+ * "Tuesdays 18:40 · Infrared Pilates (until 31 Dec)".
+ *
+ * Removing someone who still has classes would leave those classes on the
+ * timetable with nobody to teach them, so removal is refused until they are
+ * reassigned (the Sep 2026 "no instructor" incident).
+ */
+async function upcomingTeaching(
+  client: AnySupabaseClient,
+  studioId: string,
+  instructorId: string
+): Promise<string[]> {
+  const today = localDateStr()
+  const [rules, ruleless] = await Promise.all([
+    client
+      .from("schedule_rules")
+      .select("day_of_week, start_time, ends_on, classes(name)")
+      .eq("studio_id", studioId)
+      .eq("instructor_id", instructorId)
+      .eq("is_active", true)
+      .or(`ends_on.is.null,ends_on.gte.${today}`)
+      .order("day_of_week")
+      .order("start_time"),
+    client
+      .from("schedule")
+      .select("day_of_week, start_time, classes(name)")
+      .eq("studio_id", studioId)
+      .eq("instructor_id", instructorId)
+      .eq("is_active", true)
+      .is("rule_id", null),
+  ])
+  if (rules.error) throw new Error(rules.error.message)
+  if (ruleless.error) throw new Error(ruleless.error.message)
+
+  const line = (r: { day_of_week: number; start_time: string; classes: unknown }, endsOn: string | null) => {
+    const cls = (Array.isArray(r.classes) ? r.classes[0] : r.classes) as { name: string } | null
+    const until = endsOn ? ` (until ${formatShortDate(endsOn)})` : ""
+    return `${WEEKDAYS[r.day_of_week]} ${r.start_time.slice(0, 5)} · ${cls?.name ?? "Class"}${until}`
+  }
+
+  return [
+    ...(rules.data ?? []).map((r) => line(r as never, r.ends_on as string | null)),
+    ...(ruleless.data ?? []).map((r) => line(r as never, null)),
+  ]
+}
+
+/** What the Remove button needs to know before it asks to confirm. */
+export async function getInstructorRemovalCheck(instructorId: string) {
+  return runAction(async () => {
+    await requireAdmin()
+    const studioId = await getStudioId()
+    const supabase = await createClient()
+    return { upcoming: await upcomingTeaching(supabase, studioId, instructorId) }
+  })
+}
+
+async function archiveInstructorRow(
+  client: AnySupabaseClient,
+  studioId: string,
+  match: { id: string } | { profile_id: string }
+) {
+  const query = client
+    .from("instructors")
+    .update({ archived_at: new Date().toISOString() })
+    .eq("studio_id", studioId)
+    .is("archived_at", null)
+  const { error } = "id" in match
+    ? await query.eq("id", match.id)
+    : await query.eq("profile_id", match.profile_id)
+  if (error) throw new Error(error.message)
 }
 
 export async function inviteStaffMember(
@@ -169,21 +271,36 @@ export async function removeStaffMember(membershipId: string) {
       throw new Error("Cannot remove the studio owner")
     }
 
-    // Delete instructor record if they have one
-    await supabase
+    // Their instructor record is archived, not deleted: past classes point at
+    // it, so a delete fails (it used to, silently, leaving people on the site).
+    const { data: instructor } = await supabase
       .from("instructors")
-      .delete()
+      .select("id, name")
       .eq("profile_id", membership.profile_id)
       .eq("studio_id", studioId)
+      .is("archived_at", null)
+      .maybeSingle()
+
+    if (instructor) {
+      const upcoming = await upcomingTeaching(supabase, studioId, instructor.id)
+      if (upcoming.length > 0) {
+        throw new Error(
+          `${instructor.name} still teaches ${upcoming.length} class${upcoming.length === 1 ? "" : "es"} on the timetable. Reassign them first.`
+        )
+      }
+      await archiveInstructorRow(supabase, studioId, { id: instructor.id })
+    }
 
     // Remove membership
-    await supabase
+    const { error: membershipError } = await supabase
       .from("studio_memberships")
       .delete()
       .eq("id", membershipId)
       .eq("studio_id", studioId)
+    if (membershipError) throw new Error(membershipError.message)
 
     revalidatePath("/dashboard/team")
+    revalidatePath("/dashboard/timetable")
   })
 }
 
@@ -229,6 +346,7 @@ export async function updateStaffRole(
         .select("id")
         .eq("profile_id", membership.profile_id)
         .eq("studio_id", studioId)
+        .is("archived_at", null)
         .maybeSingle()
 
       if (!existing) {
@@ -337,25 +455,78 @@ export async function revokeInvite(
     .maybeSingle()
 
   if (profile) {
-    // Remove studio membership
-    await adminClient
-      .from("studio_memberships")
-      .delete()
-      .eq("profile_id", profile.id)
-      .eq("studio_id", studioId)
-
-    // Remove instructor record if any
-    await adminClient
-      .from("instructors")
-      .delete()
-      .eq("profile_id", profile.id)
-      .eq("studio_id", studioId)
-
-    // Delete the auth user if they've never signed in
     const { data: authUserData } = await adminClient.auth.admin.getUserById(profile.id)
-    if (authUserData?.user && !authUserData.user.last_sign_in_at) {
-      await adminClient.auth.admin.deleteUser(profile.id)
-      await adminClient.from("profiles").delete().eq("id", profile.id)
+    // A real customer, not just the account the invite created: they've
+    // signed in, or they have bookings or packs (members carried over from the
+    // old system may never have signed in).
+    const [{ count: bookingCount }, { count: packCount }] = await Promise.all([
+      adminClient.from("bookings").select("id", { count: "exact", head: true }).eq("profile_id", profile.id),
+      adminClient.from("class_packs").select("id", { count: "exact", head: true }).eq("profile_id", profile.id),
+    ])
+    const hasSignedIn =
+      !!authUserData?.user?.last_sign_in_at || (bookingCount ?? 0) > 0 || (packCount ?? 0) > 0
+
+    // Their instructor record, if the invite made one. Same rules as removing
+    // a team member: refuse while they're down to teach upcoming classes,
+    // archive if past classes point at it, delete only if nothing does.
+    // (Deleting used to cascade to their timetable rows, or fail silently
+    // where those rows had bookings.)
+    let instructorKept = false
+    const { data: instructor } = await adminClient
+      .from("instructors")
+      .select("id, name")
+      .eq("profile_id", profile.id)
+      .eq("studio_id", studioId)
+      .is("archived_at", null)
+      .maybeSingle()
+    if (instructor) {
+      try {
+        const upcoming = await upcomingTeaching(adminClient, studioId, instructor.id)
+        if (upcoming.length > 0) {
+          return {
+            error: `${instructor.name} is already down to teach ${upcoming.length} class${upcoming.length === 1 ? "" : "es"}. Reassign them on the timetable before cancelling the invite.`,
+          }
+        }
+        const [{ count: slots }, { count: rules }] = await Promise.all([
+          adminClient.from("schedule").select("id", { count: "exact", head: true }).eq("instructor_id", instructor.id),
+          adminClient.from("schedule_rules").select("id", { count: "exact", head: true }).eq("instructor_id", instructor.id),
+        ])
+        if ((slots ?? 0) + (rules ?? 0) > 0) {
+          await archiveInstructorRow(adminClient, studioId, { id: instructor.id })
+          instructorKept = true
+        } else {
+          const { error } = await adminClient.from("instructors").delete().eq("id", instructor.id)
+          if (error) return { error: error.message }
+        }
+      } catch (e) {
+        return { error: e instanceof Error ? e.message : "Could not update the instructor record" }
+      }
+    }
+
+    if (hasSignedIn) {
+      // An existing customer (often a member who was invited onto the team):
+      // take the staff role away but keep them at the studio as a member.
+      // This used to delete their membership outright.
+      const { error } = await adminClient
+        .from("studio_memberships")
+        .update({ role: "member" })
+        .eq("profile_id", profile.id)
+        .eq("studio_id", studioId)
+      if (error) return { error: error.message }
+    } else {
+      const { error } = await adminClient
+        .from("studio_memberships")
+        .delete()
+        .eq("profile_id", profile.id)
+        .eq("studio_id", studioId)
+      if (error) return { error: error.message }
+
+      // Never signed in: remove the account the invite created, unless an
+      // archived instructor record still needs the profile.
+      if (!instructorKept && authUserData?.user) {
+        await adminClient.auth.admin.deleteUser(profile.id)
+        await adminClient.from("profiles").delete().eq("id", profile.id)
+      }
     }
   }
 
@@ -460,12 +631,14 @@ export async function toggleInstructorRecord(
   if (!membership) return { error: "Membership not found" }
 
   if (shouldBeInstructor) {
-    // Check if instructor record already exists
+    // Check if a live instructor record already exists (an archived one is
+    // brought back by insertInstructorRecord)
     const { data: existing } = await supabase
       .from("instructors")
       .select("id")
       .eq("profile_id", membership.profile_id)
       .eq("studio_id", studioId)
+      .is("archived_at", null)
       .maybeSingle()
 
     if (!existing) {
@@ -490,13 +663,74 @@ export async function toggleInstructorRecord(
     if (membership.role === "staff") {
       return { error: "Staff members are always instructors" }
     }
-    await supabase
+    const { data: instructor } = await supabase
       .from("instructors")
-      .delete()
+      .select("id, name")
       .eq("profile_id", membership.profile_id)
       .eq("studio_id", studioId)
+      .is("archived_at", null)
+      .maybeSingle()
+    if (instructor) {
+      try {
+        const upcoming = await upcomingTeaching(supabase, studioId, instructor.id)
+        if (upcoming.length > 0) {
+          return { error: `${instructor.name} still teaches ${upcoming.length} class${upcoming.length === 1 ? "" : "es"}. Reassign them on the timetable first.` }
+        }
+        await archiveInstructorRow(supabase, studioId, { id: instructor.id })
+      } catch (e) {
+        return { error: e instanceof Error ? e.message : "Could not update the instructor record" }
+      }
+    }
   }
 
   revalidatePath("/dashboard/team")
   return {}
+}
+
+/**
+ * Remove an instructor who has no team membership (someone whose login was
+ * removed before instructor records were archived). Same rules as removing a
+ * team member: refused while they still have classes.
+ */
+export async function archiveInstructor(instructorId: string) {
+  return runAction(async () => {
+    await requireAdmin()
+    const studioId = await getStudioId()
+    const supabase = await createClient()
+
+    const { data: instructor } = await supabase
+      .from("instructors")
+      .select("id, name")
+      .eq("id", instructorId)
+      .eq("studio_id", studioId)
+      .maybeSingle()
+    if (!instructor) throw new Error("Instructor not found")
+
+    const upcoming = await upcomingTeaching(supabase, studioId, instructor.id)
+    if (upcoming.length > 0) {
+      throw new Error(`${instructor.name} still teaches ${upcoming.length} class${upcoming.length === 1 ? "" : "es"}. Reassign them on the timetable first.`)
+    }
+    await archiveInstructorRow(supabase, studioId, { id: instructor.id })
+
+    revalidatePath("/dashboard/team")
+    revalidatePath("/dashboard/timetable")
+  })
+}
+
+/** The "Show on website" switch: whether the public team section lists them. */
+export async function setInstructorOnSite(instructorId: string, show: boolean) {
+  return runAction(async () => {
+    await requireAdmin()
+    const studioId = await getStudioId()
+    const supabase = await createClient()
+
+    const { error } = await supabase
+      .from("instructors")
+      .update({ show_on_site: show })
+      .eq("id", instructorId)
+      .eq("studio_id", studioId)
+    if (error) throw new Error(error.message)
+
+    revalidatePath("/dashboard/team")
+  })
 }

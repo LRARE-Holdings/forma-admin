@@ -44,6 +44,7 @@ export default async function TimetablePage({
       .from("instructors")
       .select("id, name")
       .eq("studio_id", studioId)
+      .is("archived_at", null)
       .order("name"),
   ])
 

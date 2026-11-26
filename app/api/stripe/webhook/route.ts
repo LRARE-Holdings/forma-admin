@@ -13,6 +13,7 @@ import {
   refundUnconfirmedTicket,
   offerWaitlistPlaces,
 } from "@/lib/event-tickets"
+import { confirmGiftCardPayment, deliverGiftCardEmails, voidGiftCardPayment } from "@/lib/gift-cards"
 import type Stripe from "stripe"
 import type { StudioBranding } from "@/lib/types"
 
@@ -156,6 +157,22 @@ async function handlePaymentIntentSucceeded(
 
   // Guard against duplicate processing — check if we already handled this PI
   const piId = paymentIntent.id
+
+  if (metadata.type === "gift_card") {
+    const giftCardId = metadata.gift_card_id
+    if (!giftCardId) return
+    const paidCardId = await confirmGiftCardPayment(studioId, giftCardId, paymentIntent)
+    // Voucher PDF + emails once Stripe has its answer. If this fails, the
+    // morning cron sends whatever is still owed.
+    if (paidCardId) {
+      after(() =>
+        deliverGiftCardEmails(paidCardId).catch((err) =>
+          console.error("[webhook] Gift card emails failed:", err),
+        ),
+      )
+    }
+    return
+  }
 
   if (metadata.type === "event_ticket") {
     const ticketId = metadata.event_ticket_id
@@ -576,6 +593,11 @@ async function handleChargeRefunded(
 
   if (!paymentIntentId) return
 
+  // Gift cards first: once claimed, a gift's pack carries the same payment
+  // intent, and the pack path below would email the recipient about a refund
+  // they never paid for.
+  if (await voidGiftCardPayment(studioId, paymentIntentId, { full: charge.refunded })) return
+
   const fullyRefunded = charge.refunded
   const amountRefundedPounds = (charge.amount_refunded / 100).toFixed(2)
 
@@ -872,6 +894,10 @@ async function handleDisputeCreated(
     : (charge.payment_intent as Stripe.PaymentIntent)?.id
 
   if (!paymentIntentId) return
+
+  // A chargeback on a gift card stops it being claimed (or clears the
+  // unused credits if it already has been).
+  if (await voidGiftCardPayment(studioId, paymentIntentId, { full: true })) return
 
   // A chargeback voids the ticket. The place is not re-offered: the studio may
   // yet win the dispute, and the member may still turn up.

@@ -238,3 +238,13 @@ Found during a codebase review. Both applied the same day.
   (MM-DD, default `04-05`, the tax year; impossible or leap-only dates refused)
   and `studios.accounting_software` (`none` | `xero` | `quickbooks` |
   `freeagent`). Set from the Money page. Applied 2026-10-09.
+- `20261126_21_instructor_visibility_promotions_gift_cards.sql` —
+  `instructors.archived_at` / `show_on_site` (removing someone now archives
+  them; Dominika Hudziak and Rachel Jackson archived), the `promotions` table
+  (dated pack discounts), and gift cards: `gift_card_tiers`, `gift_cards`,
+  `redeem_gift_card()` (service role only). Seeds the £13.50 one-class card;
+  the 5 and 10-class cards have no price yet. Claim path tested in a
+  rolled-back DO block. Applied 2026-11-26.
+- `20261126_22_black_friday_promotion.sql` — the Black Friday row, 27 Nov to
+  end of 5 Dec 2026. **Not applied**: the percentage is NULL until Lucy
+  confirms it.
