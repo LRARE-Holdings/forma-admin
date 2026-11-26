@@ -13,6 +13,18 @@ export default function AdminError({
 }) {
   useEffect(() => {
     console.error(error)
+    // Tell the monitor someone saw this page.
+    fetch("/api/monitor/client-error", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        message: error.message,
+        digest: error.digest,
+        stack: error.stack,
+        path: window.location.pathname,
+      }),
+      keepalive: true,
+    }).catch(() => {})
   }, [error])
 
   return (

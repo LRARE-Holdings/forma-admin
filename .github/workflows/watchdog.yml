@@ -1,0 +1,113 @@
+# Watchdog: checks Burn from outside Vercel and Supabase.
+#
+# The in-app monitor runs on Vercel and is triggered by Supabase, so it can't
+# report an outage of either. This runs on GitHub every ten minutes and alerts
+# (Telegram + phone push) when:
+#   - burnmatstudio.co.uk or the admin app doesn't load
+#   - the admin app can't reach its database (/api/health)
+#   - the in-app monitor hasn't run for 20 minutes
+#   - the latest Vercel deploy of either app failed
+# and again when things recover. Alerts need these repository secrets:
+#   TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, NTFY_TOPIC (any of them can be missing).
+#
+# GitHub sometimes starts scheduled runs a few minutes late; that's fine for
+# a backstop.
+
+name: Watchdog
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: watchdog
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Restore last state
+        uses: actions/cache/restore@v4
+        with:
+          path: state
+          key: watchdog-state-${{ github.run_id }}
+          restore-keys: watchdog-state-
+
+      - name: Check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: |
+          set -u
+          mkdir -p state
+          touch state/failing
+          problems=()
+
+          # Up to three tries over ~40s before calling a page down.
+          page() {
+            local url=$1 label=$2 code=000
+            for i in 1 2 3; do
+              code=$(curl -s -o /dev/null -w "%{http_code}" -L --max-time 15 "$url" || true)
+              [ "$code" -ge 200 ] && [ "$code" -lt 400 ] && return 0
+              sleep 15
+            done
+            problems+=("$label isn't loading (HTTP $code)")
+          }
+          page "https://burnmatstudio.co.uk/" "burnmatstudio.co.uk"
+          page "https://admin.burnmatstudio.co.uk/login" "The admin app"
+
+          health=$(curl -s --max-time 15 "https://admin.burnmatstudio.co.uk/api/health" || true)
+          if ! echo "$health" | jq -e '.database == "ok"' >/dev/null 2>&1; then
+            problems+=("The admin app can't reach the database (Supabase)")
+          else
+            last=$(echo "$health" | jq -r '.monitor_last_run // empty')
+            if [ -n "$last" ]; then
+              age=$(( $(date -u +%s) - $(date -u -d "$last" +%s) ))
+              [ "$age" -gt 1200 ] && problems+=("The in-app monitor hasn't run for $((age / 60)) minutes (check the Supabase 'monitor' cron job)")
+            fi
+          fi
+
+          for repo in forma-admin bms; do
+            state=$(gh api "repos/LRARE-Holdings/$repo/commits/main/status" --jq '[.statuses[] | select(.context | test("Vercel"))][0].state // "none"' 2>/dev/null || echo unknown)
+            [ "$state" = "failure" ] || [ "$state" = "error" ] && problems+=("The latest Vercel deploy of $repo failed: the change isn't live")
+          done
+
+          printf '%s\n' "${problems[@]+"${problems[@]}"}" | sed '/^$/d' | sort > state/now
+          new=$(comm -13 state/failing state/now)
+          fixed=$(comm -23 state/failing state/now)
+          cp state/now state/failing
+
+          notify() {
+            local title=$1 body=$2 prio=$3
+            if [ -n "${TELEGRAM_TOKEN:-}" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ]; then
+              curl -s --max-time 15 "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+                --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+                --data-urlencode "text=${title}
+          ${body}" >/dev/null || true
+            fi
+            if [ -n "${NTFY_TOPIC:-}" ]; then
+              jq -n --arg t "$NTFY_TOPIC" --arg title "$title" --arg msg "$body" --argjson p "$prio" \
+                '{topic:$t,title:$title,message:$msg,priority:$p,click:"https://admin.burnmatstudio.co.uk/dashboard/status"}' \
+                | curl -s --max-time 15 -H "content-type: application/json" -d @- https://ntfy.sh >/dev/null || true
+            fi
+          }
+
+          [ -n "$new" ] && notify "🔴 Watchdog: Burn has a problem" "$new" 5
+          [ -n "$fixed" ] && notify "🟢 Watchdog: back to normal" "$fixed" 3
+          echo "Problems now:"; cat state/now
+
+      - name: Save state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: state
+          key: watchdog-state-${{ github.run_id }}

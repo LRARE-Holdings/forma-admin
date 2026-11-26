@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { deliverDueGiftCards } from "@/lib/gift-cards"
+import { recordJobRun } from "@/lib/monitor/run"
 
 export const maxDuration = 300
 
@@ -14,10 +15,14 @@ export async function GET(request: Request) {
   if (request.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
+  const startedAt = Date.now()
   try {
-    return NextResponse.json(await deliverDueGiftCards())
+    const outcome = await deliverDueGiftCards()
+    await recordJobRun("admin.gift-cards", true, JSON.stringify(outcome).slice(0, 300), Date.now() - startedAt)
+    return NextResponse.json(outcome)
   } catch (err) {
     console.error("[cron/gift-cards]", err)
+    await recordJobRun("admin.gift-cards", false, err instanceof Error ? err.message : String(err), Date.now() - startedAt)
     return NextResponse.json({ error: "Gift card delivery failed" }, { status: 500 })
   }
 }

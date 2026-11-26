@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js"
 import { createClient } from "@/lib/supabase/server"
 import { localDateStr } from "@/lib/utils"
 
@@ -66,9 +67,11 @@ interface SlotRow {
 }
 
 export async function findStrandedBookings(
-  studioId: string
+  studioId: string,
+  client?: SupabaseClient
 ): Promise<StrandedBooking[]> {
-  const supabase = await createClient()
+  // The monitor passes its service-role client; pages use the signed-in one.
+  const supabase = client ?? (await createClient())
   const today = localDateStr()
 
   // The whole slot table, live and retired. It is one row per weekly pattern —
