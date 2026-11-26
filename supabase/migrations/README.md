@@ -271,3 +271,8 @@ Found during a codebase review. Both applied the same day.
   `select cron.schedule('monitor', '*/5 * * * *', $$ select net.http_post(url := (select decrypted_secret from vault.decrypted_secrets where name = 'forma_admin_url' limit 1) || '/api/internal/monitor', headers := jsonb_build_object('Content-Type', 'application/json', 'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'CRON_SECRET' limit 1)), body := '{}'::jsonb, timeout_milliseconds := 55000) $$);`
 - `20261126_27_gift_cards_one_year.sql` — gift cards give a year to claim
   (`claim_months` 12, default 12). Applied 2026-11-26, before any card sold.
+- `20261126_28_gift_card_payment_requests.sql` — gift cards the studio sets
+  up from the dashboard and the customer pays by link: `requested_at`,
+  `requested_by`, `request_emailed_at` on `gift_cards`. Applied 2026-11-26;
+  create → email link → pay → receipt + recipient email, and cancel (which
+  also cancels the open Stripe payment), tested end to end and cleaned up.

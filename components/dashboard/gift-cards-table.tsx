@@ -14,7 +14,12 @@ import {
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
-import { resendGiftCard } from "@/app/actions/gift-cards"
+import {
+  cancelGiftCardRequestAction,
+  emailGiftCardRequestAgain,
+  giftCardRequestLink,
+  resendGiftCard,
+} from "@/app/actions/gift-cards"
 import { unwrap } from "@/lib/action-result"
 
 export interface GiftCardRow {
@@ -22,7 +27,8 @@ export interface GiftCardRow {
   code: string
   credits: number
   amountPence: number
-  status: "paid" | "redeemed" | "refunded"
+  /** "pending" only for cards set up here that are waiting for payment. */
+  status: "pending" | "paid" | "redeemed" | "refunded"
   recipientName: string
   senderName: string
   recipientEmail: string | null
@@ -37,11 +43,15 @@ export interface GiftCardRow {
   claimerName: string | null
   /** Single-class cards only. */
   className: string | null
+  /** Set when the studio created the card and sent a payment link. */
+  requestedAt: string | null
+  requestEmailedAt: string | null
 }
 
-type Shown = "unclaimed" | "claimed" | "refunded" | "expired"
+type Shown = "awaiting" | "unclaimed" | "claimed" | "refunded" | "expired"
 
 function shownStatus(c: GiftCardRow, now: number): Shown {
+  if (c.status === "pending") return "awaiting"
   if (c.status === "redeemed") return "claimed"
   if (c.status === "refunded") return "refunded"
   if (c.expiresAt && new Date(c.expiresAt).getTime() < now) return "expired"
@@ -49,6 +59,7 @@ function shownStatus(c: GiftCardRow, now: number): Shown {
 }
 
 const BADGE: Record<Shown, { label: string; className: string }> = {
+  awaiting: { label: "Awaiting payment", className: "bg-sand/70 text-cocoa" },
   unclaimed: { label: "Not claimed", className: "bg-gold/15 text-gold" },
   claimed: { label: "Claimed", className: "bg-success-bg text-success" },
   refunded: { label: "Refunded", className: "bg-ember/10 text-ember" },
@@ -81,9 +92,21 @@ function emailLine(c: GiftCardRow) {
 export function GiftCardsTable({ cards, now }: { cards: GiftCardRow[]; now: number }) {
   const [search, setSearch] = useState("")
   const [resending, setResending] = useState<GiftCardRow | null>(null)
+  const [relinking, setRelinking] = useState<GiftCardRow | null>(null)
+  const [cancelling, setCancelling] = useState<GiftCardRow | null>(null)
+
+  async function copyLink(c: GiftCardRow) {
+    try {
+      const { link } = unwrap(await giftCardRequestLink(c.id))
+      await navigator.clipboard.writeText(link)
+      toast.success("Payment link copied")
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't copy the link")
+    }
+  }
 
   const summary = useMemo(() => {
-    const live = cards.filter((c) => c.status !== "refunded")
+    const live = cards.filter((c) => c.status === "paid" || c.status === "redeemed")
     const waiting = cards.filter((c) => shownStatus(c, now) === "unclaimed")
     return {
       sold: live.length,
@@ -175,11 +198,16 @@ export function GiftCardsTable({ cards, now }: { cards: GiftCardRow[]; now: numb
                       </span>
                     </div>
                     <div className="mt-0.5 text-[0.75rem] text-warm-grey">
-                      {value(c.credits, c.className)} · {pounds(c.amountPence)} · bought {day(c.paidAt)}
-                      {c.buyerName ? ` by ${c.buyerName}` : ""}
+                      {value(c.credits, c.className)} · {pounds(c.amountPence)} ·{" "}
+                      {s === "awaiting" ? `set up ${day(c.requestedAt)} for` : `bought ${day(c.paidAt)}`}
+                      {c.buyerName ? ` ${s === "awaiting" ? "" : "by "}${c.buyerName}` : ""}
                     </div>
                     <div className="mt-0.5 text-[0.72rem] text-warm-grey">
-                      {s === "claimed"
+                      {s === "awaiting"
+                        ? c.requestEmailedAt
+                          ? `Payment link emailed to ${c.buyerEmail} on ${day(c.requestEmailedAt)}`
+                          : "Payment link not emailed yet: copy it and send it yourself"
+                        : s === "claimed"
                         ? `Claimed by ${c.claimerName ?? "a member"} on ${day(c.redeemedAt)}`
                         : s === "unclaimed"
                           ? `Claim by ${day(c.expiresAt, true)} · ${emailLine(c)}`
@@ -188,6 +216,19 @@ export function GiftCardsTable({ cards, now }: { cards: GiftCardRow[]; now: numb
                             : "Refunded, so the code no longer works"}
                     </div>
                   </div>
+                  {s === "awaiting" ? (
+                    <div className="flex shrink-0 items-center gap-4">
+                      <button onClick={() => copyLink(c)} className="text-[0.75rem] font-semibold text-cocoa hover:text-gold">
+                        Copy link
+                      </button>
+                      <button onClick={() => setRelinking(c)} className="text-[0.75rem] font-semibold text-gold hover:text-ember">
+                        Email again
+                      </button>
+                      <button onClick={() => setCancelling(c)} className="text-[0.75rem] font-semibold text-warm-grey hover:text-ember">
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
                   <div className="flex shrink-0 items-center gap-4">
                     <code className="rounded-md bg-cream px-2 py-1 font-mono text-[0.72rem] font-semibold tracking-[0.08em] text-cocoa">
                       {c.code}
@@ -210,6 +251,7 @@ export function GiftCardsTable({ cards, now }: { cards: GiftCardRow[]; now: numb
                       )}
                     </div>
                   </div>
+                  )}
                 </li>
               )
             })}
@@ -218,6 +260,8 @@ export function GiftCardsTable({ cards, now }: { cards: GiftCardRow[]; now: numb
       </div>
 
       <ResendDialog card={resending} onClose={() => setResending(null)} />
+      <RelinkDialog card={relinking} onClose={() => setRelinking(null)} />
+      <CancelRequestDialog card={cancelling} onClose={() => setCancelling(null)} />
     </>
   )
 }
@@ -300,6 +344,89 @@ function ResendDialog({ card, onClose }: { card: GiftCardRow | null; onClose: ()
           <Button onClick={send} disabled={sending || !to.trim()}>
             {sending ? "Sending…" : "Send voucher"}
           </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function RelinkDialog({ card, onClose }: { card: GiftCardRow | null; onClose: () => void }) {
+  const [to, setTo] = useState("")
+  const [sending, setSending] = useState(false)
+  const [lastCard, setLastCard] = useState<string | null>(null)
+  if (card && card.id !== lastCard) {
+    setLastCard(card.id)
+    setTo(card.buyerEmail ?? "")
+  }
+  if (!card) return null
+
+  async function send() {
+    if (!card) return
+    setSending(true)
+    try {
+      unwrap(await emailGiftCardRequestAgain(card.id, to))
+      toast.success(`Payment link sent to ${to}`)
+      onClose()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "The email didn't send")
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <Dialog open={!!card} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Email the payment link again</DialogTitle>
+          <DialogDescription>
+            {card.buyerName ?? "The buyer"} gets the same link to pay {pounds(card.amountPence)} for {card.recipientName}&apos;s gift card.
+          </DialogDescription>
+        </DialogHeader>
+        <div>
+          <Label htmlFor="relink-to">Email address</Label>
+          <Input id="relink-to" type="email" value={to} onChange={(e) => setTo(e.target.value)} placeholder="name@example.com" />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={sending}>Cancel</Button>
+          <Button onClick={send} disabled={sending || !to.trim()}>{sending ? "Sending…" : "Send link"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function CancelRequestDialog({ card, onClose }: { card: GiftCardRow | null; onClose: () => void }) {
+  const [working, setWorking] = useState(false)
+  if (!card) return null
+
+  async function cancel() {
+    if (!card) return
+    setWorking(true)
+    try {
+      unwrap(await cancelGiftCardRequestAction(card.id))
+      toast.success("Gift card cancelled")
+      onClose()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't cancel it")
+    } finally {
+      setWorking(false)
+    }
+  }
+
+  return (
+    <Dialog open={!!card} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Cancel this gift card?</DialogTitle>
+          <DialogDescription>
+            The payment link stops working, so {card.buyerName ?? "the buyer"} can&apos;t pay for it. Nothing has been
+            charged yet.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={working}>Keep it</Button>
+          <Button variant="destructive" onClick={cancel} disabled={working}>{working ? "Cancelling…" : "Cancel gift card"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

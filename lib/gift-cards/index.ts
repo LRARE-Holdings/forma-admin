@@ -273,7 +273,15 @@ function buyerEmailContent(
           timeZone: "UTC",
         })
       : null
-  return giftCardBuyerEmail({ ...base, buyerFirstName, sendsOn })
+  const paid = card.paid_at
+    ? `£${(card.amount_pence / 100).toFixed(2)} on ${new Date(card.paid_at).toLocaleDateString("en-GB", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+        timeZone: "Europe/London",
+      })}`
+    : null
+  return giftCardBuyerEmail({ ...base, buyerFirstName, sendsOn, paid })
 }
 
 /**
