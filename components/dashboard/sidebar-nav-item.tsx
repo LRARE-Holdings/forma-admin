@@ -10,9 +10,11 @@ interface SidebarNavItemProps {
   label: string
   icon: LucideIcon
   onNavigate?: () => void
+  /** Tailwind background class for a small status dot after the label. */
+  dot?: string
 }
 
-export function SidebarNavItem({ href, label, icon: Icon, onNavigate }: SidebarNavItemProps) {
+export function SidebarNavItem({ href, label, icon: Icon, onNavigate, dot }: SidebarNavItemProps) {
   const pathname = usePathname()
   const isActive =
     href === "/dashboard"
@@ -31,6 +33,7 @@ export function SidebarNavItem({ href, label, icon: Icon, onNavigate }: SidebarN
     >
       <Icon className="h-[18px] w-[18px] flex-shrink-0" strokeWidth={1.8} />
       {label}
+      {dot && <span className={cn("ml-auto h-2 w-2 rounded-full", dot)} aria-hidden />}
     </Link>
   )
 }

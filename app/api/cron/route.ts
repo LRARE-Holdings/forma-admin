@@ -6,6 +6,7 @@ import { syncStripeLedger, type LedgerSyncResult } from "@/lib/stripe/ledger"
 import { sendWeeklySummary } from "@/lib/email/weekly-summary"
 import { localDateStr, ukDayOfWeek } from "@/lib/utils"
 import type { BillingInterval } from "@/lib/types"
+import { recordJobRun } from "@/lib/monitor/run"
 
 // Product sync, the ledger sync for every studio and, on Mondays, the weekly
 // summary run one after another; give them the full five minutes.
@@ -25,6 +26,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
+  const startedAt = Date.now()
   const supabase = createAdminClient()
   let synced = 0
   let failed = 0
@@ -198,9 +200,19 @@ export async function GET(request: Request) {
       console.log("[cron] Weekly summary —", JSON.stringify(digest))
     }
 
+    const ledgerErrors = Object.values(ledger).filter((l) => "error" in l).length
+    const digestErrors = Object.values(digest).filter((d) => d && typeof d === "object" && "error" in d).length
+    await recordJobRun(
+      "admin.daily",
+      failed === 0 && ledgerErrors === 0 && digestErrors === 0,
+      `Synced ${synced}, failed ${failed}, ledger errors ${ledgerErrors}, summary errors ${digestErrors}`,
+      Date.now() - startedAt
+    )
+
     return NextResponse.json({ ok: true, synced, failed, ledger, digest })
   } catch (err) {
     console.error("[cron] Stripe sync error:", err)
+    await recordJobRun("admin.daily", false, err instanceof Error ? err.message : String(err), Date.now() - startedAt)
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

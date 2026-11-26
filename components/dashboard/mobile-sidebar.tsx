@@ -11,9 +11,10 @@ interface MobileSidebarProps {
   studio: Studio
   profile: Profile
   role: UserRole
+  platformStatus?: "ok" | "warn" | "down" | "unknown" | null
 }
 
-export function MobileSidebar({ studio, profile, role }: MobileSidebarProps) {
+export function MobileSidebar({ studio, profile, role, platformStatus }: MobileSidebarProps) {
   const [isOpen, setIsOpen] = useState(false)
   // Close on Escape
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -71,6 +72,7 @@ export function MobileSidebar({ studio, profile, role }: MobileSidebarProps) {
                 studio={studio}
                 profile={profile}
                 role={role}
+                platformStatus={platformStatus}
                 onNavigate={() => setIsOpen(false)}
               />
               <button

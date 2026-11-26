@@ -5,6 +5,7 @@ import { getStudioId } from "@/lib/studio-context"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { MobileSidebar } from "@/components/dashboard/mobile-sidebar"
 import type { Studio, Profile, UserRole } from "@/lib/types"
+import { isPlatformOwner, overallStatus } from "@/lib/monitor/owner"
 
 export default async function AdminLayout({
   children,
@@ -18,11 +19,14 @@ export default async function AdminLayout({
   const supabase = await createClient()
 
   // Run role check, studio fetch, and profile fetch in parallel
-  const [role, { data: studio }, { data: profile }] = await Promise.all([
+  const [role, { data: studio }, { data: profile }, owner] = await Promise.all([
     requireDashboard(studioId),
     supabase.from("studios").select("*").eq("id", studioId).single(),
     supabase.from("profiles").select("*").eq("id", user.id).single(),
+    isPlatformOwner(),
   ])
+  // Forma's own accounts get the Status page link, with its current state.
+  const platformStatus = owner ? await overallStatus() : null
 
   return (
     <div className="min-h-screen">
@@ -32,6 +36,7 @@ export default async function AdminLayout({
           studio={studio as Studio}
           profile={profile as Profile}
           role={role as UserRole}
+          platformStatus={platformStatus}
         />
       </div>
 
@@ -41,6 +46,7 @@ export default async function AdminLayout({
           studio={studio as Studio}
           profile={profile as Profile}
           role={role as UserRole}
+          platformStatus={platformStatus}
         />
       </div>
 

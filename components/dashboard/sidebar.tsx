@@ -21,6 +21,7 @@ import {
   PartyPopper,
   PoundSterling,
   Gift,
+  Activity,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { StudioWordmark } from "@/components/shared/studio-wordmark"
@@ -29,6 +30,8 @@ interface SidebarProps {
   studio: Studio
   profile: Profile
   role: UserRole
+  /** Set only for Forma's own accounts: shows the Status link with a dot. */
+  platformStatus?: "ok" | "warn" | "down" | "unknown" | null
   onNavigate?: () => void
 }
 
@@ -64,7 +67,7 @@ const ROLE_LABELS: Record<string, string> = {
   reception: "Reception",
 }
 
-export function Sidebar({ studio, profile, role, onNavigate }: SidebarProps) {
+export function Sidebar({ studio, profile, role, platformStatus, onNavigate }: SidebarProps) {
   const visibleItems = navItems.filter((item) => item.minRoles.includes(role))
 
   return (
@@ -84,6 +87,17 @@ export function Sidebar({ studio, profile, role, onNavigate }: SidebarProps) {
         {visibleItems.map((item) => (
           <SidebarNavItem key={item.href} href={item.href} label={item.label} icon={item.icon} onNavigate={onNavigate} />
         ))}
+        {platformStatus && (
+          <div className="mt-3 border-t border-white/[0.06] pt-3">
+            <SidebarNavItem
+              href="/dashboard/status"
+              label="Status"
+              icon={Activity}
+              onNavigate={onNavigate}
+              dot={platformStatus === "down" ? "bg-red-500" : platformStatus === "warn" ? "bg-ember" : "bg-success"}
+            />
+          </div>
+        )}
       </div>
 
       {/* User */}

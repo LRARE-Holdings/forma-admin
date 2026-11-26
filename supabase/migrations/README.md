@@ -261,3 +261,13 @@ Found during a codebase review. Both applied the same day.
   `access_token` per card, and a check that every card has a buyer. Applied
   2026-11-26; status, thanks page and PDF access tested with right and wrong
   keys.
+- `20261126_26_monitoring.sql` — the Forma monitor: `monitor_checks`,
+  `monitor_events`, `monitor_runs` (heartbeats), `app_errors`,
+  `platform_owners` (who sees /dashboard/status), and service-role-only
+  functions `monitor_db_stats()`, `monitor_config()` /
+  `monitor_set_config()` (alert settings in Vault) and `monitor_prune()`.
+  Applied 2026-11-26. Once the admin app with `/api/internal/monitor` is live,
+  add the five-minute pg_cron job:
+  `select cron.schedule('monitor', '*/5 * * * *', $$ select net.http_post(url := (select decrypted_secret from vault.decrypted_secrets where name = 'forma_admin_url' limit 1) || '/api/internal/monitor', headers := jsonb_build_object('Content-Type', 'application/json', 'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'CRON_SECRET' limit 1)), body := '{}'::jsonb, timeout_milliseconds := 55000) $$);`
+- `20261126_27_gift_cards_one_year.sql` — gift cards give a year to claim
+  (`claim_months` 12, default 12). Applied 2026-11-26, before any card sold.
