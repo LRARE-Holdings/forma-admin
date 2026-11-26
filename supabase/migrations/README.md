@@ -261,3 +261,8 @@ Found during a codebase review. Both applied the same day.
   `access_token` per card, and a check that every card has a buyer. Applied
   2026-11-26; status, thanks page and PDF access tested with right and wrong
   keys.
+- `20261126_28_gift_card_payment_requests.sql` — gift cards the studio sets
+  up from the dashboard and the customer pays by link: `requested_at`,
+  `requested_by`, `request_emailed_at` on `gift_cards`. Applied 2026-11-26;
+  create → email link → pay → receipt + recipient email, and cancel (which
+  also cancels the open Stripe payment), tested end to end and cleaned up.

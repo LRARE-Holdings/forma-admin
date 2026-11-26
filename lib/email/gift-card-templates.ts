@@ -27,7 +27,7 @@ interface GiftEmailBase {
   branding?: StudioBranding | null
 }
 
-function details(c: ReturnType<typeof resolveColors>, p: GiftEmailBase) {
+function details(c: ReturnType<typeof resolveColors>, p: GiftEmailBase, paid?: string | null) {
   const row = (label: string, value: string, last = false) => `
     <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:${c.warmGrey};text-transform:uppercase;letter-spacing:0.05em;">${label}</p>
     <p style="margin:0 0 ${last ? "0" : "12px"};font-size:15px;color:${c.cocoa};">${value}</p>`
@@ -36,7 +36,8 @@ function details(c: ReturnType<typeof resolveColors>, p: GiftEmailBase) {
       <tr><td>
         ${row("Gift", p.classOnly ? esc(p.value) : `${esc(p.value)} · any class`)}
         ${row("Code", `<span style="font-family:Menlo,Consolas,monospace;font-size:16px;letter-spacing:0.12em;font-weight:600;">${esc(p.code)}</span>`)}
-        ${row("Claim by", esc(p.claimBy), true)}
+        ${row("Claim by", esc(p.claimBy), !paid)}
+        ${paid ? row("Paid", esc(paid), true) : ""}
       </td></tr>
     </table>`
 }
@@ -60,6 +61,8 @@ export function giftCardBuyerEmail(
     buyerFirstName: string
     /** "Friday 25 December" when they asked us to email the recipient */
     sendsOn: string | null
+    /** "£45.00 on 26 November 2026": makes this email the buyer's receipt */
+    paid?: string | null
   },
 ) {
   const c = resolveColors(params.branding)
@@ -68,7 +71,7 @@ export function giftCardBuyerEmail(
     ${p(c, `Thanks for buying ${esc(params.recipientName)} a gift card. The voucher is attached as a PDF, ready to print or forward.`)}
     ${params.sendsOn ? p(c, `We'll also email it to ${esc(params.recipientName)} on the morning of ${esc(params.sendsOn)}.`) : ""}
     ${p(c, `${esc(params.recipientName)} claims it with the code below. Once claimed, they have ${esc(params.packValidity)} to use their classes.`, 24)}
-    ${details(c, params)}
+    ${details(c, params, params.paid)}
     ${button(c, params.claimUrl, "See the claim page")}`
   return {
     subject: `Your gift card for ${params.recipientName}`,
@@ -163,5 +166,53 @@ export function giftCardRecipientEmail(params: GiftEmailBase & { heroImageUrl: s
   return {
     subject: `${params.senderName} got you ${params.value} at Burn 🎁`,
     html,
+  }
+}
+
+/**
+ * A gift card the studio set up for a customer: a link to pay for it. Once
+ * they pay, the usual buyer email (voucher + receipt) and recipient email
+ * follow automatically.
+ */
+export function giftCardPaymentRequestEmail(params: {
+  buyerFirstName: string
+  recipientName: string
+  senderName: string
+  /** "5 classes · any class" or "1 Barre class" */
+  gift: string
+  /** "£45.00" */
+  price: string
+  /** "Friday 25 December", "as soon as you've paid", or null when the recipient isn't emailed */
+  recipientSends: string | null
+  recipientEmail: string | null
+  payUrl: string
+  studioName: string
+  branding?: StudioBranding | null
+}) {
+  const c = resolveColors(params.branding)
+  const rows = `
+    <table cellpadding="0" cellspacing="0" style="background-color:${c.cream};border-radius:8px;padding:16px 20px;width:100%;">
+      <tr><td>
+        <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:${c.warmGrey};text-transform:uppercase;letter-spacing:0.05em;">Gift</p>
+        <p style="margin:0 0 12px;font-size:15px;color:${c.cocoa};">${esc(params.gift)}</p>
+        <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:${c.warmGrey};text-transform:uppercase;letter-spacing:0.05em;">For</p>
+        <p style="margin:0 0 12px;font-size:15px;color:${c.cocoa};">${esc(params.recipientName)}, from ${esc(params.senderName)}</p>
+        <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:${c.warmGrey};text-transform:uppercase;letter-spacing:0.05em;">To pay</p>
+        <p style="margin:0;font-size:15px;color:${c.cocoa};font-weight:600;">${esc(params.price)}</p>
+      </td></tr>
+    </table>`
+  const after = params.recipientEmail && params.recipientSends
+    ? `Once you've paid, we'll email you the voucher and a receipt, and send ${esc(params.recipientName)} their gift at ${esc(params.recipientEmail)} ${params.recipientSends.startsWith("as soon") ? esc(params.recipientSends) : `on the morning of ${esc(params.recipientSends)}`}.`
+    : "Once you've paid, we'll email you the voucher as a PDF, ready to print or forward, with your receipt."
+  const body = `
+    ${p(c, `Hi ${esc(params.buyerFirstName)},`)}
+    ${p(c, `Here's the gift card we set up for you. Pay with the button below and it's done.`, 24)}
+    ${rows}
+    ${p(c, "", 8)}
+    ${p(c, after, 0)}
+    ${button(c, params.payUrl, `Pay ${esc(params.price)}`)}`
+  return {
+    subject: `Your gift card for ${params.recipientName}: ready to pay`,
+    html: layout(params.studioName, body, params.branding),
   }
 }
