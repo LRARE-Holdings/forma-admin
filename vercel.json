@@ -6,6 +6,10 @@
     {
       "path": "/api/cron",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/gift-cards",
+      "schedule": "0 8 * * *"
     }
   ]
 }

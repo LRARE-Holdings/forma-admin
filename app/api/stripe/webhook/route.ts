@@ -13,6 +13,7 @@ import {
   refundUnconfirmedTicket,
   offerWaitlistPlaces,
 } from "@/lib/event-tickets"
+import { confirmGiftCardPayment, markGiftCardRefunded } from "@/lib/gift-cards"
 import type Stripe from "stripe"
 import type { StudioBranding } from "@/lib/types"
 
@@ -156,6 +157,13 @@ async function handlePaymentIntentSucceeded(
 
   // Guard against duplicate processing — check if we already handled this PI
   const piId = paymentIntent.id
+
+  if (metadata.type === "gift_card") {
+    const giftCardId = metadata.gift_card_id
+    if (!giftCardId) return
+    await confirmGiftCardPayment(studioId, giftCardId, piId)
+    return
+  }
 
   if (metadata.type === "event_ticket") {
     const ticketId = metadata.event_ticket_id
@@ -575,6 +583,10 @@ async function handleChargeRefunded(
     : charge.payment_intent?.id
 
   if (!paymentIntentId) return
+
+  // A refunded gift card can no longer be claimed. (One already claimed keeps
+  // its pack; take credits back by hand on the member's packs if needed.)
+  if (charge.refunded) await markGiftCardRefunded(paymentIntentId)
 
   const fullyRefunded = charge.refunded
   const amountRefundedPounds = (charge.amount_refunded / 100).toFixed(2)

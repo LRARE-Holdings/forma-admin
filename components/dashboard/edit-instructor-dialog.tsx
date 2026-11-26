@@ -6,12 +6,14 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
+import Link from "next/link"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { SubmitButton } from "@/components/shared/submit-button"
 import { DeleteConfirmDialog } from "@/components/shared/delete-confirm-dialog"
 import {
@@ -22,7 +24,15 @@ import {
   SelectItem,
 } from "@/components/ui/select"
 import { ImageCropDialog } from "@/components/dashboard/image-crop-dialog"
-import { updateInstructor, updateStaffRole, removeStaffMember, toggleInstructorRecord } from "@/app/actions/team"
+import {
+  updateInstructor,
+  updateStaffRole,
+  removeStaffMember,
+  toggleInstructorRecord,
+  archiveInstructor,
+  getInstructorRemovalCheck,
+  setInstructorOnSite,
+} from "@/app/actions/team"
 import { createClient } from "@/lib/supabase/client"
 import { getInitial } from "@/lib/utils"
 import { toast } from "sonner"
@@ -44,6 +54,8 @@ interface InstructorData {
   membershipId: string | null
   role: string
   hasInstructorRecord: boolean
+  instructorId: string | null
+  showOnSite: boolean
 }
 
 interface EditInstructorDialogProps {
@@ -71,12 +83,17 @@ export function EditInstructorDialog({
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [isInstructor, setIsInstructor] = useState(false)
   const [instructorToggleLoading, setInstructorToggleLoading] = useState(false)
+  const [onSite, setOnSite] = useState(true)
+  const [onSiteLoading, setOnSiteLoading] = useState(false)
+  const [checkingRemoval, setCheckingRemoval] = useState(false)
+  const [blockedBy, setBlockedBy] = useState<string[] | null>(null)
 
   useEffect(() => {
     if (open && instructor) {
       setPhotoUrl(instructor.photo_url)
       setRole(instructor.role)
       setIsInstructor(instructor.hasInstructorRecord)
+      setOnSite(instructor.showOnSite)
     } else if (!open) {
       setPhotoUrl(null)
       setRole("")
@@ -195,12 +212,52 @@ export function EditInstructorDialog({
     }
   }
 
+  async function handleOnSiteChange(checked: boolean) {
+    if (!instructor?.instructorId) return
+    setOnSiteLoading(true)
+    try {
+      unwrap(await setInstructorOnSite(instructor.instructorId, checked))
+      setOnSite(checked)
+      toast.success(checked ? "Shown on the website" : "Hidden from the website")
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update")
+    } finally {
+      setOnSiteLoading(false)
+    }
+  }
+
+  // Someone still on the timetable can't be removed: their classes would be
+  // left with nobody to teach them. Check before asking to confirm.
+  async function startRemove() {
+    if (!instructor) return
+    if (!instructor.instructorId || !isInstructor) {
+      setDeleteOpen(true)
+      return
+    }
+    setCheckingRemoval(true)
+    try {
+      const { upcoming } = unwrap(await getInstructorRemovalCheck(instructor.instructorId))
+      if (upcoming.length > 0) setBlockedBy(upcoming)
+      else setDeleteOpen(true)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't check their classes")
+    } finally {
+      setCheckingRemoval(false)
+    }
+  }
+
   async function handleRemove() {
-    if (!instructor?.membershipId) return
+    if (!instructor) return
     setDeleteLoading(true)
     try {
-      unwrap(await removeStaffMember(instructor.membershipId))
-      toast.success("Staff member removed")
+      if (instructor.membershipId) {
+        unwrap(await removeStaffMember(instructor.membershipId))
+      } else if (instructor.instructorId) {
+        unwrap(await archiveInstructor(instructor.instructorId))
+      } else {
+        return
+      }
+      toast.success(`${instructor.name} removed`)
       setDeleteOpen(false)
       onOpenChange(false)
     } catch (e) {
@@ -320,6 +377,22 @@ export function EditInstructorDialog({
               </div>
             )}
 
+            {/* Public team section */}
+            {isInstructor && instructor.instructorId && (
+              <label className="flex cursor-pointer items-center gap-2.5">
+                <input
+                  type="checkbox"
+                  checked={onSite}
+                  onChange={(e) => handleOnSiteChange(e.target.checked)}
+                  disabled={onSiteLoading}
+                  className="h-4 w-4 rounded border-sand text-gold accent-gold"
+                />
+                <span className="text-[0.82rem] text-cocoa">
+                  {onSiteLoading ? "Updating…" : "Show on the website"}
+                </span>
+              </label>
+            )}
+
             {/* "Also an instructor" toggle — only for non-staff roles */}
             {instructor.membershipId && !isSelf && role !== "staff" && (
               <label className="flex cursor-pointer items-center gap-2.5">
@@ -338,13 +411,15 @@ export function EditInstructorDialog({
 
             <DialogFooter>
               {isInstructor && <SubmitButton>Save changes</SubmitButton>}
-              {instructor.membershipId && !isOwner && !isSelf && (
+              {((instructor.membershipId && !isOwner && !isSelf) ||
+                (!instructor.membershipId && instructor.instructorId)) && (
                 <Button
                   type="button"
                   variant="destructive"
-                  onClick={() => setDeleteOpen(true)}
+                  onClick={startRemove}
+                  disabled={checkingRemoval}
                 >
-                  Remove from team
+                  {checkingRemoval ? "Checking…" : "Remove from team"}
                 </Button>
               )}
             </DialogFooter>
@@ -368,12 +443,41 @@ export function EditInstructorDialog({
       <DeleteConfirmDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
-        title="Remove staff member"
-        description={`Remove ${instructor.name} from the team? This will revoke their access to the dashboard.`}
+        title={`Remove ${instructor.name}?`}
+        description={
+          instructor.membershipId
+            ? `${instructor.name} will come off the website and the timetable pickers, and will lose access to the dashboard. Their past classes and bookings stay in your records.`
+            : `${instructor.name} will come off the website and the timetable pickers. Their past classes and bookings stay in your records.`
+        }
         onConfirm={handleRemove}
         loading={deleteLoading}
         actionLabel="Remove"
       />
+
+      <Dialog open={blockedBy !== null} onOpenChange={(v) => !v && setBlockedBy(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{instructor.name.split(" ")[0]} still has classes</DialogTitle>
+            <DialogDescription>
+              Give these classes to someone else on the timetable, then come back and remove{" "}
+              {instructor.name.split(" ")[0]}. Members booked into them won&apos;t notice a thing.
+            </DialogDescription>
+          </DialogHeader>
+          <ul className="space-y-1.5 rounded-xl border border-sand bg-cream/40 px-4 py-3 text-[0.8rem] text-cocoa">
+            {(blockedBy ?? []).map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBlockedBy(null)}>
+              Close
+            </Button>
+            <Link href="/dashboard/timetable" className={buttonVariants()}>
+              Open timetable
+            </Link>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

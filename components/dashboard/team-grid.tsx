@@ -18,6 +18,8 @@ interface TeamMember {
   role: string
   classNames: string
   hasInstructorRecord: boolean
+  instructorId: string | null
+  showOnSite: boolean
 }
 
 interface PendingInvite {
@@ -134,6 +136,11 @@ export function TeamGrid({ team, currentProfileId, pendingInvites }: TeamGridPro
                   {member.hasInstructorRecord && member.role !== "staff" && (
                     <span className="inline-block rounded-full bg-sand px-2.5 py-0.5 text-[0.62rem] font-semibold uppercase tracking-[0.08em] text-slate">
                       Instructor
+                    </span>
+                  )}
+                  {member.hasInstructorRecord && !member.showOnSite && (
+                    <span className="inline-block rounded-full bg-cream px-2.5 py-0.5 text-[0.62rem] font-semibold uppercase tracking-[0.08em] text-warm-grey">
+                      Hidden from website
                     </span>
                   )}
                 </div>

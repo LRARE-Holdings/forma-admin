@@ -5,6 +5,7 @@ interface SendOptions {
   to: string
   subject: string
   html: string
+  attachments?: { filename: string; content: Buffer }[]
 }
 
 /**
@@ -33,6 +34,7 @@ export async function sendStudioEmail(
       to: options.to,
       subject: options.subject,
       html: options.html,
+      ...(options.attachments ? { attachments: options.attachments } : {}),
     })
 
     if (error) {
