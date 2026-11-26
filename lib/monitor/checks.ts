@@ -218,7 +218,10 @@ function vendorStatusCheck(
         const touches = (components?: { name: string }[]) =>
           !relevant || !components?.length || components.some((c) => relevant.test(c.name))
 
-        const incidents = (data.incidents ?? []).filter((i) => i.status !== "resolved" && touches(i.components))
+        // "none" impact is their own note that nothing customers use is affected.
+        const incidents = (data.incidents ?? []).filter(
+          (i) => i.status !== "resolved" && i.impact !== "none" && touches(i.components)
+        )
         const soon = (data.scheduled_maintenances ?? []).filter((m) => {
           if (!m.scheduled_for || !touches(m.components)) return false
           const at = new Date(m.scheduled_for).getTime()
