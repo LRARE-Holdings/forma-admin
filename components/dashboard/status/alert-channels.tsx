@@ -55,12 +55,25 @@ export function AlertChannels({ telegram, telegramBot, pushTopic, email }: Alert
   const [token, setToken] = useState("")
   const [emailValue, setEmailValue] = useState(email ?? "")
   const [lastTest, setLastTest] = useState<string | null>(null)
+  // Telegram setup errors stay on screen under the box, not just in a toast.
+  const [telegramError, setTelegramError] = useState<string | null>(null)
 
-  const act = (fn: () => Promise<{ ok: boolean; error?: string }>, done?: string) =>
+  const act = (fn: () => Promise<{ ok: boolean; error?: string }>, done?: string, onError?: (e: string) => void) =>
     start(async () => {
-      const res = await fn()
-      if (!res.ok) toast.error(res.error ?? "That didn't work")
-      else if (done) toast.success(done)
+      let res: { ok: boolean; error?: string }
+      try {
+        res = await fn()
+      } catch {
+        res = { ok: false, error: "Something went wrong. Refresh the page and try again." }
+      }
+      if (!res.ok) {
+        const message = res.error ?? "That didn't work"
+        toast.error(message)
+        onError?.(message)
+      } else {
+        onError?.("")
+        if (done) toast.success(done)
+      }
     })
 
   const anyOn = telegram === "connected" || !!pushTopic || !!email
@@ -93,7 +106,7 @@ export function AlertChannels({ telegram, telegramBot, pushTopic, email }: Alert
                     const res = await connectTelegramBot(token)
                     if (res.ok) setToken("")
                     return res
-                  }, "Bot connected")
+                  }, "Bot connected", (e) => setTelegramError(e || null))
                 }}
               >
                 <Input
@@ -103,8 +116,9 @@ export function AlertChannels({ telegram, telegramBot, pushTopic, email }: Alert
                   autoComplete="off"
                   className="h-8 text-[0.78rem]"
                 />
-                <Button size="sm" disabled={pending || !token.trim()}>Connect</Button>
+                <Button size="sm" disabled={pending || !token.trim()}>{pending ? "Checking…" : "Connect"}</Button>
               </form>
+              {telegramError && <p className="text-[0.74rem] font-medium text-red-700">{telegramError}</p>}
             </>
           )}
           {telegram === "waiting" && (
@@ -120,9 +134,14 @@ export function AlertChannels({ telegram, telegramBot, pushTopic, email }: Alert
                 )}{" "}
                 in Telegram and press <span className="font-semibold">Start</span>. Then:
               </p>
-              <Button size="sm" disabled={pending} onClick={() => act(findTelegramChat, "Telegram connected")}>
+              <Button
+                size="sm"
+                disabled={pending}
+                onClick={() => act(findTelegramChat, "Telegram connected", (e) => setTelegramError(e || null))}
+              >
                 I&apos;ve pressed Start
               </Button>
+              {telegramError && <p className="text-[0.74rem] font-medium text-red-700">{telegramError}</p>}
             </>
           )}
           {telegram === "connected" && <p>Connected{telegramBot ? ` to @${telegramBot}` : ""}.</p>}

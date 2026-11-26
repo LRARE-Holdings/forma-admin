@@ -52,7 +52,11 @@ const DEFAULT_BRANDING: StudioBranding = {
  * Any missing keys fall back to the default (Burn Mat Studio) values.
  */
 export async function getStudioBranding(): Promise<StudioBranding> {
-  const studioId = await getStudioId()
+  // Requests the proxy skips (an iPhone asking for /apple-touch-icon.png or
+  // /favicon.ico) reach the 404 page without a studio. Render it in the
+  // default colours instead of crashing it into a 500.
+  const studioId = process.env.NEXT_PUBLIC_STUDIO_ID || (await headers()).get("x-studio-id")
+  if (!studioId) return DEFAULT_BRANDING
   const supabase = await createClient()
 
   const { data } = await supabase

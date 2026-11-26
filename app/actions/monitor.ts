@@ -47,13 +47,22 @@ export async function setUpPush(): Promise<Result> {
 
 export async function connectTelegramBot(token: string): Promise<Result<{ username: string }>> {
   await requirePlatformOwner()
-  const value = token.trim()
-  if (!/^\d+:[A-Za-z0-9_-]{30,}$/.test(value)) {
-    return { ok: false, error: "Paste the whole token BotFather gave you (numbers, a colon, then letters)" }
+  // Accept the whole BotFather message, a "bot" prefix or a stray space: pick
+  // the token out of whatever was pasted.
+  const value = token.match(/(\d{5,}:[A-Za-z0-9_-]{30,})/)?.[1]
+  if (!value) {
+    return { ok: false, error: "That doesn't look like a bot token. It's the line from BotFather like 123456789:AAH…" }
   }
-  const res = await fetch(`https://api.telegram.org/bot${value}/getMe`, { signal: AbortSignal.timeout(8000) })
-  const data = (await res.json().catch(() => null)) as { ok?: boolean; result?: { username?: string } } | null
-  if (!data?.ok || !data.result?.username) return { ok: false, error: "Telegram didn't accept that token" }
+  let data: { ok?: boolean; description?: string; result?: { username?: string } } | null = null
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${value}/getMe`, { signal: AbortSignal.timeout(8000) })
+    data = await res.json().catch(() => null)
+  } catch {
+    return { ok: false, error: "Couldn't reach Telegram. Try again in a minute." }
+  }
+  if (!data?.ok || !data.result?.username) {
+    return { ok: false, error: `Telegram didn't accept that token${data?.description ? ` (${data.description})` : ""}. Copy it again from BotFather.` }
+  }
   await setConfig("telegram_token", value)
   await setConfig("telegram_chat_id", null)
   revalidatePath("/dashboard/status")
@@ -65,13 +74,15 @@ export async function findTelegramChat(): Promise<Result> {
   await requirePlatformOwner()
   const config = await loadMonitorConfig()
   if (!config.telegram_token) return { ok: false, error: "Connect the bot first" }
-  const res = await fetch(`https://api.telegram.org/bot${config.telegram_token}/getUpdates?limit=20`, {
-    signal: AbortSignal.timeout(8000),
-  })
-  const data = (await res.json().catch(() => null)) as {
-    ok?: boolean
-    result?: { message?: { chat?: { id: number; type: string } } }[]
-  } | null
+  let data: { ok?: boolean; result?: { message?: { chat?: { id: number; type: string } } }[] } | null = null
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${config.telegram_token}/getUpdates?limit=20`, {
+      signal: AbortSignal.timeout(8000),
+    })
+    data = await res.json().catch(() => null)
+  } catch {
+    return { ok: false, error: "Couldn't reach Telegram. Try again in a minute." }
+  }
   const chat = [...(data?.result ?? [])].reverse().find((u) => u.message?.chat?.type === "private")?.message?.chat
   if (!chat) return { ok: false, error: "No message found yet. Open the bot in Telegram, press Start, then try again" }
   await setConfig("telegram_chat_id", String(chat.id))
