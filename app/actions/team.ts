@@ -95,38 +95,33 @@ async function upcomingTeaching(
   studioId: string,
   instructorId: string
 ): Promise<string[]> {
+  // Go by the timetable itself: active schedule slots with this instructor,
+  // whose rule (if any) still runs from today on. Counting rules instead was
+  // wrong: a rule that never got a slot shows nowhere, yet it blocked
+  // removing Takkiya (Nov 2026) for a Tuesday class that didn't exist.
   const today = localDateStr()
-  const [rules, ruleless] = await Promise.all([
-    client
-      .from("schedule_rules")
-      .select("day_of_week, start_time, ends_on, classes(name)")
-      .eq("studio_id", studioId)
-      .eq("instructor_id", instructorId)
-      .eq("is_active", true)
-      .or(`ends_on.is.null,ends_on.gte.${today}`)
-      .order("day_of_week")
-      .order("start_time"),
-    client
-      .from("schedule")
-      .select("day_of_week, start_time, classes(name)")
-      .eq("studio_id", studioId)
-      .eq("instructor_id", instructorId)
-      .eq("is_active", true)
-      .is("rule_id", null),
-  ])
-  if (rules.error) throw new Error(rules.error.message)
-  if (ruleless.error) throw new Error(ruleless.error.message)
+  const { data, error } = await client
+    .from("schedule")
+    .select("day_of_week, start_time, rule_id, classes(name), schedule_rules(is_active, ends_on)")
+    .eq("studio_id", studioId)
+    .eq("instructor_id", instructorId)
+    .eq("is_active", true)
+    .order("day_of_week")
+    .order("start_time")
+  if (error) throw new Error(error.message)
 
-  const line = (r: { day_of_week: number; start_time: string; classes: unknown }, endsOn: string | null) => {
-    const cls = (Array.isArray(r.classes) ? r.classes[0] : r.classes) as { name: string } | null
-    const until = endsOn ? ` (until ${formatShortDate(endsOn)})` : ""
-    return `${WEEKDAYS[r.day_of_week]} ${r.start_time.slice(0, 5)} · ${cls?.name ?? "Class"}${until}`
+  const lines: string[] = []
+  for (const slot of data ?? []) {
+    const rule = (Array.isArray(slot.schedule_rules) ? slot.schedule_rules[0] : slot.schedule_rules) as
+      | { is_active: boolean; ends_on: string | null }
+      | null
+    if (slot.rule_id && (!rule || !rule.is_active || (rule.ends_on && rule.ends_on < today))) continue
+    const cls = (Array.isArray(slot.classes) ? slot.classes[0] : slot.classes) as { name: string } | null
+    const until = rule?.ends_on ? ` (until ${formatShortDate(rule.ends_on)})` : ""
+    const line = `${WEEKDAYS[slot.day_of_week as number]} ${(slot.start_time as string).slice(0, 5)} · ${cls?.name ?? "Class"}${until}`
+    if (!lines.includes(line)) lines.push(line)
   }
-
-  return [
-    ...(rules.data ?? []).map((r) => line(r as never, r.ends_on as string | null)),
-    ...(ruleless.data ?? []).map((r) => line(r as never, null)),
-  ]
+  return lines
 }
 
 /** What the Remove button needs to know before it asks to confirm. */
