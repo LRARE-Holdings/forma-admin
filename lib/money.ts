@@ -33,6 +33,9 @@ export const SALE_CATEGORIES: Array<{ key: string; label: string; types: string[
   { key: "packs", label: "Class packs", types: ["pack_tier"] },
   { key: "memberships", label: "Memberships", types: ["membership"] },
   { key: "events", label: "Event tickets", types: ["event_ticket"] },
+  // Money taken for a gift card. The classes it buys are used later, when
+  // the recipient claims it.
+  { key: "gift_cards", label: "Gift cards", types: ["gift_card"] },
   { key: "other", label: "Other sales", types: ["other"] },
 ]
 
