@@ -22,7 +22,10 @@ export interface GiftCard {
   amount_pence: number
   pack_validity_days: number
   claim_months: number
-  buyer_profile_id: string
+  /** null for a guest buyer (no account): see buyer_email / buyer_name. */
+  buyer_profile_id: string | null
+  buyer_email: string | null
+  buyer_name: string | null
   recipient_name: string
   sender_name: string
   recipient_email: string | null
@@ -236,15 +239,22 @@ async function prepareEmail(supabase: Admin, card: GiftCard & { expires_at: stri
   return { attachment, base, heroImageUrl }
 }
 
+/** Who bought it: their account if they had one, else what a guest typed at checkout. */
 async function buyerProfile(supabase: Admin, card: GiftCard) {
-  const { data } = await supabase
-    .from("profiles")
-    .select("full_name, email")
-    .eq("id", card.buyer_profile_id)
-    .single()
+  let fullName = card.buyer_name
+  let email = card.buyer_email
+  if (card.buyer_profile_id) {
+    const { data } = await supabase
+      .from("profiles")
+      .select("full_name, email")
+      .eq("id", card.buyer_profile_id)
+      .single()
+    fullName = (data?.full_name as string | null) ?? fullName
+    email = (data?.email as string | null) ?? email
+  }
   return {
-    firstName: ((data?.full_name as string | null) ?? "").split(" ")[0] || "there",
-    email: (data?.email as string | null) ?? null,
+    firstName: (fullName ?? "").trim().split(/\s+/)[0] || "there",
+    email: email ?? null,
   }
 }
 

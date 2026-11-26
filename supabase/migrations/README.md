@@ -256,3 +256,8 @@ Found during a codebase review. Both applied the same day.
   `class_packs.only_class_id`, the `trg_enforce_pack_only_class` booking
   guard, and `redeem_gift_card()` setting the class lock. Applied 2026-11-26;
   guard and full flow tested (rolled back / cleaned up).
+- `20261126_25_guest_gift_card_buyers.sql` — gift cards without an account:
+  `buyer_profile_id` nullable, `buyer_email` / `buyer_name`, a private
+  `access_token` per card, and a check that every card has a buyer. Applied
+  2026-11-26; status, thanks page and PDF access tested with right and wrong
+  keys.
