@@ -376,6 +376,23 @@ export async function scheduleRecipientEmail(studioId: string, id: string, to: s
   const supabase = createAdminClient()
   const card = await loadCard(supabase, id)
   if (!card || card.studio_id !== studioId) throw new Error("Gift card not found")
+  const today = localDateStr()
+
+  // Not paid yet (a card Lucy set up): save who to email and when. Today
+  // means as soon as it's paid; the webhook sends it straight after payment.
+  if (card.status === "pending") {
+    const { data: row } = await supabase.from("gift_cards").select("requested_at").eq("id", card.id).single()
+    if (!row?.requested_at) throw new Error("This gift card hasn't been paid for.")
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(sendOn) || sendOn < today) throw new Error("Pick today or a later date")
+    const { error } = await supabase
+      .from("gift_cards")
+      .update({ recipient_email: to, send_on: sendOn, recipient_emailed_at: null })
+      .eq("id", card.id)
+      .eq("status", "pending")
+    if (error) throw new Error(error.message)
+    return
+  }
+
   if (card.status !== "paid" || !card.expires_at) {
     throw new Error(
       card.status === "redeemed"
@@ -385,7 +402,6 @@ export async function scheduleRecipientEmail(studioId: string, id: string, to: s
           : "This gift card hasn't been paid for.",
     )
   }
-  const today = localDateStr()
   if (!/^\d{4}-\d{2}-\d{2}$/.test(sendOn) || sendOn <= today) throw new Error("Pick a date after today, or send it now")
   const lastClaimDay = new Date(card.expires_at).toLocaleDateString("en-CA", { timeZone: "Europe/London" })
   if (sendOn > lastClaimDay) throw new Error("That's after the card's claim-by date")
