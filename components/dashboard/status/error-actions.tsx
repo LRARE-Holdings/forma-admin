@@ -15,7 +15,7 @@ export function ErrorActions({ fingerprint, state, report }: { fingerprint: stri
       else toast.error(res.error)
     })
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap [&_button]:h-10 sm:[&_button]:h-8">
       {state === "resolved" || state === "muted" ? (
         <Button variant="outline" disabled={pending} onClick={() => set("open", undefined, "Opened again")}>Open again</Button>
       ) : (
@@ -27,6 +27,7 @@ export function ErrorActions({ fingerprint, state, report }: { fingerprint: stri
       )}
       <Button
         variant="outline"
+        className="col-span-2 sm:col-span-1"
         onClick={() => navigator.clipboard.writeText(report).then(() => toast.success("Copied. Paste it to Claude."))}
       >
         Copy details for Claude

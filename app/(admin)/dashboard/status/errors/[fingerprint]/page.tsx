@@ -46,7 +46,7 @@ export default async function ErrorDetail({ params }: { params: Promise<{ finger
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div className="min-w-0 max-w-3xl">
             <Chip tone={state}>{STATE_LABEL[state]}{group.reopened && state === "new" ? " · came back" : ""}</Chip>
-            <h3 className="mt-2 break-words font-heading text-[1.9rem] font-medium leading-tight text-cocoa">{group.title}</h3>
+            <h3 className="mt-2 break-words font-heading text-[1.6rem] font-medium leading-tight text-cocoa sm:text-[1.9rem]">{group.title}</h3>
             <p className="mt-1 text-[0.78rem] text-warm-grey">
               {app} · {pageLabel(group.path)} · first seen {dayTime(group.first_seen)} · last {ago(group.last_seen, now)} · {group.occurrences} time{group.occurrences === 1 ? "" : "s"}
               {people ? ` · ${people} ${people === 1 ? "person" : "people"}` : ""}
@@ -60,13 +60,14 @@ export default async function ErrorDetail({ params }: { params: Promise<{ finger
         <div className="space-y-5">
           <Panel title="What happened, step by step" sub={latest?.request_id ? <span className="font-mono">request {latest.request_id}</span> : undefined}>
             {trace.length ? (
-              <ol className="px-5 py-3">
+              <ol className="px-4 py-3 sm:px-5">
                 {trace.map((t, i) => (
-                  <li key={i} className="relative ml-1.5 grid grid-cols-[72px_64px_1fr] gap-3 border-l border-sand py-1.5 pl-4 text-[0.78rem]">
+                  // Phone: time and app on a line of their own above what happened.
+                  <li key={i} className="relative ml-1.5 grid grid-cols-[auto_1fr] gap-x-3 border-l border-sand py-1.5 pl-4 text-[0.82rem] sm:grid-cols-[72px_64px_1fr] sm:text-[0.78rem]">
                     <span className={cn("absolute -left-[4px] top-3 h-[7px] w-[7px] rounded-full", t.bad ? "bg-red-700" : "bg-sand")} />
                     <span className="tabular-nums text-warm-grey">{new Date(t.at).toLocaleTimeString("en-GB", { timeZone: "Europe/London" })}</span>
                     <span className="text-warm-grey">{t.source}</span>
-                    <span className={cn("break-words", t.bad ? "font-semibold text-red-700" : "text-slate")}>{t.text}</span>
+                    <span className={cn("col-span-2 break-words sm:col-span-1", t.bad ? "font-semibold text-red-700" : "text-slate")}>{t.text}</span>
                   </li>
                 ))}
               </ol>
@@ -76,14 +77,14 @@ export default async function ErrorDetail({ params }: { params: Promise<{ finger
           </Panel>
 
           <Panel title="Technical detail" sub="For Claude or whoever fixes it">
-            <dl className="grid grid-cols-[110px_1fr] gap-x-3 gap-y-1.5 px-5 py-3.5 text-[0.78rem]">
+            <dl className="grid grid-cols-[84px_1fr] gap-x-3 gap-y-1.5 px-4 py-3.5 text-[0.8rem] sm:grid-cols-[110px_1fr] sm:px-5 sm:text-[0.78rem]">
               <dt className="text-warm-grey">Error</dt><dd className="break-words font-mono text-[0.74rem]">{latest?.message ?? group.title}</dd>
               <dt className="text-warm-grey">Where</dt><dd className="break-words font-mono text-[0.74rem]">{latest?.route ?? latest?.path ?? "–"} · {group.kind}{latest?.method ? ` · ${latest.method}` : ""}</dd>
               {latest?.correlation && (<><dt className="text-warm-grey">Payment</dt><dd className="font-mono text-[0.74rem]">{latest.correlation}</dd></>)}
               <dt className="text-warm-grey">Version</dt><dd>{latest?.release ?? "–"}</dd>
             </dl>
             {latest?.stack ? (
-              <pre className="max-h-[320px] overflow-auto bg-[#2b211a] px-5 py-3.5 font-mono text-[0.72rem] leading-relaxed text-[#eadfca]">{latest.stack}</pre>
+              <pre className="max-h-[320px] overflow-auto bg-[#2b211a] px-4 py-3.5 sm:px-5 font-mono text-[0.72rem] leading-relaxed text-[#eadfca]">{latest.stack}</pre>
             ) : (
               <Empty>No stack trace for this one.</Empty>
             )}

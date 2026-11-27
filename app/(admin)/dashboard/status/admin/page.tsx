@@ -11,7 +11,7 @@ import {
   loadUptime,
 } from "@/lib/monitor/dashboard"
 import { checkInsight, pageLabel } from "@/lib/monitor/insights"
-import { ago, Chip, dayTime, Dot, Empty, InsightBar, Panel, Td, Th, UptimeRows } from "@/components/dashboard/status/ui"
+import { ago, Chip, dayTime, Dot, Empty, InsightBar, Panel, Row, Sub, UptimeRows } from "@/components/dashboard/status/ui"
 import { cn } from "@/lib/utils"
 
 export const dynamic = "force-dynamic"
@@ -66,26 +66,25 @@ export default async function AdminStatus() {
 
       <Panel title="Payments coming in from Stripe" sub="Every event Stripe sent and what the admin app did with it">
         {payments.length ? (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead><tr><Th>Time</Th><Th>Event</Th><Th>Who / what</Th><Th>Result</Th></tr></thead>
-              <tbody>
-                {payments.map((p) => (
-                  <tr key={p.id}>
-                    <Td className="whitespace-nowrap tabular-nums">{dayTime(p.at)}</Td>
-                    <Td className="whitespace-nowrap">{p.label}</Td>
-                    <Td>{p.who}{p.amount ? ` · ${p.amount}` : ""}<div className="text-[0.7rem] text-warm-grey">{p.what}</div></Td>
-                    <Td>
-                      <Chip tone={p.level === "error" ? "failed" : p.level === "warn" ? "warn" : "done"}>
-                        {p.level === "error" ? "Failed" : p.level === "warn" ? "Check" : "Done"}
-                      </Chip>{" "}
-                      <span className="text-[0.74rem] text-slate">{p.outcome}</span>
-                    </Td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ul>
+            {payments.map((p) => (
+              <Row
+                key={p.id}
+                aside={
+                  <>
+                    <Chip tone={p.level === "error" ? "failed" : p.level === "warn" ? "warn" : "done"}>
+                      {p.level === "error" ? "Failed" : p.level === "warn" ? "Check" : "Done"}
+                    </Chip>
+                    <Sub>{dayTime(p.at)}</Sub>
+                  </>
+                }
+              >
+                <div className="font-medium text-cocoa">{p.label}{p.amount ? ` · ${p.amount}` : ""}</div>
+                <Sub>{p.who}{p.what ? ` · ${p.what}` : ""}</Sub>
+                <div className="mt-1 break-words text-[0.78rem] text-slate sm:text-[0.74rem]">{p.outcome}</div>
+              </Row>
+            ))}
+          </ul>
         ) : (
           <Empty>No payment events logged yet. They appear here as Stripe sends them.</Empty>
         )}
@@ -105,26 +104,20 @@ export default async function AdminStatus() {
           {emails.error ? (
             <Empty>Couldn&apos;t read emails from Resend: {emails.error}</Empty>
           ) : (
-            <div className="max-h-[420px] overflow-y-auto">
-              <table className="w-full border-collapse">
-                <thead className="sticky top-0 bg-white"><tr><Th>Time</Th><Th>Email</Th><Th>Status</Th></tr></thead>
-                <tbody>
-                  {emails.rows.slice(0, 40).map((e, i) => {
-                    const [tone, label] = EMAIL_STATUS[e.status] ?? ["muted", e.status]
-                    return (
-                      <tr key={i}>
-                        <Td className="whitespace-nowrap tabular-nums">{dayTime(e.at)}</Td>
-                        <Td>
-                          <div className="text-cocoa">{e.subject}</div>
-                          <div className="text-[0.7rem] text-warm-grey">to {e.name ? `${e.name} (${e.to})` : e.to}</div>
-                        </Td>
-                        <Td><Chip tone={tone}>{label}</Chip></Td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
+            // No scroll box inside the page (it traps the thumb on a phone):
+            // the latest 10, then the rest behind "Show more".
+            <>
+              <ul>{emails.rows.slice(0, 10).map((e, i) => <EmailRow key={i} e={e} />)}</ul>
+              {emails.rows.length > 10 && (
+                <details className="group border-t border-[#f0e9dc]">
+                  <summary className="flex min-h-11 cursor-pointer list-none items-center px-4 text-[0.8rem] font-medium text-cocoa hover:bg-cream/60 sm:min-h-0 sm:px-5 sm:py-2.5 [&::-webkit-details-marker]:hidden">
+                    <span className="group-open:hidden">Show {Math.min(30, emails.rows.length - 10)} more</span>
+                    <span className="hidden group-open:inline">Show fewer</span>
+                  </summary>
+                  <ul>{emails.rows.slice(10, 40).map((e, i) => <EmailRow key={i} e={e} />)}</ul>
+                </details>
+              )}
+            </>
           )}
           <InsightBar status={bad.length ? "warn" : "ok"}>
             {bad.length ? (
@@ -137,14 +130,15 @@ export default async function AdminStatus() {
 
         <Panel title="What went wrong for Lucy" sub="Buttons that showed her an error · 7 days">
           {lucy.length ? (
-            <table className="w-full border-collapse">
-              <thead><tr><Th>Page</Th><Th>Times</Th><Th>What she saw</Th></tr></thead>
-              <tbody>
-                {lucy.map((r, i) => (
-                  <tr key={i}><Td>{r.what}</Td><Td className="tabular-nums">{r.count}</Td><Td className="text-slate">&ldquo;{r.message}&rdquo;<div className="text-[0.68rem] text-warm-grey">last {ago(r.last, now)}</div></Td></tr>
-                ))}
-              </tbody>
-            </table>
+            <ul>
+              {lucy.map((r, i) => (
+                <Row key={i} aside={`${r.count}×`}>
+                  <div className="font-medium text-cocoa">{r.what}</div>
+                  <div className="mt-0.5 break-words text-slate">&ldquo;{r.message}&rdquo;</div>
+                  <Sub>last {ago(r.last, now)}</Sub>
+                </Row>
+              ))}
+            </ul>
           ) : (
             <Empty>Nothing in the last 7 days. When a button tells Lucy no, it shows up here with the page and the exact message.</Empty>
           )}
@@ -157,29 +151,28 @@ export default async function AdminStatus() {
       </div>
 
       <Panel title="Background jobs" sub="Last 14 runs each, oldest to newest">
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse">
-            <thead><tr><Th>Job</Th><Th>Runs</Th><Th>Last run</Th><Th>Took</Th><Th>History</Th></tr></thead>
-            <tbody>
-              {jobs.map((j) => (
-                <tr key={j.name}>
-                  <Td className="font-semibold">{j.name}</Td>
-                  <Td className="whitespace-nowrap text-warm-grey">{j.when}</Td>
-                  <Td className="whitespace-nowrap tabular-nums">{j.last ? dayTime(j.last) : "–"}</Td>
-                  <Td className="tabular-nums">{j.ms === null ? "–" : j.ms < 1000 ? `${j.ms}ms` : `${(j.ms / 1000).toFixed(1)}s`}</Td>
-                  <Td>
-                    <div className="flex gap-[3px]">
-                      {j.runs.map((r, i) => (
-                        <i key={i} title={`${dayTime(r.at)}${r.note ? `: ${r.note}` : ""}`} className={cn("h-2.5 w-2.5 rounded-[2px]", r.ok ? "bg-success" : "bg-red-700")} />
-                      ))}
-                    </div>
-                    {j.problem && <div className="mt-1 text-[0.7rem] text-[#9a4a16]">{j.problem}</div>}
-                  </Td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ul>
+          {jobs.map((j) => (
+            <Row
+              key={j.name}
+              aside={
+                <>
+                  <div className="text-cocoa">{j.last ? dayTime(j.last) : "–"}</div>
+                  <Sub>{j.ms === null ? "" : j.ms < 1000 ? `${j.ms}ms` : `${(j.ms / 1000).toFixed(1)}s`}</Sub>
+                </>
+              }
+            >
+              <div className="font-semibold text-cocoa">{j.name}</div>
+              <Sub>{j.when}</Sub>
+              <div className="mt-1.5 flex flex-wrap gap-[3px]" aria-label="Last runs, oldest to newest">
+                {j.runs.map((r, i) => (
+                  <i key={i} title={`${dayTime(r.at)}${r.note ? `: ${r.note}` : ""}`} className={cn("h-3 w-3 rounded-[2px] sm:h-2.5 sm:w-2.5", r.ok ? "bg-success" : "bg-red-700")} />
+                ))}
+              </div>
+              {j.problem && <div className="mt-1 break-words text-[0.76rem] text-[#9a4a16] sm:text-[0.7rem]">{j.problem}</div>}
+            </Row>
+          ))}
+        </ul>
         <InsightBar status={badJobs.length ? "warn" : "ok"}>
           {badJobs.length
             ? <><b className="text-cocoa">{badJobs.length} job{badJobs.length === 1 ? "" : "s"} had a problem recently.</b> A single red square is usually a blip (the next run was fine). Two or more in a row means it&apos;s stuck: tell Claude.</>
@@ -190,24 +183,17 @@ export default async function AdminStatus() {
       <div className="grid gap-5 xl:grid-cols-2">
         <Panel title="Errors" sub="Grouped by cause · last 7 days">
           {groups.length ? (
-            <table className="w-full border-collapse">
-              <thead><tr><Th>Error</Th><Th>Seen</Th><Th /></tr></thead>
-              <tbody>
-                {groups.map((g) => {
-                  const state = groupState(g, now)
-                  return (
-                    <tr key={g.fingerprint} className="hover:bg-[#fbf8f2]">
-                      <Td>
-                        <Link href={`/dashboard/status/errors/${g.fingerprint}`} className="font-semibold text-cocoa hover:underline">{g.title}</Link>
-                        <div className="text-[0.7rem] text-warm-grey">{pageLabel(g.path)} · {g.kind}</div>
-                      </Td>
-                      <Td className="whitespace-nowrap tabular-nums">{g.occurrences}×<div className="text-[0.7rem] text-warm-grey">{ago(g.last_seen, now)}</div></Td>
-                      <Td><Chip tone={state}>{STATE_LABEL[state]}</Chip></Td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+            <ul>
+              {groups.map((g) => {
+                const state = groupState(g, now)
+                return (
+                  <Row key={g.fingerprint} aside={<><Chip tone={state}>{STATE_LABEL[state]}</Chip><Sub>{g.occurrences}× · {ago(g.last_seen, now)}</Sub></>}>
+                    <Link href={`/dashboard/status/errors/${g.fingerprint}`} className="break-words font-semibold text-cocoa hover:underline">{g.title}</Link>
+                    <Sub>{pageLabel(g.path)} · {g.kind}</Sub>
+                  </Row>
+                )
+              })}
+            </ul>
           ) : (
             <Empty>No errors in the admin app in the last 7 days.</Empty>
           )}
@@ -218,7 +204,7 @@ export default async function AdminStatus() {
             {dataChecks.map((c) => {
               const insight = checkInsight(c.key, c.status, c.summary ?? "")
               return (
-                <li key={c.key} className="border-t border-sand px-5 py-3 first:border-t-0">
+                <li key={c.key} className="border-t border-sand px-4 py-3 first:border-t-0 sm:px-5">
                   <div className="flex items-center gap-2 text-[0.8rem] font-semibold text-cocoa"><Dot status={c.status} />{c.label}</div>
                   <p className={cn("text-[0.76rem]", c.status === "ok" ? "text-warm-grey" : "text-[#9a4a16]")}>{c.summary}</p>
                   {insight && <p className="mt-1 text-[0.74rem] text-slate">{insight.steps[0]}</p>}
@@ -229,5 +215,15 @@ export default async function AdminStatus() {
         </Panel>
       </div>
     </div>
+  )
+}
+
+function EmailRow({ e }: { e: { at: string; to: string; name: string | null; subject: string; status: string } }) {
+  const [tone, label] = EMAIL_STATUS[e.status] ?? ["muted", e.status]
+  return (
+    <Row aside={<><Chip tone={tone}>{label}</Chip><Sub>{dayTime(e.at)}</Sub></>}>
+      <div className="break-words text-cocoa">{e.subject}</div>
+      <Sub><span className="break-all">to {e.name ? `${e.name} (${e.to})` : e.to}</span></Sub>
+    </Row>
   )
 }

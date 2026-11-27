@@ -75,7 +75,7 @@ export function Panel({
 }) {
   return (
     <section className={cn("overflow-hidden rounded-2xl border border-sand bg-white", className)}>
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-sand px-5 py-3.5">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-sand px-4 py-3.5 sm:px-5">
         <h3 className="text-[0.84rem] font-semibold text-cocoa">{title}</h3>
         <div className="flex items-center gap-3 text-[0.74rem] text-warm-grey">
           {sub}
@@ -89,7 +89,7 @@ export function Panel({
 
 export function InsightBar({ status, children }: { status: "ok" | "warn" | "down"; children: React.ReactNode }) {
   return (
-    <div className="flex gap-2.5 border-t border-sand bg-[#fcfaf6] px-5 py-3 text-[0.78rem] text-slate">
+    <div className="flex gap-2.5 border-t border-sand bg-[#fcfaf6] px-4 py-3 text-[0.8rem] text-slate sm:px-5 sm:text-[0.78rem]">
       <Dot status={status} className="mt-1.5" />
       <div>{children}</div>
     </div>
@@ -97,7 +97,7 @@ export function InsightBar({ status, children }: { status: "ok" | "warn" | "down
 }
 
 export function Empty({ children }: { children: React.ReactNode }) {
-  return <p className="px-5 py-6 text-[0.8rem] text-warm-grey">{children}</p>
+  return <p className="px-4 py-6 text-[0.82rem] text-warm-grey sm:px-5 sm:text-[0.8rem]">{children}</p>
 }
 
 export function Th({ children, className }: { children?: React.ReactNode; className?: string }) {
@@ -142,12 +142,12 @@ export function AttentionCard({ item, now }: { item: AttentionItem; now: number 
   return (
     <article className="grid grid-cols-[4px_1fr] overflow-hidden rounded-2xl border border-sand bg-white">
       <div className={s.bar} />
-      <div className={cn("grid gap-5 px-5 py-4", item.insight && item.severity !== "info" && "lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]")}>
+      <div className={cn("grid gap-4 px-4 py-4 sm:gap-5 sm:px-5", item.insight && item.severity !== "info" && "lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]")}>
         <div className="min-w-0">
           <div className={cn("text-[0.6rem] font-semibold uppercase tracking-[0.12em]", s.text)}>
             {s.label} · {PLATFORM[item.platform]} · {item.topic}
           </div>
-          <h4 className="mt-1 text-[0.95rem] font-semibold leading-snug text-cocoa">{item.title}</h4>
+          <h4 className="mt-1 break-words text-[1rem] font-semibold leading-snug text-cocoa sm:text-[0.95rem]">{item.title}</h4>
           {item.insight && <p className="mt-1.5 text-[0.8rem] text-slate">{item.insight.meaning}</p>}
           {item.detail && <p className="mt-1.5 break-words text-[0.76rem] text-warm-grey">{item.detail}</p>}
           <div className="mt-2 flex flex-wrap gap-x-3.5 gap-y-1 text-[0.72rem] text-warm-grey">
@@ -155,7 +155,7 @@ export function AttentionCard({ item, now }: { item: AttentionItem; now: number 
             {item.meta.map((m, i) => <span key={i}>{m}</span>)}
           </div>
           {item.href && (
-            <Link href={item.href} className="mt-3 inline-flex rounded-lg bg-cocoa px-3 py-1.5 text-[0.76rem] font-medium text-cream hover:bg-cocoa/90">
+            <Link href={item.href} className="mt-3 inline-flex min-h-10 items-center rounded-lg bg-cocoa px-3.5 text-[0.8rem] font-medium text-cream hover:bg-cocoa/90 sm:min-h-0 sm:py-1.5 sm:text-[0.76rem]">
               See what happened
             </Link>
           )}
@@ -167,35 +167,49 @@ export function AttentionCard({ item, now }: { item: AttentionItem; now: number 
 }
 
 export function UptimeRows({ rows }: { rows: UptimeRow[] }) {
+  const pct = (r: UptimeRow) => (r.pct === null ? "–" : `${r.pct >= 99.995 ? "100" : r.pct.toFixed(2)}%`)
   return (
     <div>
       {rows.map((r) => (
-        <div key={r.key} className="grid grid-cols-[minmax(140px,210px)_1fr_64px] items-center gap-4 border-t border-sand px-5 py-2.5 first:border-t-0 md:grid-cols-[210px_1fr_72px_64px]">
+        // Phone: name and figures on one line, the 90 days full width below.
+        // Wider: name · bars · uptime · speed in one row.
+        <div
+          key={r.key}
+          className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-2 border-t border-sand px-4 py-3 first:border-t-0 sm:px-5 md:grid-cols-[210px_1fr_72px_64px] md:py-2.5"
+        >
           <div className="min-w-0">
-            <div className="flex items-center gap-2 text-[0.8rem] font-semibold text-cocoa"><Dot status={r.status} />{r.label}</div>
-            <div className="truncate text-[0.7rem] text-warm-grey">{r.sub}</div>
+            <div className="flex items-center gap-2 text-[0.84rem] font-semibold text-cocoa md:text-[0.8rem]"><Dot status={r.status} />{r.label}</div>
+            <div className="truncate text-[0.72rem] text-warm-grey md:text-[0.7rem]">{r.sub}</div>
           </div>
-          <div className="flex h-5 gap-[2px]" role="img" aria-label={`${r.label}: last 90 days`}>
+          <div
+            className="col-span-2 row-start-2 flex h-6 gap-px md:col-span-1 md:row-start-auto md:h-5 md:gap-[2px]"
+            role="img"
+            aria-label={`${r.label}: last 90 days`}
+          >
             {r.days.map((d) => (
               <i
                 key={d.day}
                 title={`${d.day}: ${d.runs ? `${d.ok} of ${d.runs} checks fine` : "not checked"}`}
-                className={cn("flex-1 rounded-[2px]", d.state === "ok" ? "bg-success/85" : d.state === "warn" ? "bg-ember" : d.state === "down" ? "bg-red-700" : "bg-[#e9e1d3]")}
+                className={cn("min-w-0 flex-1 rounded-[1px] md:rounded-[2px]", d.state === "ok" ? "bg-success/85" : d.state === "warn" ? "bg-ember" : d.state === "down" ? "bg-red-700" : "bg-[#e9e1d3]")}
               />
             ))}
           </div>
-          <div className="hidden text-right text-[0.76rem] tabular-nums text-cocoa md:block">
-            {r.pct === null ? "–" : `${r.pct >= 99.995 ? "100" : r.pct.toFixed(2)}%`}
+          <div className="text-right text-[0.8rem] tabular-nums text-cocoa md:text-[0.76rem]">
+            {pct(r)}
+            <span className="block text-[0.72rem] text-warm-grey md:hidden">{r.ms ? `${r.ms}ms` : ""}</span>
           </div>
-          <div className="text-right text-[0.72rem] tabular-nums text-warm-grey">{r.ms ? `${r.ms}ms` : ""}</div>
+          <div className="hidden text-right text-[0.72rem] tabular-nums text-warm-grey md:block">{r.ms ? `${r.ms}ms` : ""}</div>
         </div>
       ))}
+      <div className="flex justify-between px-4 pb-2.5 pt-0.5 text-[0.66rem] text-warm-grey sm:px-5 md:pl-[246px] md:pr-[156px]">
+        <span>90 days ago</span><span>today</span>
+      </div>
     </div>
   )
 }
 
 export function Sparkline({ points, width = 240, height = 34 }: { points: number[]; width?: number; height?: number }) {
-  if (points.length < 2) return <div style={{ width, height }} className="text-[0.7rem] text-warm-grey">Not enough data yet</div>
+  if (points.length < 6) return <div style={{ width, height }} className="flex items-center text-[0.72rem] text-warm-grey">Speed chart fills in over the next few hours</div>
   const max = Math.max(...points), min = Math.min(...points)
   const y = (v: number) => height - 3 - ((v - min) / (max - min || 1)) * (height - 6)
   const step = width / (points.length - 1)
@@ -208,43 +222,64 @@ export function Sparkline({ points, width = 240, height = 34 }: { points: number
 }
 
 export function SpeedChart({ points }: { points: { at: string; ms: number }[] }) {
-  if (points.length < 2) return <Empty>Not enough checks yet. The chart fills in over the next few hours.</Empty>
-  const W = 1000, H = 150, P = 22
+  if (points.length < 6) return <Empty>Not enough checks yet. The chart fills in over the next few hours.</Empty>
+  const W = 1000, H = 150
   const max = Math.max(1000, ...points.map((p) => p.ms))
   const t0 = new Date(points[0].at).getTime(), t1 = new Date(points[points.length - 1].at).getTime()
-  const x = (iso: string) => ((new Date(iso).getTime() - t0) / (t1 - t0 || 1)) * (W - 40) + 30
-  const y = (ms: number) => H - P - (ms / max) * (H - P * 2)
+  const x = (iso: string) => ((new Date(iso).getTime() - t0) / (t1 - t0 || 1)) * W
+  const y = (ms: number) => H - (ms / max) * H
   const worst = points.reduce((a, b) => (b.ms > a.ms ? b : a))
+  const typical = [...points].sort((a, b) => a.ms - b.ms)[Math.floor(points.length / 2)].ms
   return (
-    <div className="px-5 pb-2 pt-3">
-      <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label="Load time over the last 24 hours">
-        <line x1="30" y1={y(0)} x2={W} y2={y(0)} stroke="#E8DCC8" />
-        <line x1="30" y1={y(1000)} x2={W} y2={y(1000)} stroke="#f0e9dc" strokeDasharray="3 4" />
-        <text x="0" y={y(1000) + 3} fontSize="10" fill="#8A8070">1s</text>
-        <text x="0" y={y(0) + 3} fontSize="10" fill="#8A8070">0</text>
-        <polyline fill="none" stroke="#473728" strokeWidth="1.6" points={points.map((p) => `${x(p.at).toFixed(1)},${y(p.ms).toFixed(1)}`).join(" ")} />
+    <div className="px-4 pb-3 pt-3 sm:px-5">
+      <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-[0.76rem] text-slate">
+        <span>Typical: <b className="tabular-nums text-cocoa">{(typical / 1000).toFixed(2)}s</b></span>
+        <span>Slowest: <b className="tabular-nums text-cocoa">{(worst.ms / 1000).toFixed(2)}s</b> at {clock(worst.at)}</span>
+      </div>
+      <div className="relative">
+        {/* The line stretches to fit; labels are HTML so they stay readable at any width. */}
+        <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label="Load time over the last 24 hours" className="block">
+          <line x1="0" y1={y(1000)} x2={W} y2={y(1000)} stroke="#E8DCC8" strokeDasharray="4 5" vectorEffect="non-scaling-stroke" />
+          <line x1="0" y1={H - 0.5} x2={W} y2={H - 0.5} stroke="#E8DCC8" vectorEffect="non-scaling-stroke" />
+          <polyline fill="none" stroke="#473728" strokeWidth="1.6" vectorEffect="non-scaling-stroke"
+            points={points.map((p) => `${x(p.at).toFixed(1)},${y(p.ms).toFixed(1)}`).join(" ")} />
+        </svg>
+        <span className="absolute right-0 text-[0.64rem] text-warm-grey" style={{ top: `calc(${(y(1000) / H) * 100}% - 14px)` }}>1s</span>
         {worst.ms > 1500 && (
-          <>
-            <circle cx={x(worst.at)} cy={y(worst.ms)} r="4" fill="#D4713A" />
-            <text x={Math.min(x(worst.at) + 8, W - 190)} y={y(worst.ms) - 4} fontSize="11" fill="#9a4a16">
-              {clock(worst.at)} · {(worst.ms / 1000).toFixed(1)}s, the slowest today
-            </text>
-          </>
+          <span
+            className="absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-ember"
+            style={{ left: `${(x(worst.at) / W) * 100}%`, top: `${(y(worst.ms) / H) * 100}%` }}
+            aria-hidden
+          />
         )}
-      </svg>
-      <div className="flex justify-between pl-[3%] text-[0.66rem] text-warm-grey">
+      </div>
+      <div className="mt-1 flex justify-between text-[0.66rem] text-warm-grey">
         <span>{dayTime(points[0].at)}</span><span>now</span>
       </div>
     </div>
   )
 }
 
+/** One line of a list panel: main content on the left, figures or a status on the right. */
+export function Row({ children, aside, className }: { children: React.ReactNode; aside?: React.ReactNode; className?: string }) {
+  return (
+    <li className={cn("flex items-start justify-between gap-3 border-t border-[#f0e9dc] px-4 py-3 first:border-t-0 sm:px-5 sm:py-2.5", className)}>
+      <div className="min-w-0 flex-1 text-[0.84rem] sm:text-[0.8rem]">{children}</div>
+      {aside !== undefined && <div className="shrink-0 text-right text-[0.8rem] tabular-nums">{aside}</div>}
+    </li>
+  )
+}
+
+export function Sub({ children }: { children: React.ReactNode }) {
+  return <div className="mt-0.5 text-[0.74rem] text-warm-grey sm:text-[0.7rem]">{children}</div>
+}
+
 export function Timeline({ items }: { items: TimelineItem[] }) {
   if (!items.length) return <Empty>Nothing has changed today.</Empty>
   return (
-    <ul className="px-5 py-2">
+    <ul className="px-4 py-2 sm:px-5">
       {items.map((t, i) => (
-        <li key={i} className="grid grid-cols-[52px_12px_1fr] gap-2.5 py-1.5 text-[0.78rem]">
+        <li key={i} className="grid grid-cols-[44px_10px_1fr] gap-2 py-1.5 text-[0.8rem] sm:grid-cols-[52px_12px_1fr] sm:gap-2.5 sm:text-[0.78rem]">
           <time className="pt-px text-[0.7rem] tabular-nums text-warm-grey">{clock(t.at)}</time>
           <Dot status={t.status} className="mt-1.5" />
           <span className="text-slate">{t.text}</span>

@@ -64,7 +64,7 @@ export default async function StatusOverview() {
     const mine = items.filter((i) => i.platform === platform && i.severity !== "info")
     const urgent = mine.filter((i) => i.severity === "urgent").length
     return (
-      <div className="rounded-2xl border border-sand bg-white px-5 py-4">
+      <div className="rounded-2xl border border-sand bg-white px-4 py-4 sm:px-5">
         <div className="flex items-center justify-between gap-3">
           <h3 className="font-heading text-[1.4rem] font-medium text-cocoa">{title}</h3>
           {urgent ? <Chip tone="urgent">{urgent} urgent</Chip> : mine.length ? <Chip tone="look">{mine.length} to look at</Chip> : <Chip tone="ok">Working</Chip>}
@@ -73,9 +73,9 @@ export default async function StatusOverview() {
         <div className="mt-3 grid grid-cols-2 border-t border-sand sm:grid-cols-4">
           {stats.map(([v, l]) => <Stat key={l} value={v} label={l} />)}
         </div>
-        <div className="mt-3 flex items-center justify-between gap-3">
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0 overflow-hidden"><Sparkline points={speed.map((p) => p.ms)} /></div>
-          <Link href={href} className="inline-flex shrink-0 rounded-lg border border-sand px-3 py-1.5 text-[0.76rem] font-medium text-cocoa hover:bg-cream">
+          <Link href={href} className="inline-flex min-h-10 w-full shrink-0 items-center justify-center rounded-lg border border-sand px-3 text-[0.82rem] font-medium text-cocoa hover:bg-cream sm:min-h-0 sm:w-auto sm:py-1.5 sm:text-[0.76rem]">
             Open dashboard →
           </Link>
         </div>
@@ -139,7 +139,7 @@ export default async function StatusOverview() {
           {services.map((s) => {
             const mine = checks.filter((c) => s.keys.includes(c.key))
             return (
-              <div key={s.name} className="border-b border-sand px-5 py-3.5 sm:border-r xl:border-b-0 [&:last-child]:border-r-0">
+              <div key={s.name} className="border-b border-sand px-4 py-3.5 last:border-b-0 sm:border-r sm:px-5 xl:border-b-0 [&:last-child]:border-r-0">
                 <div className="flex items-center gap-2 text-[0.84rem] font-semibold text-cocoa"><Dot status={worst(mine)} />{s.name}</div>
                 <p className="mt-1 text-[0.74rem] text-warm-grey">{s.line(mine) || "Not checked yet"}</p>
               </div>
