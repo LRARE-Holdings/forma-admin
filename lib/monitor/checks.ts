@@ -63,12 +63,21 @@ function plural(n: number, word: string): string {
 // Websites
 // ---------------------------------------------------------------------------
 
-async function fetchPage(url: string): Promise<{ status: number; body: string; ms: number }> {
+interface PageOptions {
+  /** POST this JSON instead of a GET (an API that should refuse it cleanly). */
+  post?: unknown
+  /** The status that means "working": 200 for pages, 400 for a deliberate refusal. */
+  expectStatus?: number
+}
+
+async function fetchPage(url: string, opts: PageOptions = {}): Promise<{ status: number; body: string; ms: number }> {
   const started = Date.now()
   const res = await fetch(url, {
+    method: opts.post === undefined ? "GET" : "POST",
     cache: "no-store",
     redirect: "follow",
-    headers: { "user-agent": "FormaMonitor/1.0" },
+    headers: { "user-agent": "FormaMonitor/1.0", ...(opts.post === undefined ? {} : { "content-type": "application/json" }) },
+    body: opts.post === undefined ? undefined : JSON.stringify(opts.post),
     signal: AbortSignal.timeout(TIMEOUT_MS),
   })
   const body = await res.text()
@@ -80,7 +89,8 @@ function pageCheck(
   label: string,
   url: string,
   looksRight: (body: string) => boolean,
-  slowMs = 4000
+  slowMs = 4000,
+  opts: PageOptions = {},
 ): CheckDef {
   const def = { key, label, area: "site" as const }
   return {
@@ -91,17 +101,16 @@ function pageCheck(
       let last = ""
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
-          const page = await fetchPage(url)
-          if (page.status >= 500) {
-            last = `${url} returned ${page.status}`
-          } else if (page.status >= 400) {
+          const page = await fetchPage(url, opts)
+          const expected = opts.expectStatus ?? 200
+          if (page.status >= 500 || (page.status !== expected && !(expected === 200 && page.status < 400))) {
             last = `${url} returned ${page.status}`
           } else if (!looksRight(page.body)) {
             last = `${url} loaded but the page looks wrong (expected content missing)`
           } else if (page.ms > slowMs) {
-            return result(def, "warn", `Slow: took ${(page.ms / 1000).toFixed(1)}s to load`, { lines: [url] })
+            return result(def, "warn", `Slow: took ${(page.ms / 1000).toFixed(1)}s to load`, { lines: [url], ms: page.ms })
           } else {
-            return result(def, "ok", `Up, ${page.ms}ms`)
+            return result(def, "ok", `Up, ${page.ms}ms`, { ms: page.ms })
           }
         } catch (e) {
           last = `${url}: ${errorText(e)}`
@@ -311,7 +320,7 @@ function supabaseChecks(db: SupabaseClient): CheckDef[] {
             return result(database, "warn", `Database is ${sizeGb.toFixed(1)} GB, close to the 8 GB included`, { lines })
           }
           if (ms > 1500) return result(database, "warn", `Database is slow to reply (${ms}ms)`, { lines })
-          return result(database, "ok", `Up, ${ms}ms`, { lines })
+          return result(database, "ok", `Up, ${ms}ms`, { lines, ms })
         } catch (e) {
           return result(database, "down", `Couldn't reach the database: ${errorText(e)}`)
         }
@@ -322,13 +331,14 @@ function supabaseChecks(db: SupabaseClient): CheckDef[] {
       every: 5,
       run: async () => {
         try {
+          const t = Date.now()
           const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/health`, {
             headers: { apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY! },
             cache: "no-store",
             signal: AbortSignal.timeout(TIMEOUT_MS),
           })
           if (!res.ok) return result(auth, "down", `Supabase Auth returned ${res.status}: nobody can log in`)
-          return result(auth, "ok", "Up")
+          return result(auth, "ok", `Up, ${Date.now() - t}ms`, { ms: Date.now() - t })
         } catch (e) {
           return result(auth, "down", `Couldn't reach Supabase Auth: ${errorText(e)}`)
         }
@@ -762,6 +772,14 @@ export function buildChecks(db: SupabaseClient, studios: LiveStudio[]): CheckDef
     pageCheck(`site.public.${s.domain}`, `${s.domain}`, `https://${s.domain}/`, (b) => b.includes(s.name.split(" ")[0])),
     pageCheck(`site.timetable.${s.domain}`, `${s.domain} timetable`, `https://${s.domain}/api/timetable`, (b) => b.trim().startsWith("{") || b.trim().startsWith("[")),
     pageCheck(`site.admin.${s.domain}`, `admin.${s.domain}`, `https://admin.${s.domain}/login`, (b) => b.length > 500),
+    // Checkout: an empty request must be turned away by the checkout API
+    // itself (400 "Invalid input"), which proves it's up without making a
+    // payment.
+    pageCheck(
+      `site.checkout.${s.domain}`, `${s.domain} checkout`, `https://${s.domain}/api/checkout/create-payment-intent`,
+      (b) => b.includes("Invalid input"), 4000, { post: {}, expectStatus: 400 },
+    ),
+    pageCheck(`site.gift.${s.domain}`, `${s.domain} gift cards`, `https://${s.domain}/gift`, (b) => /gift/i.test(b)),
   ])
   const hosts = studios.flatMap((s) => [s.domain, `admin.${s.domain}`])
 

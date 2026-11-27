@@ -14,6 +14,8 @@ import {
   offerWaitlistPlaces,
 } from "@/lib/event-tickets"
 import { confirmGiftCardPayment, deliverGiftCardEmails, voidGiftCardPayment } from "@/lib/gift-cards"
+import { withMonitorContext, setMonitorContext, monitorContext, requestIds, newRequestId } from "@/lib/monitor/context"
+import { logEvent } from "@/lib/monitor/report-error"
 import type Stripe from "stripe"
 import type { StudioBranding } from "@/lib/types"
 
@@ -87,7 +89,45 @@ export async function POST(request: NextRequest) {
     })
   }
 
-  try {
+  // For the status page: every event, who it was for and how it ended, tied
+  // to the payment so the website's checkout and this request line up.
+  const started = Date.now()
+  const ids = requestIds(request.headers)
+  const summary = describeEvent(event)
+  return withMonitorContext(
+    { requestId: ids.requestId ?? newRequestId(), path: "/api/stripe/webhook", correlation: summary.correlation, profileId: summary.profileId },
+    async () => {
+      try {
+        await dispatch(event, supabase, studioId, connectedAccountId)
+      } catch (err) {
+        console.error(`Error handling ${event.type}:`, err)
+        await logEvent({
+          app: "admin", level: "error", category: "payment", event: event.type,
+          message: `Failed: ${err instanceof Error ? err.message : String(err)}. Stripe will retry.`,
+          durationMs: Date.now() - started, data: summary.data,
+        })
+        return NextResponse.json({ error: "Handler failed" }, { status: 500 })
+      }
+      // An error logged on the way means it didn't fully work, whatever the
+      // branch would normally have done.
+      const ctx = monitorContext()
+      const problem = !ctx?.outcome && ctx?.errors?.length ? ctx.errors[0] : null
+      await logEvent({
+        app: "admin", level: problem ? "warn" : ctx?.outcomeLevel ?? "info", category: "payment", event: event.type,
+        message: problem ? `Didn't complete: ${problem}` : ctx?.outcome ?? summary.outcome,
+        durationMs: Date.now() - started, data: summary.data,
+      })
+      return NextResponse.json({ received: true })
+    },
+  )
+}
+
+async function dispatch(
+  event: Stripe.Event,
+  supabase: ReturnType<typeof createAdminClient>,
+  studioId: string,
+  connectedAccountId: string | null | undefined,
+) {
     switch (event.type) {
       case "payment_intent.succeeded":
         await handlePaymentIntentSucceeded(supabase, studioId, connectedAccountId ?? null, event.data.object as Stripe.PaymentIntent)
@@ -116,14 +156,56 @@ export async function POST(request: NextRequest) {
 
       default:
         // Unhandled event type — acknowledge but ignore
+        setMonitorContext({ outcome: "Not used by Burn: ignored" })
         break
     }
-  } catch (err) {
-    console.error(`Error handling ${event.type}:`, err)
-    return NextResponse.json({ error: "Handler failed" }, { status: 500 })
-  }
+}
 
-  return NextResponse.json({ received: true })
+const PURPOSE: Record<string, { label: string; done: string }> = {
+  pack_tier: { label: "Class pack", done: "Pack added to their account" },
+  drop_in_class: { label: "Drop-in class", done: "Class booked, confirmation emailed" },
+  waitlist_claim: { label: "Waitlist place", done: "Place booked from the waitlist" },
+  gift_card: { label: "Gift card", done: "Gift card paid, voucher emailed" },
+  event_ticket: { label: "Event ticket", done: "Ticket confirmed" },
+}
+
+/** Who, what and how much, in plain words, for the status page's payment log. */
+function describeEvent(event: Stripe.Event): {
+  correlation?: string
+  profileId?: string
+  outcome: string
+  data: Record<string, unknown>
+} {
+  const obj = event.data.object as unknown as Record<string, unknown>
+  const metadata = (obj.metadata ?? {}) as Record<string, string>
+  const purpose = PURPOSE[metadata.type ?? ""]
+  const pi =
+    event.type.startsWith("payment_intent.") ? (obj.id as string)
+    : typeof obj.payment_intent === "string" ? obj.payment_intent
+    : undefined
+  const amount = (obj.amount_received ?? obj.amount ?? obj.amount_total) as number | undefined
+  const outcome =
+    event.type === "payment_intent.succeeded" ? purpose?.done ?? "Payment recorded"
+    : event.type === "charge.refunded" ? "Refund recorded: booking or credits updated"
+    : event.type === "charge.dispute.created" ? "Dispute recorded: credits removed"
+    : event.type.startsWith("customer.subscription.") ? "Membership updated"
+    : event.type.startsWith("payout.") ? "Payout recorded in Money"
+    : event.type === "checkout.session.completed" ? purpose?.done ?? "Checkout recorded"
+    : "Recorded"
+  return {
+    correlation: pi,
+    profileId: metadata.profile_id || undefined,
+    outcome,
+    data: {
+      event_id: event.id,
+      purpose: purpose?.label ?? metadata.type ?? null,
+      amount_pence: typeof amount === "number" ? amount : null,
+      description: (obj.description as string | null) ?? null,
+      buyer_email: metadata.buyer_email ?? (obj.receipt_email as string | null) ?? null,
+      schedule_id: metadata.schedule_id ?? null,
+      date: metadata.date ?? null,
+    },
+  }
 }
 
 const LEDGER_EVENTS = new Set([
@@ -1072,6 +1154,7 @@ async function refundUnbookablePayment(
   console.warn(
     `[webhook] Refunding unbookable payment ${stripeId}: schedule=${scheduleId} date=${date} — ${reason}`,
   )
+  setMonitorContext({ outcome: `Couldn't book (${reason}), so it was refunded automatically`, outcomeLevel: "warn" })
 
   if (!connectedAccountId) {
     console.error(

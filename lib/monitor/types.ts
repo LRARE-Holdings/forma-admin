@@ -36,6 +36,8 @@ export interface CheckResult {
   urgent?: boolean
   /** Record it and show it on the status page, but don't push an alert. */
   quiet?: boolean
+  /** How long the thing checked took to answer, for the speed charts. */
+  ms?: number
 }
 
 export interface LiveStudio {

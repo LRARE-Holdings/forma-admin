@@ -36,7 +36,7 @@ async function sendTelegram(config: MonitorConfig, alert: Alert): Promise<void> 
     ...alert.items.flatMap((item) => [
       "",
       `<b>${escapeHtml(item.heading)}</b>`,
-      ...(item.lines ?? []).slice(0, 6).map((l) => `• ${escapeHtml(l)}`),
+      ...(item.lines ?? []).slice(0, 8).map((l) => `• ${escapeHtml(l)}`),
     ]),
     "",
     `<a href="${STATUS_URL}">Open the status page</a>`,

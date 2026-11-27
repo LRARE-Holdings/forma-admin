@@ -23,7 +23,7 @@ async function setConfig(key: string, value: string | null) {
 export async function runChecksNow(): Promise<Result<{ ran: number }>> {
   await requirePlatformOwner()
   const report = await runMonitor({ force: true })
-  revalidatePath("/dashboard/status")
+  revalidatePath("/dashboard/status", "layout")
   return { ok: true, ran: report.ran }
 }
 
@@ -32,7 +32,7 @@ export async function saveAlertEmail(email: string): Promise<Result> {
   const value = email.trim()
   if (value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return { ok: false, error: "That doesn't look like an email address" }
   await setConfig("alert_email", value || null)
-  revalidatePath("/dashboard/status")
+  revalidatePath("/dashboard/status", "layout")
   return { ok: true }
 }
 
@@ -41,7 +41,7 @@ export async function setUpPush(): Promise<Result> {
   // Anyone who knows a ntfy topic can read it, so make it unguessable.
   const topic = `forma-${randomBytes(12).toString("base64url").toLowerCase().replace(/[^a-z0-9]/g, "")}`
   await setConfig("ntfy_topic", topic)
-  revalidatePath("/dashboard/status")
+  revalidatePath("/dashboard/status", "layout")
   return { ok: true }
 }
 
@@ -65,7 +65,7 @@ export async function connectTelegramBot(token: string): Promise<Result<{ userna
   }
   await setConfig("telegram_token", value)
   await setConfig("telegram_chat_id", null)
-  revalidatePath("/dashboard/status")
+  revalidatePath("/dashboard/status", "layout")
   return { ok: true, username: data.result.username }
 }
 
@@ -91,7 +91,7 @@ export async function findTelegramChat(): Promise<Result> {
     title: "Connected. Burn's alerts will arrive here.",
     items: [],
   })
-  revalidatePath("/dashboard/status")
+  revalidatePath("/dashboard/status", "layout")
   return { ok: true }
 }
 
@@ -105,7 +105,7 @@ export async function disconnectChannel(channel: "telegram" | "push" | "email"):
   } else {
     await setConfig("alert_email", null)
   }
-  revalidatePath("/dashboard/status")
+  revalidatePath("/dashboard/status", "layout")
   return { ok: true }
 }
 
@@ -117,4 +117,24 @@ export async function sendTestAlert(): Promise<Result<{ report: DeliveryReport }
     items: [{ heading: "If you can read this, alerts reach you on this channel.", lines: [] }],
   })
   return { ok: true, report }
+}
+
+/** Error inbox: mark fixed (reopens if it comes back), mute for a while, or open again. */
+export async function setErrorGroupStatus(
+  fingerprint: string,
+  status: "resolved" | "muted" | "open",
+  muteHours?: number,
+): Promise<Result> {
+  await requirePlatformOwner()
+  if (!/^[0-9a-f]{16}$/.test(fingerprint)) return { ok: false, error: "Unknown error" }
+  const update =
+    status === "resolved"
+      ? { status, resolved_at: new Date().toISOString(), muted_until: null, reopened: false }
+      : status === "muted"
+        ? { status, muted_until: new Date(Date.now() + (muteHours ?? 24) * 3_600_000).toISOString() }
+        : { status, muted_until: null, resolved_at: null }
+  const { error } = await createAdminClient().from("error_groups").update(update).eq("fingerprint", fingerprint)
+  if (error) return { ok: false, error: error.message }
+  revalidatePath("/dashboard/status", "layout")
+  return { ok: true }
 }
