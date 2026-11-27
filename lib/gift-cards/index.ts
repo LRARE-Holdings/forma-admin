@@ -366,6 +366,54 @@ export async function resendGiftCardVoucher(
   if (error) console.error("[gift-cards] Sent, but couldn't record it on", card.id, error.message)
 }
 
+/**
+ * Email the gift to the recipient on a later date instead of now: the 8am
+ * daily job (deliverDueGiftCards) sends it that morning. Replaces any address
+ * or date already on the card; scheduling again after a send sends it again
+ * on the new date.
+ */
+export async function scheduleRecipientEmail(studioId: string, id: string, to: string, sendOn: string) {
+  const supabase = createAdminClient()
+  const card = await loadCard(supabase, id)
+  if (!card || card.studio_id !== studioId) throw new Error("Gift card not found")
+  const today = localDateStr()
+
+  // Not paid yet (a card Lucy set up): save who to email and when. Today
+  // means as soon as it's paid; the webhook sends it straight after payment.
+  if (card.status === "pending") {
+    const { data: row } = await supabase.from("gift_cards").select("requested_at").eq("id", card.id).single()
+    if (!row?.requested_at) throw new Error("This gift card hasn't been paid for.")
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(sendOn) || sendOn < today) throw new Error("Pick today or a later date")
+    const { error } = await supabase
+      .from("gift_cards")
+      .update({ recipient_email: to, send_on: sendOn, recipient_emailed_at: null })
+      .eq("id", card.id)
+      .eq("status", "pending")
+    if (error) throw new Error(error.message)
+    return
+  }
+
+  if (card.status !== "paid" || !card.expires_at) {
+    throw new Error(
+      card.status === "redeemed"
+        ? "This gift card has already been claimed."
+        : card.status === "refunded"
+          ? "This gift card was refunded."
+          : "This gift card hasn't been paid for.",
+    )
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(sendOn) || sendOn <= today) throw new Error("Pick a date after today, or send it now")
+  const lastClaimDay = new Date(card.expires_at).toLocaleDateString("en-CA", { timeZone: "Europe/London" })
+  if (sendOn > lastClaimDay) throw new Error("That's after the card's claim-by date")
+
+  const { error } = await supabase
+    .from("gift_cards")
+    .update({ recipient_email: to, send_on: sendOn, recipient_emailed_at: null })
+    .eq("id", card.id)
+    .eq("status", "paid")
+  if (error) throw new Error(error.message)
+}
+
 /** Daily: every card with an email still owed. */
 export async function deliverDueGiftCards() {
   const supabase = createAdminClient()

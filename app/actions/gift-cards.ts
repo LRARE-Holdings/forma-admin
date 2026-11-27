@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache"
 import { runAction } from "@/lib/action-result"
 import { getUser, requireAdmin } from "@/lib/auth"
 import { getStudioId } from "@/lib/studio-context"
-import { resendGiftCardVoucher } from "@/lib/gift-cards"
+import { resendGiftCardVoucher, scheduleRecipientEmail } from "@/lib/gift-cards"
 import {
   cancelGiftCardRequest,
   createGiftCardRequest,
@@ -88,5 +88,16 @@ export async function giftCardRequestLink(id: string) {
   return runAction(async () => {
     await requireAdmin()
     return { link: await paymentLinkFor(await getStudioId(), z.string().uuid().parse(id)) }
+  })
+}
+
+/** Email the gift to the recipient on a chosen date (8am that morning). */
+export async function scheduleGiftCardEmail(id: string, to: string, sendOn: string) {
+  return runAction(async () => {
+    await requireAdmin()
+    const parsed = input.safeParse({ id, who: "recipient", to })
+    if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Check the email address")
+    await scheduleRecipientEmail(await getStudioId(), parsed.data.id, parsed.data.to, sendOn)
+    revalidatePath("/dashboard/gift-cards")
   })
 }

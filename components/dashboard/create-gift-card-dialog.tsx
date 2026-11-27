@@ -65,7 +65,8 @@ function CreateGiftCardDialog({
   const [recipientName, setRecipientName] = useState("")
   const [senderName, setSenderName] = useState("")
   const [senderTouched, setSenderTouched] = useState(false)
-  const [emailRecipient, setEmailRecipient] = useState(false)
+  // On by default: most gifts should reach the recipient by email.
+  const [emailRecipient, setEmailRecipient] = useState(true)
   const [recipientEmail, setRecipientEmail] = useState("")
   const [sendOn, setSendOn] = useState(ukToday())
   const [saving, setSaving] = useState(false)

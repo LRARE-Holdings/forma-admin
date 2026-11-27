@@ -19,6 +19,7 @@ import {
   emailGiftCardRequestAgain,
   giftCardRequestLink,
   resendGiftCard,
+  scheduleGiftCardEmail,
 } from "@/app/actions/gift-cards"
 import { unwrap } from "@/lib/action-result"
 
@@ -94,6 +95,7 @@ export function GiftCardsTable({ cards, now }: { cards: GiftCardRow[]; now: numb
   const [resending, setResending] = useState<GiftCardRow | null>(null)
   const [relinking, setRelinking] = useState<GiftCardRow | null>(null)
   const [cancelling, setCancelling] = useState<GiftCardRow | null>(null)
+  const [addressing, setAddressing] = useState<GiftCardRow | null>(null)
 
   async function copyLink(c: GiftCardRow) {
     try {
@@ -214,6 +216,20 @@ export function GiftCardsTable({ cards, now }: { cards: GiftCardRow[]; now: numb
                           : s === "expired"
                             ? `Not claimed by ${day(c.expiresAt, true)}`
                             : "Refunded, so the code no longer works"}
+                      {(s === "awaiting" || s === "unclaimed") && !c.recipientEmailedAt && (
+                        <>
+                          {s === "awaiting" && (c.recipientEmail && c.sendOn
+                            ? ` · Emails ${c.recipientEmail} ${c.sendOn <= ukDate() ? "once paid" : `on ${day(c.sendOn)}`}`
+                            : ` · Not emailing ${firstName(c.recipientName)}`)}
+                          {s === "unclaimed" ? " · " : " "}
+                          <button
+                            onClick={() => setAddressing(c)}
+                            className="font-semibold text-gold underline-offset-2 hover:text-ember hover:underline"
+                          >
+                            {c.recipientEmail ? "Change" : `Add ${firstName(c.recipientName)}'s email`}
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                   {s === "awaiting" ? (
@@ -246,7 +262,7 @@ export function GiftCardsTable({ cards, now }: { cards: GiftCardRow[]; now: numb
                           onClick={() => setResending(c)}
                           className="text-[0.75rem] font-semibold text-gold hover:text-ember"
                         >
-                          Send again
+                          Send
                         </button>
                       )}
                     </div>
@@ -262,13 +278,23 @@ export function GiftCardsTable({ cards, now }: { cards: GiftCardRow[]; now: numb
       <ResendDialog card={resending} onClose={() => setResending(null)} />
       <RelinkDialog card={relinking} onClose={() => setRelinking(null)} />
       <CancelRequestDialog card={cancelling} onClose={() => setCancelling(null)} />
+      <RecipientEmailDialog card={addressing} onClose={() => setAddressing(null)} />
     </>
   )
+}
+
+const firstName = (name: string) => name.trim().split(/\s+/)[0] || name
+
+function ukDate(offsetDays = 0) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" }).format(new Date(Date.now() + offsetDays * 86_400_000))
 }
 
 function ResendDialog({ card, onClose }: { card: GiftCardRow | null; onClose: () => void }) {
   const [who, setWho] = useState<"buyer" | "recipient">("buyer")
   const [to, setTo] = useState("")
+  // Recipient only: now, or 8am on a date (e.g. Christmas morning).
+  const [when, setWhen] = useState<"now" | "later">("now")
+  const [sendOn, setSendOn] = useState("")
   const [sending, setSending] = useState(false)
   const [lastCard, setLastCard] = useState<string | null>(null)
 
@@ -277,6 +303,9 @@ function ResendDialog({ card, onClose }: { card: GiftCardRow | null; onClose: ()
     setLastCard(card.id)
     setWho(card.recipientEmail ? "recipient" : "buyer")
     setTo(card.recipientEmail ?? card.buyerEmail ?? "")
+    const scheduled = !!card.recipientEmail && !card.recipientEmailedAt && !!card.sendOn && card.sendOn > ukDate()
+    setWhen(scheduled ? "later" : "now")
+    setSendOn(scheduled ? card.sendOn! : "")
   }
   if (!card) return null
 
@@ -289,6 +318,12 @@ function ResendDialog({ card, onClose }: { card: GiftCardRow | null; onClose: ()
     if (!card) return
     setSending(true)
     try {
+      if (who === "recipient" && when === "later") {
+        unwrap(await scheduleGiftCardEmail(card.id, to, sendOn))
+        toast.success(`Scheduled for ${to} on ${day(sendOn)} at 8am`)
+        onClose()
+        return
+      }
       unwrap(await resendGiftCard(card.id, who, to))
       toast.success(`Voucher sent to ${to}`)
       onClose()
@@ -321,9 +356,11 @@ function ResendDialog({ card, onClose }: { card: GiftCardRow | null; onClose: ()
     <Dialog open={!!card} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Send the voucher again</DialogTitle>
+          <DialogTitle>Send the voucher</DialogTitle>
           <DialogDescription>
-            We&apos;ll email the PDF with the code {card.code} straight away.
+            {who === "recipient" && when === "later"
+              ? `We'll email ${card.recipientName} the gift with the code ${card.code} at 8am on the day you pick.`
+              : `We'll email the PDF with the code ${card.code} straight away.`}
           </DialogDescription>
         </DialogHeader>
         <div role="radiogroup" className="space-y-2">
@@ -337,12 +374,53 @@ function ResendDialog({ card, onClose }: { card: GiftCardRow | null; onClose: ()
             <p className="mt-1 text-[0.7rem] text-warm-grey">This also replaces {card.recipientEmail} on the gift card.</p>
           )}
         </div>
+        {who === "recipient" && (
+          <div>
+            <Label>When</Label>
+            <div role="radiogroup" className="mt-1 grid grid-cols-2 gap-2">
+              {(["now", "later"] as const).map((w) => (
+                <button
+                  key={w}
+                  type="button"
+                  role="radio"
+                  aria-checked={when === w}
+                  onClick={() => {
+                    setWhen(w)
+                    if (w === "later" && !sendOn) setSendOn(ukDate(1))
+                  }}
+                  className={`rounded-lg border px-3 py-2 text-left text-[0.8rem] font-semibold transition-colors ${
+                    when === w ? "border-gold bg-gold/10 text-cocoa" : "border-sand text-warm-grey hover:border-gold/50"
+                  }`}
+                >
+                  {w === "now" ? "Now" : "On a date"}
+                </button>
+              ))}
+            </div>
+            {when === "later" && (
+              <div className="mt-2">
+                <Input
+                  type="date"
+                  aria-label="Send on"
+                  value={sendOn}
+                  min={ukDate(1)}
+                  max={card.expiresAt ? new Date(card.expiresAt).toLocaleDateString("en-CA", { timeZone: "Europe/London" }) : undefined}
+                  onChange={(e) => setSendOn(e.target.value)}
+                />
+                <p className="mt-1 text-[0.7rem] text-warm-grey">It goes at 8am that morning.</p>
+              </div>
+            )}
+          </div>
+        )}
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={sending}>
             Cancel
           </Button>
-          <Button onClick={send} disabled={sending || !to.trim()}>
-            {sending ? "Sending…" : "Send voucher"}
+          <Button onClick={send} disabled={sending || !to.trim() || (who === "recipient" && when === "later" && !sendOn)}>
+            {sending
+              ? "Saving…"
+              : who === "recipient" && when === "later"
+                ? sendOn ? `Send on ${day(sendOn)}` : "Pick a date"
+                : "Send voucher"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -427,6 +505,114 @@ function CancelRequestDialog({ card, onClose }: { card: GiftCardRow | null; onCl
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={working}>Keep it</Button>
           <Button variant="destructive" onClick={cancel} disabled={working}>{working ? "Cancelling…" : "Cancel gift card"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/**
+ * Who the gift is emailed to, and when, added or changed after the card was
+ * made: before payment (sent once paid, or on the date) or after (now, or
+ * 8am on the date).
+ */
+function RecipientEmailDialog({ card, onClose }: { card: GiftCardRow | null; onClose: () => void }) {
+  const [to, setTo] = useState("")
+  const [when, setWhen] = useState<"now" | "later">("now")
+  const [sendOn, setSendOn] = useState("")
+  const [saving, setSaving] = useState(false)
+  const [lastCard, setLastCard] = useState<string | null>(null)
+
+  if (card && card.id !== lastCard) {
+    setLastCard(card.id)
+    setTo(card.recipientEmail ?? "")
+    const later = !!card.sendOn && card.sendOn > ukDate()
+    setWhen(later ? "later" : "now")
+    setSendOn(later ? card.sendOn! : "")
+  }
+  if (!card) return null
+
+  const unpaid = card.status === "pending"
+  const name = firstName(card.recipientName)
+  const lastDay = card.expiresAt ? new Date(card.expiresAt).toLocaleDateString("en-CA", { timeZone: "Europe/London" }) : undefined
+
+  async function save() {
+    if (!card) return
+    setSaving(true)
+    try {
+      if (when === "later") {
+        unwrap(await scheduleGiftCardEmail(card.id, to, sendOn))
+        toast.success(`${name}'s gift goes to ${to} on ${day(sendOn)}${unpaid ? " (once paid)" : " at 8am"}`)
+      } else if (unpaid) {
+        unwrap(await scheduleGiftCardEmail(card.id, to, ukDate()))
+        toast.success(`${name}'s gift goes to ${to} as soon as it's paid`)
+      } else {
+        unwrap(await resendGiftCard(card.id, "recipient", to))
+        toast.success(`Gift sent to ${to}`)
+      }
+      onClose()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "That didn't save")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open={!!card} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Email the gift to {name}</DialogTitle>
+          <DialogDescription>
+            {name} gets the email with the code {unpaid ? "once it's paid for" : card.code} and how to claim it.
+          </DialogDescription>
+        </DialogHeader>
+        <div>
+          <Label htmlFor="recipient-to">{name}&apos;s email</Label>
+          <Input id="recipient-to" type="email" value={to} onChange={(e) => setTo(e.target.value)} placeholder="name@example.com" />
+        </div>
+        <div>
+          <Label>When</Label>
+          <div role="radiogroup" className="mt-1 grid grid-cols-2 gap-2">
+            {(["now", "later"] as const).map((w) => (
+              <button
+                key={w}
+                type="button"
+                role="radio"
+                aria-checked={when === w}
+                onClick={() => {
+                  setWhen(w)
+                  if (w === "later" && !sendOn) setSendOn(ukDate(1))
+                }}
+                className={`rounded-lg border px-3 py-2 text-left text-[0.8rem] font-semibold transition-colors ${
+                  when === w ? "border-gold bg-gold/10 text-cocoa" : "border-sand text-warm-grey hover:border-gold/50"
+                }`}
+              >
+                {w === "now" ? (unpaid ? "As soon as it's paid" : "Now") : "On a date"}
+              </button>
+            ))}
+          </div>
+          {when === "later" && (
+            <div className="mt-2">
+              <Input
+                type="date"
+                aria-label="Send on"
+                value={sendOn}
+                min={ukDate(1)}
+                max={lastDay}
+                onChange={(e) => setSendOn(e.target.value)}
+              />
+              <p className="mt-1 text-[0.7rem] text-warm-grey">
+                {unpaid ? "8am that morning, or as soon as it's paid if that's later." : "It goes at 8am that morning."}
+              </p>
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button onClick={save} disabled={saving || !to.trim() || (when === "later" && !sendOn)}>
+            {saving ? "Saving…" : when === "later" ? (sendOn ? `Send on ${day(sendOn)}` : "Pick a date") : unpaid ? "Save" : "Send now"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
