@@ -19,6 +19,11 @@ on:
   schedule:
     - cron: "*/10 * * * *"
   workflow_dispatch:
+    inputs:
+      test:
+        description: "Only send a test alert to Telegram and push"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -46,11 +51,32 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          TEST_ONLY: ${{ inputs.test || false }}
         run: |
           set -u
           mkdir -p state
           touch state/failing
           problems=()
+
+          if [ "${TEST_ONLY}" = "true" ]; then
+            msg="Test from the GitHub watchdog: if you can read this, it can reach you even when Vercel and Supabase are down."
+            if [ -n "${TELEGRAM_TOKEN:-}" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ]; then
+              code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+                --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" --data-urlencode "text=🔵 Watchdog test
+          ${msg}")
+              echo "Telegram: ${code}"
+            else
+              echo "Telegram: not set up"
+            fi
+            if [ -n "${NTFY_TOPIC:-}" ]; then
+              code=$(jq -n --arg t "$NTFY_TOPIC" --arg msg "$msg" '{topic:$t,title:"🔵 Watchdog test",message:$msg,priority:3}' \
+                | curl -s -o /dev/null -w "%{http_code}" --max-time 15 -H "content-type: application/json" -d @- https://ntfy.sh)
+              echo "Push: ${code}"
+            else
+              echo "Push: not set up"
+            fi
+            exit 0
+          fi
 
           # Up to three tries over ~40s before calling a page down.
           page() {
