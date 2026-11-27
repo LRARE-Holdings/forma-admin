@@ -34,34 +34,31 @@ export default async function StatusLayout({ children }: { children: React.React
   }).filter(Boolean)
 
   return (
-    <div className="mx-auto max-w-[1320px]">
+    // pt-5 on phones: the fixed top bar is exactly as tall as the page's top
+    // padding, so without it the headline sits flush against the bar.
+    <div className="mx-auto max-w-[1320px] pt-5 md:pt-0">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-[0.66rem] font-semibold uppercase tracking-[0.16em] text-warm-grey">
-            Forma status · {checks.length} checks every 5 minutes · last checked {ago(lastRun, now)}
-          </p>
-          <h2 className={cn("mt-1.5 font-heading text-[2.4rem] font-medium leading-none", urgent ? "text-red-700" : needs.length ? "text-ember" : "text-cocoa")}>
+          <h2 className={cn("font-heading text-[2.1rem] font-medium leading-[1.05] sm:text-[2.4rem] sm:leading-none", urgent ? "text-red-700" : needs.length ? "text-ember" : "text-cocoa")}>
             {headline}
           </h2>
-          <p className="mt-2 text-[0.8rem] text-warm-grey">
-            {needs.length ? `${parts.join(", ")}. Everything else is working.` : "Both apps and every service they rely on are fine."}
-            {stale && (
-              <span className="ml-2 font-semibold text-red-700">The checks have stopped running: see Background jobs on the Admin app tab.</span>
-            )}
+          <p className="mt-2 text-[0.84rem] text-warm-grey sm:text-[0.8rem]">
+            {needs.length ? `${parts.join(", ")}. ` : ""}Checked {ago(lastRun, now)}.
+            {stale && <span className="ml-1.5 font-semibold text-red-700">Checks have stopped: see Background jobs.</span>}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex w-full gap-2 sm:w-auto">
           <RunChecksButton />
-          <Link href="/dashboard/status/alerts" className="inline-flex h-8 items-center rounded-lg border border-border bg-background px-2.5 text-sm font-medium hover:bg-muted">
+          <Link href="/dashboard/status/alerts" className="inline-flex h-10 flex-1 items-center justify-center rounded-lg border border-border bg-background px-3 text-sm font-medium hover:bg-muted sm:h-8 sm:flex-none sm:px-2.5">
             Alert settings
           </Link>
         </div>
       </header>
       <StatusTabs
         tabs={[
-          { href: "/dashboard/status", label: "Overview", urgent: urgent, look: needs.length - urgent },
-          { href: "/dashboard/status/website", label: "burnmatstudio.co.uk", urgent: count("website", "urgent"), look: count("website", "look") },
-          { href: "/dashboard/status/admin", label: "Admin app", urgent: count("admin", "urgent"), look: count("admin", "look") },
+          { href: "/dashboard/status", label: "Overview", short: "Overview", urgent: urgent, look: needs.length - urgent },
+          { href: "/dashboard/status/website", label: "burnmatstudio.co.uk", short: "Website", urgent: count("website", "urgent"), look: count("website", "look") },
+          { href: "/dashboard/status/admin", label: "Admin app", short: "Admin", urgent: count("admin", "urgent"), look: count("admin", "look") },
         ]}
       />
       {children}

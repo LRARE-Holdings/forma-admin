@@ -40,7 +40,7 @@ function Channel({
           {name}
         </span>
         {onRemove && (
-          <button onClick={onRemove} className="text-[0.7rem] text-warm-grey underline-offset-2 hover:text-cocoa hover:underline">
+          <button onClick={onRemove} className="-my-2 -mr-2 px-2 py-2 text-[0.74rem] text-warm-grey underline-offset-2 hover:text-cocoa hover:underline sm:text-[0.7rem]">
             Turn off
           </button>
         )}
@@ -80,11 +80,7 @@ export function AlertChannels({ telegram, telegramBot, pushTopic, email }: Alert
 
   return (
     <section>
-      <h3 className="mb-1 font-heading text-[1.25rem] font-medium text-cocoa">Alerts</h3>
-      <p className="mb-3 text-[0.76rem] text-warm-grey">
-        Sent when something breaks for ten minutes, straight away if a customer paid and got nothing, and again
-        when it recovers.
-      </p>
+      <h3 className="mb-3 font-heading text-[1.25rem] font-medium text-cocoa">Alerts</h3>
 
       <div className="divide-y divide-sand rounded-xl border border-sand bg-white">
         <Channel
@@ -210,10 +206,11 @@ export function AlertChannels({ telegram, telegramBot, pushTopic, email }: Alert
         </Channel>
       </div>
 
-      <div className="mt-3 flex items-center gap-3">
+      <div className="mt-3 flex flex-wrap items-center gap-3">
         <Button
           size="sm"
           variant="outline"
+          className="h-10 sm:h-7"
           disabled={pending || !anyOn}
           onClick={() =>
             start(async () => {
