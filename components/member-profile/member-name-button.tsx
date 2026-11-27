@@ -20,7 +20,7 @@ export function MemberNameButton({
         e.stopPropagation()
         open(profileId)
       }}
-      className={`text-left transition-colors hover:text-gold ${className}`}
+      className={`-my-2 py-2 text-left transition-colors hover:text-gold md:my-0 md:py-0 ${className}`}
     >
       {children}
     </button>

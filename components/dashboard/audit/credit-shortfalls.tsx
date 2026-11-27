@@ -86,7 +86,34 @@ export function CreditShortfalls({ rows, skippedLegacyMembers }: Props) {
       </div>
 
       <div className="overflow-hidden rounded-[14px] border border-sand bg-white">
-        <div className="overflow-x-auto">
+        {/* Phones: one card per member owed credits. */}
+        <ul className="divide-y divide-sand/60 md:hidden">
+          {rows.map((r) => {
+            const settled = done.has(r.profileId)
+            return (
+              <li key={r.profileId} className={`px-4 py-3.5 ${settled ? "bg-success-bg/50" : ""}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[0.88rem] font-medium text-cocoa">{r.name ?? "Unknown member"}</div>
+                    <div className="text-[0.74rem] text-warm-grey">
+                      Bought {r.bought} · used {r.used} ({r.cancelled} cancelled) · {r.remaining} left
+                    </div>
+                  </div>
+                  <span className={`shrink-0 rounded-full px-2.5 py-1 text-[0.75rem] font-semibold tabular-nums ${settled ? "bg-success-bg text-success" : "bg-ember/15 text-ember"}`}>
+                    {settled ? "settled" : `+${r.missing}`}
+                  </span>
+                </div>
+                {!settled && (
+                  <Button className="mt-2.5 h-10 w-full" variant="outline" disabled={busy === r.profileId} onClick={() => restore(r)}>
+                    <Undo2 className="mr-1.5 size-3.5" aria-hidden="true" />
+                    {busy === r.profileId ? "Restoring…" : `Restore ${r.missing} credit${r.missing === 1 ? "" : "s"}`}
+                  </Button>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+        <div className="hidden overflow-x-auto md:block">
           <table className="w-full border-collapse">
             <thead>
               <tr>

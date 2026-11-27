@@ -62,7 +62,7 @@ export default async function InstructorInsightsPage({
     <>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <Link href="/staff" className="text-[0.75rem] font-semibold text-gold hover:text-ember">
+          <Link href="/staff" className="min-h-10 text-[0.8rem] font-semibold md:min-h-0 md:text-[0.75rem] text-gold hover:text-ember">
             &larr; Your week
           </Link>
           <h2 className="mt-1 font-heading text-[1.8rem] font-medium text-cocoa">Your class stats</h2>
@@ -76,7 +76,7 @@ export default async function InstructorInsightsPage({
               key={w}
               href={`/staff/insights?weeks=${w}`}
               aria-current={w === weeks ? "page" : undefined}
-              className={`rounded-md px-2.5 py-1 transition-colors ${w === weeks ? "bg-cream text-cocoa" : "text-warm-grey hover:text-cocoa"}`}
+              className={`flex min-h-9 items-center rounded-md px-3 py-1 transition-colors md:min-h-0 md:px-2.5 ${w === weeks ? "bg-cream text-cocoa" : "text-warm-grey hover:text-cocoa"}`}
             >
               {w} wks
             </Link>
@@ -115,7 +115,7 @@ export default async function InstructorInsightsPage({
       <div className="mb-6 overflow-hidden rounded-2xl border border-sand bg-white">
         <div className="border-b border-sand px-5 py-4">
           <h3 className="font-heading text-[1.05rem] font-semibold text-cocoa">When your classes fill</h3>
-          <p className="mt-0.5 text-[0.7rem] text-warm-grey">How full each of your regular slots has been. Hover a cell for the detail.</p>
+          <p className="mt-0.5 text-[0.7rem] text-warm-grey">How full each of your regular slots has been. Tap a cell for the detail.</p>
         </div>
         <FillGrid sessions={current} />
       </div>

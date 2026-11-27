@@ -34,9 +34,7 @@ export default async function StatusLayout({ children }: { children: React.React
   }).filter(Boolean)
 
   return (
-    // pt-5 on phones: the fixed top bar is exactly as tall as the page's top
-    // padding, so without it the headline sits flush against the bar.
-    <div className="mx-auto max-w-[1320px] pt-5 md:pt-0">
+    <div className="mx-auto max-w-[1320px]">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h2 className={cn("font-heading text-[2.1rem] font-medium leading-[1.05] sm:text-[2.4rem] sm:leading-none", urgent ? "text-red-700" : needs.length ? "text-ember" : "text-cocoa")}>

@@ -67,11 +67,11 @@ export function CopyEventLink({
   }
 
   return (
-    <span className="inline-flex items-center gap-3">
+    <span className="inline-flex items-center gap-4 md:gap-3">
       <button
         type="button"
         onClick={copy}
-        className="inline-flex items-center gap-1 text-[0.75rem] font-semibold text-cocoa hover:text-gold"
+        className="inline-flex min-h-10 items-center gap-1 text-[0.8rem] font-semibold text-cocoa hover:text-gold md:min-h-0 md:text-[0.75rem]"
       >
         {copied ? <Check className="h-3.5 w-3.5" /> : <Link2 className="h-3.5 w-3.5" />}
         {copied ? "Copied" : "Copy link"}
@@ -80,7 +80,7 @@ export function CopyEventLink({
         href={url}
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex items-center gap-1 text-[0.75rem] font-semibold text-cocoa hover:text-gold"
+        className="inline-flex min-h-10 items-center gap-1 text-[0.8rem] font-semibold text-cocoa hover:text-gold md:min-h-0 md:text-[0.75rem]"
       >
         <ExternalLink className="h-3.5 w-3.5" />
         View

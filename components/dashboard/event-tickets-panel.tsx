@@ -252,14 +252,14 @@ export function EventTicketsPanel({ eventId, eventTitle, cancelled, salesNote, t
                       {t.status === "confirmed" ? (
                         <button
                           onClick={() => setTarget(t)}
-                          className="text-[0.75rem] font-semibold text-warm-grey hover:text-red-600"
+                          className="min-h-10 text-[0.8rem] font-semibold md:min-h-0 md:text-[0.75rem] text-warm-grey hover:text-red-600"
                         >
                           Cancel &amp; refund
                         </button>
                       ) : t.refundedPence === null ? (
                         <button
                           onClick={() => setTarget(t)}
-                          className="text-[0.75rem] font-semibold text-gold hover:text-ember"
+                          className="min-h-10 text-[0.8rem] font-semibold md:min-h-0 md:text-[0.75rem] text-gold hover:text-ember"
                         >
                           Refund
                         </button>

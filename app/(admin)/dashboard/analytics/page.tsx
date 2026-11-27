@@ -151,7 +151,7 @@ export default async function InsightsPage({
                 key={w}
                 href={`/dashboard/analytics?weeks=${w}`}
                 aria-current={w === weeks ? "page" : undefined}
-                className={`rounded-md px-2.5 py-1 transition-colors ${w === weeks ? "bg-cream text-cocoa" : "text-warm-grey hover:text-cocoa"}`}
+                className={`flex min-h-9 items-center rounded-md px-3 py-1 transition-colors md:min-h-0 md:px-2.5 ${w === weeks ? "bg-cream text-cocoa" : "text-warm-grey hover:text-cocoa"}`}
               >
                 {w} wks
               </Link>
@@ -192,7 +192,7 @@ export default async function InsightsPage({
 
       <Section
         title="When classes fill"
-        subtitle="Places booked out of places offered, by day and start time. Hover a cell for the detail."
+        subtitle="Places booked out of places offered, by day and start time. Tap a cell for the detail."
       >
         <FillGrid sessions={current} />
       </Section>

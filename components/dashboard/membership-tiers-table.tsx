@@ -149,14 +149,14 @@ export function MembershipTiersTable({ tiers }: MembershipTiersTableProps) {
                       <div className="flex items-center gap-3">
                         <button
                           onClick={() => openEdit(tier)}
-                          className="text-[0.75rem] font-semibold text-gold hover:text-ember"
+                          className="min-h-10 text-[0.8rem] font-semibold md:min-h-0 md:text-[0.75rem] text-gold hover:text-ember"
                         >
                           Edit
                         </button>
                         {tier.is_active && (
                           <button
                             onClick={() => openDelete(tier)}
-                            className="text-[0.75rem] font-semibold text-warm-grey hover:text-red-600"
+                            className="min-h-10 text-[0.8rem] font-semibold md:min-h-0 md:text-[0.75rem] text-warm-grey hover:text-red-600"
                           >
                             Archive
                           </button>

@@ -222,7 +222,7 @@ function EventRows({
             {event.tickets_enabled && (
               <Link
                 href={`/dashboard/events/${event.id}`}
-                className="text-[0.75rem] font-semibold text-cocoa hover:text-gold"
+                className="min-h-10 text-[0.8rem] font-semibold md:min-h-0 md:text-[0.75rem] text-cocoa hover:text-gold"
               >
                 Tickets
               </Link>
@@ -230,14 +230,14 @@ function EventRows({
             {!event.cancelled_at && (
             <button
               onClick={() => onEdit(event)}
-              className="text-[0.75rem] font-semibold text-gold hover:text-ember"
+              className="min-h-10 text-[0.8rem] font-semibold md:min-h-0 md:text-[0.75rem] text-gold hover:text-ember"
             >
               Edit
             </button>
             )}
             <button
               onClick={() => onDelete(event)}
-              className="text-[0.75rem] font-semibold text-warm-grey hover:text-red-600"
+              className="min-h-10 text-[0.8rem] font-semibold md:min-h-0 md:text-[0.75rem] text-warm-grey hover:text-red-600"
             >
               Delete
             </button>

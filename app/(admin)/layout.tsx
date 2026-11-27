@@ -51,7 +51,8 @@ export default async function AdminLayout({
       </div>
 
       {/* Main content */}
-      <main className="pt-14 p-4 md:ml-[240px] md:p-7 md:pt-7 print:m-0 print:p-0">
+      {/* Phones: the top bar is fixed and 3.5rem tall, so start content a gap below it. */}
+      <main className="p-4 pt-[4.75rem] md:ml-[240px] md:p-7 md:pt-7 print:m-0 print:p-0">
         {children}
       </main>
     </div>
