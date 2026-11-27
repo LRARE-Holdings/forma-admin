@@ -80,11 +80,7 @@ export function AlertChannels({ telegram, telegramBot, pushTopic, email }: Alert
 
   return (
     <section>
-      <h3 className="mb-1 font-heading text-[1.25rem] font-medium text-cocoa">Alerts</h3>
-      <p className="mb-3 text-[0.76rem] text-warm-grey">
-        Sent when something breaks for ten minutes, straight away if a customer paid and got nothing, and again
-        when it recovers.
-      </p>
+      <h3 className="mb-3 font-heading text-[1.25rem] font-medium text-cocoa">Alerts</h3>
 
       <div className="divide-y divide-sand rounded-xl border border-sand bg-white">
         <Channel

@@ -40,10 +40,10 @@ export default async function AdminStatus() {
 
   const [uptime, payments, emails, lucy, jobs, groups] = await Promise.all([
     loadUptime(db, [
-      { key: `site.admin.${domain}`, label: "Admin login", sub: `admin.${domain}` },
-      { key: "stripe.webhooks", label: "Stripe webhook", sub: "payments turning into bookings" },
-      { key: "supabase.database", label: "Database", sub: "Supabase, London" },
-      { key: "supabase.auth", label: "Logins", sub: "Supabase Auth" },
+      { key: `site.admin.${domain}`, label: "Admin login", sub: "" },
+      { key: "stripe.webhooks", label: "Stripe webhook", sub: "" },
+      { key: "supabase.database", label: "Database", sub: "" },
+      { key: "supabase.auth", label: "Logins", sub: "" },
     ], checks),
     loadPayments(db, 25),
     loadEmails(db),
@@ -60,11 +60,11 @@ export default async function AdminStatus() {
 
   return (
     <div className="space-y-5">
-      <Panel title="Uptime, last 90 days" sub="Checked every 5 minutes from London">
+      <Panel title="Uptime">
         <UptimeRows rows={uptime} />
       </Panel>
 
-      <Panel title="Payments coming in from Stripe" sub="Every event Stripe sent and what the admin app did with it">
+      <Panel title="Stripe payments">
         {payments.length ? (
           <ul>
             {payments.map((p) => (
@@ -86,21 +86,21 @@ export default async function AdminStatus() {
             ))}
           </ul>
         ) : (
-          <Empty>No payment events logged yet. They appear here as Stripe sends them.</Empty>
+          <Empty>None yet.</Empty>
         )}
-        <InsightBar status={failedPayments.length ? "down" : warnPayments.length ? "warn" : "ok"}>
-          {failedPayments.length ? (
-            <><b className="text-cocoa">{failedPayments.length} payment event{failedPayments.length === 1 ? "" : "s"} failed in the last day.</b> Stripe retries for 3 days, so a temporary problem fixes itself; if the same one keeps failing, open it under Errors below.</>
-          ) : warnPayments.length ? (
-            <><b className="text-cocoa">{warnPayments.length} to check:</b> {warnPayments.slice(0, 2).map((p) => `${p.who}: ${p.outcome}`).join("; ")}. A class that filled while someone paid is refunded automatically; anything else, open the error below.</>
-          ) : (
-            <><b className="text-cocoa">All handled.</b> Every payment event in the last day turned into a booking, pack, ticket or gift card.</>
-          )}
-        </InsightBar>
+        {failedPayments.length > 0 ? (
+          <InsightBar status="down">
+            <b className="text-cocoa">{failedPayments.length} failed in the last day.</b> Stripe retries for 3 days; if one keeps failing, open it under Errors.
+          </InsightBar>
+        ) : warnPayments.length > 0 ? (
+          <InsightBar status="warn">
+            <b className="text-cocoa">{warnPayments.length} to check.</b> A class that filled while someone paid is refunded automatically; anything else, open it under Errors.
+          </InsightBar>
+        ) : null}
       </Panel>
 
       <div className="grid gap-5 xl:grid-cols-2">
-        <Panel title="Emails" sub={`Latest ${emails.rows.length} from Burn's domain`}>
+        <Panel title="Emails">
           {emails.error ? (
             <Empty>Couldn&apos;t read emails from Resend: {emails.error}</Empty>
           ) : (
@@ -119,16 +119,14 @@ export default async function AdminStatus() {
               )}
             </>
           )}
-          <InsightBar status={bad.length ? "warn" : "ok"}>
-            {bad.length ? (
-              <><b className="text-cocoa">{bad.length} not delivered</b> ({[...new Set(bad.map((b) => b.to))].join(", ")}). A bounce or block is almost always a mistyped address: ask Lucy to check it with the member and fix it in Members.</>
-            ) : (
-              <><b className="text-cocoa">Everything delivered.</b></>
-            )}
-          </InsightBar>
+          {bad.length > 0 && (
+            <InsightBar status="warn">
+              <b className="text-cocoa">{bad.length} not delivered</b> ({[...new Set(bad.map((b) => b.to))].join(", ")}). Usually a mistyped address: fix it in Members.
+            </InsightBar>
+          )}
         </Panel>
 
-        <Panel title="What went wrong for Lucy" sub="Buttons that showed her an error · 7 days">
+        <Panel title="Lucy's errors" sub="7 days">
           {lucy.length ? (
             <ul>
               {lucy.map((r, i) => (
@@ -140,17 +138,17 @@ export default async function AdminStatus() {
               ))}
             </ul>
           ) : (
-            <Empty>Nothing in the last 7 days. When a button tells Lucy no, it shows up here with the page and the exact message.</Empty>
+            <Empty>None.</Empty>
           )}
-          <InsightBar status={lucy.some((r) => r.count >= 3) ? "warn" : "ok"}>
-            {lucy.some((r) => r.count >= 3)
-              ? <><b className="text-cocoa">The same message keeps coming up.</b> Something there may be confusing or broken: worth asking Lucy what she was trying to do.</>
-              : <>These are the app saying no for a reason (no credits left, class full). Repeats of the same one are worth asking Lucy about.</>}
-          </InsightBar>
+          {lucy.some((r) => r.count >= 3) && (
+            <InsightBar status="warn">
+              <b className="text-cocoa">The same message keeps coming up.</b> Worth asking Lucy what she was trying to do.
+            </InsightBar>
+          )}
         </Panel>
       </div>
 
-      <Panel title="Background jobs" sub="Last 14 runs each, oldest to newest">
+      <Panel title="Background jobs">
         <ul>
           {jobs.map((j) => (
             <Row
@@ -173,15 +171,15 @@ export default async function AdminStatus() {
             </Row>
           ))}
         </ul>
-        <InsightBar status={badJobs.length ? "warn" : "ok"}>
-          {badJobs.length
-            ? <><b className="text-cocoa">{badJobs.length} job{badJobs.length === 1 ? "" : "s"} had a problem recently.</b> A single red square is usually a blip (the next run was fine). Two or more in a row means it&apos;s stuck: tell Claude.</>
-            : <><b className="text-cocoa">All running.</b></>}
-        </InsightBar>
+        {badJobs.length > 0 && (
+          <InsightBar status="warn">
+            <b className="text-cocoa">{badJobs.length} with a recent failure.</b> One red square is a blip; two in a row means it&apos;s stuck: tell Claude.
+          </InsightBar>
+        )}
       </Panel>
 
       <div className="grid gap-5 xl:grid-cols-2">
-        <Panel title="Errors" sub="Grouped by cause · last 7 days">
+        <Panel title="Errors" sub="7 days">
           {groups.length ? (
             <ul>
               {groups.map((g) => {
@@ -195,11 +193,11 @@ export default async function AdminStatus() {
               })}
             </ul>
           ) : (
-            <Empty>No errors in the admin app in the last 7 days.</Empty>
+            <Empty>None.</Empty>
           )}
         </Panel>
 
-        <Panel title="Money and bookings checks" sub="Things that go wrong quietly">
+        <Panel title="Money and bookings">
           <ul>
             {dataChecks.map((c) => {
               const insight = checkInsight(c.key, c.status, c.summary ?? "")

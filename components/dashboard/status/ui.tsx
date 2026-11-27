@@ -179,7 +179,7 @@ export function UptimeRows({ rows }: { rows: UptimeRow[] }) {
         >
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-[0.84rem] font-semibold text-cocoa md:text-[0.8rem]"><Dot status={r.status} />{r.label}</div>
-            <div className="truncate text-[0.72rem] text-warm-grey md:text-[0.7rem]">{r.sub}</div>
+            {r.sub && <div className="truncate text-[0.72rem] text-warm-grey md:text-[0.7rem]">{r.sub}</div>}
           </div>
           <div
             className="col-span-2 row-start-2 flex h-6 gap-px md:col-span-1 md:row-start-auto md:h-5 md:gap-[2px]"
@@ -222,7 +222,7 @@ export function Sparkline({ points, width = 240, height = 34 }: { points: number
 }
 
 export function SpeedChart({ points }: { points: { at: string; ms: number }[] }) {
-  if (points.length < 6) return <Empty>Not enough checks yet. The chart fills in over the next few hours.</Empty>
+  if (points.length < 6) return <Empty>Fills in over the next few hours.</Empty>
   const W = 1000, H = 150
   const max = Math.max(1000, ...points.map((p) => p.ms))
   const t0 = new Date(points[0].at).getTime(), t1 = new Date(points[points.length - 1].at).getTime()
@@ -275,7 +275,7 @@ export function Sub({ children }: { children: React.ReactNode }) {
 }
 
 export function Timeline({ items }: { items: TimelineItem[] }) {
-  if (!items.length) return <Empty>Nothing has changed today.</Empty>
+  if (!items.length) return <Empty>Nothing yet.</Empty>
   return (
     <ul className="px-4 py-2 sm:px-5">
       {items.map((t, i) => (

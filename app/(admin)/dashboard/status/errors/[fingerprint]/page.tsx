@@ -72,11 +72,11 @@ export default async function ErrorDetail({ params }: { params: Promise<{ finger
                 ))}
               </ol>
             ) : (
-              <Empty>Only the error itself was recorded for this one: it didn&apos;t happen inside a payment or a traced request.</Empty>
+              <Empty>Only the error itself was recorded.</Empty>
             )}
           </Panel>
 
-          <Panel title="Technical detail" sub="For Claude or whoever fixes it">
+          <Panel title="Technical detail">
             <dl className="grid grid-cols-[84px_1fr] gap-x-3 gap-y-1.5 px-4 py-3.5 text-[0.8rem] sm:grid-cols-[110px_1fr] sm:px-5 sm:text-[0.78rem]">
               <dt className="text-warm-grey">Error</dt><dd className="break-words font-mono text-[0.74rem]">{latest?.message ?? group.title}</dd>
               <dt className="text-warm-grey">Where</dt><dd className="break-words font-mono text-[0.74rem]">{latest?.route ?? latest?.path ?? "–"} · {group.kind}{latest?.method ? ` · ${latest.method}` : ""}</dd>
@@ -86,7 +86,7 @@ export default async function ErrorDetail({ params }: { params: Promise<{ finger
             {latest?.stack ? (
               <pre className="max-h-[320px] overflow-auto bg-[#2b211a] px-4 py-3.5 sm:px-5 font-mono text-[0.72rem] leading-relaxed text-[#eadfca]">{latest.stack}</pre>
             ) : (
-              <Empty>No stack trace for this one.</Empty>
+              <Empty>No stack trace.</Empty>
             )}
           </Panel>
         </div>
@@ -107,7 +107,7 @@ export default async function ErrorDetail({ params }: { params: Promise<{ finger
             </dl>
           </Panel>
 
-          <Panel title="Times this happened" sub="Last 30 days">
+          <Panel title="Times this happened" sub="30 days">
             <div className="px-5 pb-4 pt-3">
               <div className="flex h-10 items-end gap-[2px]">
                 {perDay.map((d) => (

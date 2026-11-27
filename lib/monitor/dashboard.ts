@@ -478,7 +478,7 @@ export async function loadTimeline(db: DB): Promise<TimelineItem[]> {
   }
   const jobName = Object.fromEntries(VERCEL_JOBS.map(([k, n]) => [k, n]))
   for (const r of runs.data ?? []) {
-    items.push({ at: r.created_at, status: r.ok ? "ok" : "down", text: `${jobName[r.job] ?? r.job} ran${r.ok ? "" : " with errors"}: ${r.note ?? ""}` })
+    items.push({ at: r.created_at, status: r.ok ? "ok" : "down", text: r.ok ? `${jobName[r.job] ?? r.job} ran` : `${jobName[r.job] ?? r.job} failed: ${r.note ?? ""}` })
   }
   return items.sort((a, b) => b.at.localeCompare(a.at)).slice(0, 25)
 }
