@@ -276,3 +276,11 @@ Found during a codebase review. Both applied the same day.
   `requested_by`, `request_emailed_at` on `gift_cards`. Applied 2026-11-26;
   create → email link → pay → receipt + recipient email, and cancel (which
   also cancels the open Stripe payment), tested end to end and cleaned up.
+- `20261127_29_monitor_logs_history.sql` — status dashboards v2: `app_events`
+  (structured log: payments, checkouts, refusals, Lucy's failed actions),
+  request/correlation/profile/release on `app_errors`, `error_groups` (open /
+  resolved / muted, reopens via `trg_track_error_group`, `alerted_at` so each
+  group alerts once and again only after coming back), `monitor_results` (3
+  days) and `monitor_daily` (120 days) for uptime and speed, and
+  `monitor_record_results()` / `monitor_jobs()`. Applied 2026-11-27 (the
+  alerted_at part as "error_group_alerting").

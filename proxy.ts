@@ -132,6 +132,10 @@ export async function proxy(request: NextRequest) {
   // Inject studio ID as a request header for downstream server components/actions
   const requestHeaders = new Headers(request.headers)
   requestHeaders.set("x-studio-id", studioId)
+  // For the monitor: one id per request, and the path, so anything logged
+  // while handling it can be traced back (lib/monitor/context.ts).
+  requestHeaders.set("x-request-id", crypto.randomUUID().replace(/-/g, "").slice(0, 12))
+  requestHeaders.set("x-forma-path", pathname)
 
   let supabaseResponse = NextResponse.next({
     request: { headers: requestHeaders },

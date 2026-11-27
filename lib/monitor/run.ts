@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { buildChecks, type CheckDef } from "./checks"
 import { deliverAlert, type Alert, type AlertLevel } from "./alerts"
+import { checkInsight, errorInsight, pageLabel } from "./insights"
 import type { CheckResult, CheckStatus, LiveStudio, MonitorConfig } from "./types"
 
 /**
@@ -89,11 +90,10 @@ export async function loadLiveStudios(): Promise<LiveStudio[]> {
 export async function runMonitor(options: { force?: boolean; only?: string[] } = {}): Promise<RunReport> {
   const started = Date.now()
   const db = createAdminClient()
-  const [studios, stored, config, lastRun] = await Promise.all([
+  const [studios, stored, config] = await Promise.all([
     loadLiveStudios(),
     db.from("monitor_checks").select("key, status, checked_at, streak, alerted_status, alerted_at, last_ok_at, changed_at"),
     loadMonitorConfig(),
-    db.from("monitor_runs").select("created_at").eq("job", "monitor").order("created_at", { ascending: false }).limit(1).maybeSingle(),
   ])
   const previous = new Map((stored.data ?? []).map((r) => [r.key, r as StoredCheck]))
   const defs = buildChecks(db, studios)
@@ -125,10 +125,15 @@ export async function runMonitor(options: { force?: boolean; only?: string[] } =
       const stale = alertedAt ? Date.now() - new Date(alertedAt).getTime() > REMIND_AFTER_MS : true
       const reminder = r.status === "down" && alertedStatus === "down" && stale
       if (confirmed && (alertedStatus !== r.status || reminder)) {
+        // The alert says what to do, not just what broke.
+        const insight = checkInsight(r.key, r.status, r.summary)
         alertItems.push({
           level: r.status as AlertLevel,
           heading: `${reminder ? "Still down: " : ""}${r.label}: ${r.summary}`,
-          lines: r.lines,
+          lines: [
+            ...(insight ? [insight.meaning, ...insight.steps.slice(0, 3).map((step, i) => `${i + 1}. ${step}`)] : []),
+            ...(r.lines ?? []).slice(0, 4),
+          ],
         })
         alertedStatus = r.status
         alertedAt = now
@@ -158,7 +163,7 @@ export async function runMonitor(options: { force?: boolean; only?: string[] } =
       area: r.area,
       status: r.status,
       summary: r.summary,
-      detail: { lines: r.lines ?? [], quiet: !!r.quiet },
+      detail: { lines: r.lines ?? [], quiet: !!r.quiet, ms: r.ms ?? null },
       checked_at: now,
       changed_at: !prev || prev.status !== r.status ? now : prev.changed_at ?? now,
       last_ok_at: r.status === "ok" ? now : prev?.last_ok_at ?? null,
@@ -168,40 +173,30 @@ export async function runMonitor(options: { force?: boolean; only?: string[] } =
     })
   }
 
-  // Errors that are new: first seen since the last run, and not seen at all
-  // in the 30 days before it.
-  const windowStart = lastRun.data?.created_at ?? new Date(Date.now() - 10 * 60_000).toISOString()
-  const { data: fresh } = await db
-    .from("app_errors")
-    .select("fingerprint, app, message, path, kind")
-    .gt("occurred_at", windowStart)
-    .order("occurred_at", { ascending: true })
-    .limit(200)
-  const freshByFp = new Map<string, { app: string; message: string; path: string | null; kind: string; count: number }>()
-  for (const e of fresh ?? []) {
-    const g = freshByFp.get(e.fingerprint)
-    if (g) g.count++
-    else freshByFp.set(e.fingerprint, { ...e, count: 1 })
+  // Error groups to alert on: new ones, and ones that came back after being
+  // marked resolved (the trigger clears alerted_at then). Muted groups never.
+  const { data: pending } = await db
+    .from("error_groups")
+    .select("fingerprint, app, kind, title, path, occurrences, reopened")
+    .eq("status", "open")
+    .is("alerted_at", null)
+    .order("first_seen")
+    .limit(20)
+  const errorAlerts = pending ?? []
+  for (const g of errorAlerts.slice(0, 4)) {
+    const insight = errorInsight(g)
+    alertItems.push({
+      level: "warn",
+      heading: `${g.reopened ? "Error came back" : "New error"} on ${g.app === "public" ? "the website" : "the admin app"}: ${g.title.slice(0, 120)}`,
+      lines: [
+        `${pageLabel(g.path)} · ${g.occurrences}× so far · ${g.kind}`,
+        insight.meaning,
+        ...insight.steps.slice(0, 2).map((step, i) => `${i + 1}. ${step}`),
+      ],
+    })
   }
-  if (freshByFp.size) {
-    const { data: seen } = await db
-      .from("app_errors")
-      .select("fingerprint")
-      .in("fingerprint", [...freshByFp.keys()])
-      .lte("occurred_at", windowStart)
-      .limit(1000)
-    const known = new Set((seen ?? []).map((s) => s.fingerprint))
-    const brandNew = [...freshByFp.entries()].filter(([fp]) => !known.has(fp))
-    for (const [, e] of brandNew.slice(0, 4)) {
-      alertItems.push({
-        level: "warn",
-        heading: `New error on ${e.app === "public" ? "the website" : "the admin app"}${e.path ? ` (${e.path})` : ""}`,
-        lines: [`${e.message.slice(0, 300)}`, `${e.count}× since the last check · ${e.kind}`],
-      })
-    }
-    if (brandNew.length > 4) {
-      alertItems.push({ level: "warn", heading: `${brandNew.length - 4} more new errors`, lines: [] })
-    }
+  if (errorAlerts.length > 4) {
+    alertItems.push({ level: "warn", heading: `${errorAlerts.length - 4} more new errors`, lines: [] })
   }
 
   let alerted = false
@@ -216,7 +211,7 @@ export async function runMonitor(options: { force?: boolean; only?: string[] } =
         ? alertItems[0].heading
         : worst === "ok"
           ? `${alertItems.length} things back to normal`
-          : alertItems.every((a) => a.heading.startsWith("New error"))
+          : alertItems.every((a) => /^(New error|Error came back)/.test(a.heading))
           ? `${alertItems.length} new errors`
           : `${alertItems.filter((a) => a.level !== "ok").length} problems need a look`
     const alert: Alert = {
@@ -228,11 +223,21 @@ export async function runMonitor(options: { force?: boolean; only?: string[] } =
     }
     const delivery = await deliverAlert(config, alert)
     alerted = delivery.telegram === "sent" || delivery.push === "sent" || delivery.email === "sent"
+    if (errorAlerts.length) {
+      await db.from("error_groups").update({ alerted_at: new Date().toISOString() })
+        .in("fingerprint", errorAlerts.map((g) => g.fingerprint))
+    }
   }
 
   if (rows.length) await db.from("monitor_checks").upsert(rows)
   if (events.length) await db.from("monitor_events").insert(events)
   const durationMs = Date.now() - started
+  // History for the uptime bars and speed charts.
+  if (results.length) {
+    await db.rpc("monitor_record_results", {
+      p_results: results.map((r) => ({ key: r.key, status: r.status, ms: typeof r.ms === "number" ? r.ms : "" })),
+    })
+  }
   await db.from("monitor_runs").insert({ job: "monitor", ok: true, duration_ms: durationMs, note: `${results.length} checks` })
   if (new Date().getMinutes() < 5) await db.rpc("monitor_prune")
 

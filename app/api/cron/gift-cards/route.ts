@@ -18,7 +18,7 @@ export async function GET(request: Request) {
   const startedAt = Date.now()
   try {
     const outcome = await deliverDueGiftCards()
-    await recordJobRun("admin.gift-cards", true, JSON.stringify(outcome).slice(0, 300), Date.now() - startedAt)
+    await recordJobRun("admin.gift-cards", true, `${outcome.due} due, ${outcome.processed} sent`, Date.now() - startedAt)
     return NextResponse.json(outcome)
   } catch (err) {
     console.error("[cron/gift-cards]", err)
