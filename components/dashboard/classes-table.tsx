@@ -77,7 +77,7 @@ export function ClassesTable({ classes, slotsByClass }: ClassesTableProps) {
   return (
     <>
       <div className="overflow-hidden rounded-2xl border border-sand bg-white">
-        <div className="flex items-center justify-between border-b border-sand px-5 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-sand px-4 py-4 md:px-5">
           <h3 className="font-heading text-[1.15rem] font-semibold text-cocoa">
             All classes
           </h3>
@@ -107,7 +107,38 @@ export function ClassesTable({ classes, slotsByClass }: ClassesTableProps) {
             }
           />
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          {/* Phones: one card per class. */}
+          <ul className="divide-y divide-sand/60 md:hidden">
+            {classes.map((cls) => {
+              const sessionsPerWeek = slotsByClass[cls.id] ?? 0
+              return (
+                <li key={cls.id} className="px-4 py-3.5">
+                  <div className="flex items-center gap-2">
+                    <ClassColorBar classSlug={cls.slug} className="h-5 w-[3px]" />
+                    <strong className="text-[0.92rem] text-cocoa">{cls.name}</strong>
+                  </div>
+                  <div className="mt-1 text-[0.8rem] text-slate">
+                    {hasDiscount(cls) ? (
+                      <>
+                        <s className="text-warm-grey">&pound;{formatPence(cls.price_pence)}</s>{" "}
+                        <strong className="text-cocoa">{formatPrice(effectivePricePence(cls, cls.discount_starts_on ?? localDateStr()))}</strong>
+                        <span className="ml-1.5 text-[0.65rem] font-semibold uppercase tracking-wide text-gold">{describeDiscountCoverage(cls)}</span>
+                      </>
+                    ) : (
+                      <>&pound;{formatPence(cls.price_pence)}</>
+                    )}
+                    {" · "}{cls.duration_mins} min · {cls.capacity} places · {sessionsPerWeek} a week
+                  </div>
+                  <div className="mt-2.5 grid grid-cols-2 gap-2">
+                    <button onClick={() => openEdit(cls)} className="min-h-10 rounded-lg border border-sand text-[0.8rem] font-semibold text-cocoa">Edit</button>
+                    <button onClick={() => openDelete(cls)} className="min-h-10 rounded-lg border border-sand text-[0.8rem] font-semibold text-warm-grey">Delete</button>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full border-collapse">
               <thead>
                 <tr>
@@ -179,13 +210,13 @@ export function ClassesTable({ classes, slotsByClass }: ClassesTableProps) {
                         <div className="flex items-center gap-3">
                           <button
                             onClick={() => openEdit(cls)}
-                            className="text-[0.75rem] font-semibold text-gold hover:text-ember"
+                            className="min-h-10 text-[0.8rem] font-semibold md:min-h-0 md:text-[0.75rem] text-gold hover:text-ember"
                           >
                             Edit
                           </button>
                           <button
                             onClick={() => openDelete(cls)}
-                            className="text-[0.75rem] font-semibold text-warm-grey hover:text-red-600"
+                            className="min-h-10 text-[0.8rem] font-semibold md:min-h-0 md:text-[0.75rem] text-warm-grey hover:text-red-600"
                           >
                             Delete
                           </button>
@@ -197,6 +228,7 @@ export function ClassesTable({ classes, slotsByClass }: ClassesTableProps) {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </div>
 

@@ -117,7 +117,7 @@ export function AuditLedger({
       )}
 
       <div className="flex flex-wrap items-end gap-3">
-        <div className="relative min-w-56 flex-1">
+        <div className="relative w-full min-w-56 flex-1 md:w-auto">
           <Search
             className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-warm-grey"
             aria-hidden="true"
@@ -130,7 +130,7 @@ export function AuditLedger({
             aria-label="Search the audit by member"
           />
         </div>
-        <div>
+        <div className="flex-1 md:flex-none">
           <label
             htmlFor="audit-from"
             className="block text-[0.64rem] font-semibold uppercase tracking-[0.08em] text-warm-grey"
@@ -142,10 +142,10 @@ export function AuditLedger({
             type="date"
             value={from}
             onChange={(e) => setFrom(e.target.value)}
-            className="w-40"
+            className="w-full md:w-40"
           />
         </div>
-        <div>
+        <div className="flex-1 md:flex-none">
           <label
             htmlFor="audit-to"
             className="block text-[0.64rem] font-semibold uppercase tracking-[0.08em] text-warm-grey"
@@ -157,10 +157,10 @@ export function AuditLedger({
             type="date"
             value={to}
             onChange={(e) => setTo(e.target.value)}
-            className="w-40"
+            className="w-full md:w-40"
           />
         </div>
-        <Button onClick={handleExport} disabled={exporting || rows.length === 0} variant="outline">
+        <Button onClick={handleExport} disabled={exporting || rows.length === 0} variant="outline" className="w-full md:w-auto">
           <Download className="mr-1.5 size-4" aria-hidden="true" />
           {exporting ? "Preparing…" : "Export CSV"}
         </Button>
@@ -173,7 +173,7 @@ export function AuditLedger({
             type="button"
             onClick={() => setKind(t.value)}
             aria-pressed={kind === t.value}
-            className={`rounded-full border px-3.5 py-1.5 text-[0.76rem] font-semibold transition-all ${
+            className={`min-h-9 rounded-full border px-3.5 py-1.5 text-[0.76rem] font-semibold transition-all md:min-h-0 ${
               kind === t.value
                 ? "border-cocoa bg-cocoa text-wheat"
                 : "border-sand bg-white text-slate hover:border-gold"
@@ -191,7 +191,45 @@ export function AuditLedger({
       </div>
 
       <div className="overflow-hidden rounded-[14px] border border-sand bg-white">
-        <div className="overflow-x-auto">
+        {/* Phones: one card per credit movement. */}
+        <ul className="divide-y divide-sand/60 md:hidden">
+          {rows.length === 0 && (
+            <li className="px-4 py-10 text-center text-[0.85rem] text-cocoa">Nothing matches these filters.</li>
+          )}
+          {rows.map((r) => {
+            const stamp = formatStamp(r.createdAt)
+            return (
+              <li key={r.id} className={`relative py-3 pl-5 pr-4 before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] ${KIND_STRIPES[r.kind]} ${r.kind === "refund_failed" ? "bg-ember/[0.04]" : ""}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[0.88rem] font-medium text-cocoa">{r.memberName ?? "Unknown member"}</div>
+                    <div className="text-[0.72rem] text-warm-grey">{stamp.day} · {stamp.time} · {describeActor(r)}</div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <div className="text-[0.95rem] font-semibold tabular-nums">
+                      {r.delta === 0 ? <span className="text-warm-grey">&mdash;</span> : r.delta > 0 ? <span className="text-success">+{r.delta}</span> : <span className="text-slate">{r.delta}</span>}
+                    </div>
+                    <div className="text-[0.68rem] tabular-nums text-warm-grey">left: {r.balanceAfter ?? "—"}</div>
+                  </div>
+                </div>
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className={`whitespace-nowrap rounded-full px-2.5 py-0.5 text-[0.68rem] font-semibold ${KIND_STYLES[r.kind]}`}>{KIND_LABELS[r.kind]}</span>
+                  {r.className && (
+                    <span className="text-[0.76rem] text-slate">
+                      {r.className}{r.classDate ? ` · ${formatDay(r.classDate)}` : ""}{r.classTime ? ` · ${formatTime(r.classTime)}` : ""}
+                    </span>
+                  )}
+                </div>
+                {(r.packName || r.reason) && (
+                  <div className="mt-1 text-[0.72rem] leading-snug text-warm-grey">
+                    {[r.packName, r.reason].filter(Boolean).join(" · ")}
+                  </div>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+        <div className="hidden overflow-x-auto md:block">
           <table className="w-full border-collapse">
             <thead>
               <tr>

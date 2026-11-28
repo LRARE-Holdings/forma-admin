@@ -234,9 +234,9 @@ export function MembersTable({ members, initialFilter = "all" }: MembersTablePro
         ) : (
           <>
             {/* Search + Filter + Export */}
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-sand px-5 py-3">
-              <div className="flex flex-wrap items-center gap-3">
-              <div className="relative">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-sand px-4 py-3 md:px-5">
+              <div className="flex w-full flex-wrap items-center gap-3 md:w-auto">
+              <div className="relative w-full md:w-auto">
                 <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-warm-grey" />
                 <input
                   type="text"
@@ -265,7 +265,7 @@ export function MembersTable({ members, initialFilter = "all" }: MembersTablePro
                         : undefined
                     }
                     onClick={() => { setFilter(opt.value); setPage(0) }}
-                    className={`rounded-md px-2.5 py-1 transition-colors ${
+                    className={`min-h-9 rounded-md px-3 py-1 transition-colors md:min-h-0 md:px-2.5 ${
                       filter === opt.value
                         ? "bg-cream text-cocoa"
                         : "text-warm-grey hover:text-cocoa"
@@ -278,11 +278,31 @@ export function MembersTable({ members, initialFilter = "all" }: MembersTablePro
               </div>
               <button
                 onClick={exportCsv}
-                className="flex items-center gap-1.5 rounded-lg border border-sand px-3 py-1.5 text-[0.75rem] font-semibold text-warm-grey transition-colors hover:border-gold hover:text-cocoa"
+                className="flex min-h-10 items-center gap-1.5 rounded-lg border border-sand px-3 py-1.5 text-[0.75rem] font-semibold text-warm-grey transition-colors hover:border-gold hover:text-cocoa md:min-h-0"
               >
                 <Download className="h-3.5 w-3.5" />
                 Export CSV
               </button>
+              {/* Phones: no column headers to tap, so sort from a menu. */}
+              <label className="flex items-center gap-2 text-[0.75rem] font-semibold text-warm-grey md:hidden">
+                Sort
+                <select
+                  value={sortKey ? `${sortKey}:${sortDir}` : "name:asc"}
+                  onChange={(e) => {
+                    const [key, dir] = e.target.value.split(":") as [SortKey, "asc" | "desc"]
+                    setSortKey(key)
+                    setSortDir(dir)
+                    setPage(0)
+                  }}
+                  className="h-10 rounded-lg border border-sand bg-white px-2 text-cocoa"
+                >
+                  <option value="name:asc">Name</option>
+                  <option value="credits:desc">Most credits</option>
+                  <option value="totalClasses:desc">Most classes</option>
+                  <option value="classesThisMonth:desc">Most this month</option>
+                  <option value="joinedRaw:desc">Newest</option>
+                </select>
+              </label>
             </div>
 
             {filteredMembers.length === 0 ? (
@@ -294,7 +314,41 @@ export function MembersTable({ members, initialFilter = "all" }: MembersTablePro
                 </p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <>
+              {/* Phones: one card per member. */}
+              <ul className="divide-y divide-sand/60 md:hidden">
+                {paginatedMembers.map((m) => (
+                  <li key={m.id} className="px-4 py-3.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <MemberNameButton profileId={m.id}>
+                        <strong className="text-[0.95rem] text-cocoa">{m.name}</strong>
+                      </MemberNameButton>
+                      {m.lapsed && m.lastClassDate && (
+                        <span className="rounded-full bg-warm-grey/10 px-2 py-0.5 text-[0.68rem] text-warm-grey">
+                          Last came {formatShortDate(m.lastClassDate)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-1 break-all text-[0.8rem] text-slate">{m.email}</div>
+                    <div className="text-[0.8rem] text-slate">
+                      {m.phone ? formatUKPhoneDisplay(m.phone) : <span className="text-ember/70">No phone</span>}
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.76rem] text-warm-grey">
+                      <span className={`rounded-full px-2.5 py-0.5 text-[0.68rem] font-semibold uppercase ${m.credits > 0 ? "bg-gold/15 text-gold" : "bg-warm-grey/10 text-warm-grey"}`}>
+                        {m.credits} credits
+                      </span>
+                      <span>{m.totalClasses} class{m.totalClasses === 1 ? "" : "es"} · {m.classesThisMonth} this month</span>
+                      <span>Joined {m.joinedAt}</span>
+                    </div>
+                    <div className="mt-2.5 grid grid-cols-3 gap-2">
+                      <button onClick={() => openEdit(m.id)} className="min-h-10 rounded-lg border border-sand text-[0.8rem] font-semibold text-cocoa">Edit</button>
+                      <button onClick={() => openPacks(m.id)} className="min-h-10 rounded-lg border border-sand text-[0.8rem] font-semibold text-cocoa">Packs</button>
+                      <button onClick={() => openDelete(m)} className="min-h-10 rounded-lg border border-sand text-[0.8rem] font-semibold text-warm-grey">Remove</button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              <div className="hidden overflow-x-auto md:block">
                 <table className="w-full border-collapse">
                   <thead>
                     <tr>
@@ -396,19 +450,19 @@ export function MembersTable({ members, initialFilter = "all" }: MembersTablePro
                           <div className="flex gap-3">
                             <button
                               onClick={() => openEdit(m.id)}
-                              className="text-[0.75rem] font-semibold text-gold hover:text-ember"
+                              className="min-h-10 text-[0.8rem] font-semibold md:min-h-0 md:text-[0.75rem] text-gold hover:text-ember"
                             >
                               Edit
                             </button>
                             <button
                               onClick={() => openPacks(m.id)}
-                              className="text-[0.75rem] font-semibold text-gold hover:text-ember"
+                              className="min-h-10 text-[0.8rem] font-semibold md:min-h-0 md:text-[0.75rem] text-gold hover:text-ember"
                             >
                               Manage
                             </button>
                             <button
                               onClick={() => openDelete(m)}
-                              className="text-[0.75rem] font-semibold text-warm-grey hover:text-red-600"
+                              className="min-h-10 text-[0.8rem] font-semibold md:min-h-0 md:text-[0.75rem] text-warm-grey hover:text-red-600"
                             >
                               Remove
                             </button>
@@ -420,11 +474,12 @@ export function MembersTable({ members, initialFilter = "all" }: MembersTablePro
                   </tbody>
                 </table>
               </div>
+              </>
             )}
 
             {/* Pagination */}
             {totalPages > 1 && (
-              <div className="flex items-center justify-between border-t border-sand px-5 py-3">
+              <div className="flex items-center justify-between gap-3 border-t border-sand px-4 py-3 md:px-5">
                 <p className="text-[0.75rem] text-warm-grey">
                   Showing {page * pageSize + 1}&ndash;{Math.min((page + 1) * pageSize, filteredMembers.length)} of {filteredMembers.length}
                 </p>
@@ -432,7 +487,7 @@ export function MembersTable({ members, initialFilter = "all" }: MembersTablePro
                   <button
                     onClick={() => setPage((p) => Math.max(0, p - 1))}
                     disabled={page === 0}
-                    className="rounded-lg border border-sand p-1.5 text-warm-grey transition-colors hover:border-gold hover:text-cocoa disabled:opacity-30 disabled:hover:border-sand disabled:hover:text-warm-grey"
+                    className="flex h-10 w-10 items-center justify-center rounded-lg border border-sand text-warm-grey md:h-auto md:w-auto md:p-1.5 transition-colors hover:border-gold hover:text-cocoa disabled:opacity-30 disabled:hover:border-sand disabled:hover:text-warm-grey"
                   >
                     <ChevronLeft className="h-3.5 w-3.5" />
                   </button>
@@ -442,7 +497,7 @@ export function MembersTable({ members, initialFilter = "all" }: MembersTablePro
                   <button
                     onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
                     disabled={page >= totalPages - 1}
-                    className="rounded-lg border border-sand p-1.5 text-warm-grey transition-colors hover:border-gold hover:text-cocoa disabled:opacity-30 disabled:hover:border-sand disabled:hover:text-warm-grey"
+                    className="flex h-10 w-10 items-center justify-center rounded-lg border border-sand text-warm-grey md:h-auto md:w-auto md:p-1.5 transition-colors hover:border-gold hover:text-cocoa disabled:opacity-30 disabled:hover:border-sand disabled:hover:text-warm-grey"
                   >
                     <ChevronRight className="h-3.5 w-3.5" />
                   </button>

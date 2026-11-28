@@ -57,7 +57,8 @@ export function AttendanceDropdown({
       <DropdownMenuTrigger
         disabled={loading}
         className={`inline-flex items-center gap-1 rounded-full border border-sand font-semibold uppercase transition-colors hover:border-gold focus:outline-none disabled:opacity-50 ${
-          isSmall ? "px-1.5 py-0.5 text-[0.58rem]" : "px-2.5 py-1 text-[0.65rem]"
+          // Phones get a thumb-sized pill; it's tapped at the door.
+          isSmall ? "min-h-9 px-2.5 py-1 text-[0.62rem] md:min-h-0 md:px-1.5 md:py-0.5 md:text-[0.58rem]" : "min-h-10 px-3 py-1 text-[0.7rem] md:min-h-0 md:px-2.5 md:text-[0.65rem]"
         } ${status ? colorClass : "text-warm-grey"}`}
       >
         {loading ? (

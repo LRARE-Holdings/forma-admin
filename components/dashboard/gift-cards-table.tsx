@@ -136,13 +136,13 @@ export function GiftCardsTable({ cards, now }: { cards: GiftCardRow[]; now: numb
 
   return (
     <>
-      <div className="mb-6 grid grid-cols-1 divide-y divide-sand overflow-hidden rounded-2xl border border-sand bg-white sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+      <div className="mb-6 grid grid-cols-3 divide-x divide-sand overflow-hidden rounded-2xl border border-sand bg-white">
         {[
           { label: "Sold", value: String(summary.sold), sub: `${pounds(summary.takenPence)} taken` },
           { label: "Claimed", value: String(summary.claimed), sub: "Turned into class packs" },
           { label: "Waiting to be claimed", value: String(summary.waiting), sub: `${pounds(summary.waitingPence)} of classes owed` },
         ].map((s) => (
-          <div key={s.label} className="px-5 py-4">
+          <div key={s.label} className="px-3 py-3.5 sm:px-5 sm:py-4">
             <div className="text-[0.65rem] font-semibold uppercase tracking-[0.1em] text-warm-grey">{s.label}</div>
             <div className="mt-1 font-heading text-[1.5rem] text-cocoa">{s.value}</div>
             <div className="text-[0.72rem] text-warm-grey">{s.sub}</div>
@@ -224,7 +224,7 @@ export function GiftCardsTable({ cards, now }: { cards: GiftCardRow[]; now: numb
                           {s === "unclaimed" ? " · " : " "}
                           <button
                             onClick={() => setAddressing(c)}
-                            className="font-semibold text-gold underline-offset-2 hover:text-ember hover:underline"
+                            className="mt-1 flex min-h-10 items-center font-semibold text-gold underline-offset-2 hover:text-ember hover:underline md:mt-0 md:inline md:min-h-0"
                           >
                             {c.recipientEmail ? "Change" : `Add ${firstName(c.recipientName)}'s email`}
                           </button>
@@ -234,13 +234,13 @@ export function GiftCardsTable({ cards, now }: { cards: GiftCardRow[]; now: numb
                   </div>
                   {s === "awaiting" ? (
                     <div className="flex shrink-0 items-center gap-4">
-                      <button onClick={() => copyLink(c)} className="text-[0.75rem] font-semibold text-cocoa hover:text-gold">
+                      <button onClick={() => copyLink(c)} className="min-h-10 text-[0.8rem] font-semibold md:min-h-0 md:text-[0.75rem] text-cocoa hover:text-gold">
                         Copy link
                       </button>
-                      <button onClick={() => setRelinking(c)} className="text-[0.75rem] font-semibold text-gold hover:text-ember">
+                      <button onClick={() => setRelinking(c)} className="min-h-10 text-[0.8rem] font-semibold md:min-h-0 md:text-[0.75rem] text-gold hover:text-ember">
                         Email again
                       </button>
-                      <button onClick={() => setCancelling(c)} className="text-[0.75rem] font-semibold text-warm-grey hover:text-ember">
+                      <button onClick={() => setCancelling(c)} className="min-h-10 text-[0.8rem] font-semibold text-warm-grey hover:text-ember md:min-h-0 md:text-[0.75rem]">
                         Cancel
                       </button>
                     </div>
@@ -253,14 +253,14 @@ export function GiftCardsTable({ cards, now }: { cards: GiftCardRow[]; now: numb
                     <div className="flex w-[108px] items-center gap-4">
                       <a
                         href={`/dashboard/gift-cards/${c.id}/voucher`}
-                        className="text-[0.75rem] font-semibold text-cocoa hover:text-gold"
+                        className="min-h-10 text-[0.8rem] font-semibold md:min-h-0 md:text-[0.75rem] text-cocoa hover:text-gold"
                       >
                         PDF
                       </a>
                       {s === "unclaimed" && (
                         <button
                           onClick={() => setResending(c)}
-                          className="text-[0.75rem] font-semibold text-gold hover:text-ember"
+                          className="min-h-10 text-[0.8rem] font-semibold md:min-h-0 md:text-[0.75rem] text-gold hover:text-ember"
                         >
                           Send
                         </button>

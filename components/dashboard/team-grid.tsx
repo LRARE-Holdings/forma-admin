@@ -151,7 +151,7 @@ export function TeamGrid({ team, currentProfileId, pendingInvites }: TeamGridPro
                 )}
                 <button
                   onClick={() => openEdit(member)}
-                  className="text-[0.72rem] font-semibold uppercase tracking-[0.04em] text-gold hover:text-ember"
+                  className="min-h-10 text-[0.72rem] font-semibold uppercase tracking-[0.04em] text-gold hover:text-ember md:min-h-0"
                 >
                   Edit profile
                 </button>
@@ -188,14 +188,14 @@ export function TeamGrid({ team, currentProfileId, pendingInvites }: TeamGridPro
               return (
                 <div
                   key={invite.id}
-                  className="flex items-center justify-between rounded-xl border border-sand bg-white px-5 py-4"
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sand bg-white px-4 py-4 md:px-5"
                 >
-                  <div className="flex items-center gap-4">
+                  <div className="flex min-w-0 items-center gap-4">
                     <div className="flex h-10 w-10 items-center justify-center rounded-full bg-sand/60">
                       <Clock className="h-4 w-4 text-warm-grey" />
                     </div>
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span className="text-[0.88rem] font-semibold text-cocoa">
                           {invite.name}
                         </span>
@@ -212,16 +212,16 @@ export function TeamGrid({ team, currentProfileId, pendingInvites }: TeamGridPro
                           </span>
                         )}
                       </div>
-                      <div className="mt-0.5 text-[0.75rem] text-warm-grey">
+                      <div className="mt-0.5 break-all text-[0.75rem] text-warm-grey">
                         {invite.email} &middot; Invited {timeAgo(invite.created_at)} &middot; {expiresIn(invite.expires_at)}
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="grid w-full grid-cols-2 gap-2 md:flex md:w-auto md:items-center">
                     <button
                       onClick={() => handleResend(invite.id)}
                       disabled={loadingResend === invite.id}
-                      className="flex items-center gap-1.5 rounded-lg border border-sand px-3 py-1.5 text-[0.72rem] font-semibold text-cocoa transition-colors hover:bg-cream disabled:opacity-50"
+                      className="flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-sand px-3 py-1.5 text-[0.78rem] font-semibold text-cocoa transition-colors hover:bg-cream disabled:opacity-50 md:min-h-0 md:text-[0.72rem]"
                     >
                       <Send className="h-3 w-3" />
                       {loadingResend === invite.id ? "Sending..." : "Resend"}
@@ -229,7 +229,7 @@ export function TeamGrid({ team, currentProfileId, pendingInvites }: TeamGridPro
                     <button
                       onClick={() => handleRevoke(invite.id)}
                       disabled={loadingRevoke === invite.id}
-                      className="flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-1.5 text-[0.72rem] font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
+                      className="flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-red-200 px-3 py-1.5 text-[0.78rem] font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50 md:min-h-0 md:text-[0.72rem]"
                     >
                       <X className="h-3 w-3" />
                       {loadingRevoke === invite.id ? "Revoking..." : "Revoke"}

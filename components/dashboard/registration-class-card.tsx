@@ -71,7 +71,7 @@ export function RegistrationClassCard({
   return (
     <div className="overflow-hidden rounded-2xl border border-sand bg-white">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-sand px-5 py-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-sand px-4 py-4 md:px-5">
         <div className="flex items-center gap-3">
           <ClassColorBar classSlug={classSlug} className="w-1 h-10" />
           <div>
@@ -86,7 +86,7 @@ export function RegistrationClassCard({
         <div className="flex items-center gap-3">
           <Link
             href={`/dashboard/registration/${scheduleId}/${date}`}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-cocoa px-3 py-1.5 text-[0.75rem] font-semibold text-wheat hover:bg-gold hover:text-cocoa"
+            className="inline-flex min-h-10 items-center gap-1.5 rounded-lg bg-cocoa px-3.5 py-1.5 text-[0.8rem] font-semibold text-wheat hover:bg-gold hover:text-cocoa md:min-h-0 md:px-3 md:text-[0.75rem]"
           >
             <QrCode className="h-3.5 w-3.5" />
             Check in
@@ -98,8 +98,8 @@ export function RegistrationClassCard({
       {/* Attendee table */}
       {booked > 0 ? (
         <>
-          <div className="flex items-center bg-cream px-5 py-2 text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-warm-grey">
-            <span className="w-7">#</span>
+          <div className="flex items-center bg-cream px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-warm-grey md:px-5">
+            <span className="hidden w-7 md:inline">#</span>
             <span className="flex-1">Name</span>
             <span className="w-20 text-center">Payment</span>
             <span className="w-28 text-right">Attendance</span>
@@ -108,16 +108,16 @@ export function RegistrationClassCard({
           {attendees.map((att, i) => (
             <div
               key={att.id}
-              className="flex items-center border-b border-sand/40 px-5 py-2.5 text-[0.82rem] last:border-b-0"
+              className="flex items-center gap-2 border-b border-sand/40 px-4 py-2.5 text-[0.86rem] last:border-b-0 md:gap-0 md:px-5 md:text-[0.82rem]"
             >
-              <span className="w-7 text-[0.7rem] text-warm-grey">
+              <span className="hidden w-7 text-[0.7rem] text-warm-grey md:inline">
                 {i + 1}
               </span>
-              <div className="flex flex-1 items-center gap-2.5">
-                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-sand font-heading text-[0.7rem] font-semibold text-cocoa">
+              <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sand font-heading text-[0.7rem] font-semibold text-cocoa">
                   {getInitial(att.full_name)}
                 </div>
-                <span className="font-medium text-cocoa">
+                <span className="truncate font-medium text-cocoa">
                   {att.full_name ?? "Unknown"}
                 </span>
               </div>
@@ -141,9 +141,9 @@ export function RegistrationClassCard({
           {Array.from({ length: capacity - booked }, (_, i) => (
             <div
               key={`empty-${i}`}
-              className="flex items-center border-b border-sand/40 px-5 py-2.5 last:border-b-0"
+              className="flex items-center border-b border-sand/40 px-4 py-2.5 last:border-b-0 md:px-5"
             >
-              <span className="w-7 text-[0.7rem] text-warm-grey">
+              <span className="hidden w-7 text-[0.7rem] text-warm-grey md:inline">
                 {booked + i + 1}
               </span>
               <div className="flex flex-1 items-center gap-2.5">

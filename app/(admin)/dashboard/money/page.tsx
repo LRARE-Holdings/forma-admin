@@ -230,7 +230,7 @@ export default async function MoneyPage({
                   {["Arrives", "Amount", "Fee", "Type", "Status"].map((h) => (
                     <th
                       key={h}
-                      className="border-b border-sand bg-cream px-5 py-2.5 text-left text-[0.65rem] font-semibold uppercase tracking-[0.1em] text-warm-grey"
+                      className="border-b border-sand bg-cream px-3 py-2.5 md:px-5 text-left text-[0.65rem] font-semibold uppercase tracking-[0.1em] text-warm-grey"
                     >
                       {h}
                     </th>
@@ -240,14 +240,14 @@ export default async function MoneyPage({
               <tbody>
                 {payouts.map((p) => (
                   <tr key={p.id} className="border-b border-sand/50 last:border-b-0">
-                    <td className="px-5 py-2.5 text-[0.82rem] text-cocoa">{ukDateTime(p.arrivalDate)}</td>
-                    <td className="px-5 py-2.5 text-[0.82rem] tabular-nums text-cocoa">{gbp(p.amount)}</td>
-                    <td className="px-5 py-2.5 text-[0.82rem] tabular-nums text-slate">{p.fee ? gbp(p.fee) : "—"}</td>
-                    <td className="px-5 py-2.5 text-[0.82rem] text-slate">
+                    <td className="px-3 py-2.5 md:px-5 text-[0.82rem] text-cocoa">{ukDateTime(p.arrivalDate)}</td>
+                    <td className="px-3 py-2.5 md:px-5 text-[0.82rem] tabular-nums text-cocoa">{gbp(p.amount)}</td>
+                    <td className="px-3 py-2.5 md:px-5 text-[0.82rem] tabular-nums text-slate">{p.fee ? gbp(p.fee) : "—"}</td>
+                    <td className="px-3 py-2.5 md:px-5 text-[0.82rem] text-slate">
                       {p.method === "instant" ? "Instant" : "Standard"}
                       {p.automatic ? "" : ", manual"}
                     </td>
-                    <td className="px-5 py-2.5 text-[0.82rem] capitalize text-slate">{p.status.replace("_", " ")}</td>
+                    <td className="px-3 py-2.5 md:px-5 text-[0.82rem] capitalize text-slate">{p.status.replace("_", " ")}</td>
                   </tr>
                 ))}
               </tbody>

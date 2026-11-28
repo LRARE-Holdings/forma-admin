@@ -57,7 +57,7 @@ export function BookingsTable({ bookings, members }: BookingsTableProps) {
   return (
     <>
       <div className="overflow-hidden rounded-2xl border border-sand bg-white">
-        <div className="flex items-center justify-between border-b border-sand px-5 py-4">
+        <div className="flex items-center justify-between gap-3 border-b border-sand px-4 py-4 md:px-5">
           <h3 className="font-heading text-[1.15rem] font-semibold text-cocoa">
             Recent bookings
           </h3>
@@ -81,7 +81,41 @@ export function BookingsTable({ bookings, members }: BookingsTableProps) {
             }
           />
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          {/* Phones: one card per booking. */}
+          <ul className="divide-y divide-sand/60 md:hidden">
+            {bookings.map((booking) => {
+              const badge = PAYMENT_BADGES[booking.payment_method] ?? PAYMENT_BADGES.stripe
+              return (
+                <li key={booking.id} className="flex items-start justify-between gap-3 px-4 py-3.5">
+                  <div className="min-w-0">
+                    <MemberNameButton profileId={booking.profile_id}>
+                      <strong className="text-[0.92rem] text-cocoa">{booking.profile_name}</strong>
+                    </MemberNameButton>
+                    <div className="mt-0.5 text-[0.8rem] text-slate">
+                      {booking.class_name} ·{" "}
+                      {new Date(booking.date).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}
+                      {booking.start_time ? `, ${formatTime(booking.start_time)}` : ""}
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      <span className={`rounded-full px-2.5 py-0.5 text-[0.65rem] font-semibold uppercase ${badge.className}`}>{badge.label}</span>
+                      <span className={`rounded-full px-2.5 py-0.5 text-[0.65rem] font-semibold uppercase ${booking.status === "confirmed" ? "bg-success-bg text-success" : "bg-warm-grey/10 text-warm-grey"}`}>{booking.status}</span>
+                    </div>
+                  </div>
+                  {booking.status === "confirmed" && (
+                    <button
+                      onClick={() => handleCancel(booking.id)}
+                      disabled={cancellingId === booking.id}
+                      className="min-h-10 shrink-0 rounded-lg border border-sand px-3 text-[0.8rem] font-semibold text-warm-grey disabled:opacity-50"
+                    >
+                      {cancellingId === booking.id ? "Cancelling…" : "Cancel"}
+                    </button>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full border-collapse">
               <thead>
                 <tr>
@@ -149,7 +183,7 @@ export function BookingsTable({ bookings, members }: BookingsTableProps) {
                           <button
                             onClick={() => handleCancel(booking.id)}
                             disabled={cancellingId === booking.id}
-                            className="text-[0.75rem] font-semibold text-warm-grey hover:text-red-600 disabled:opacity-50"
+                            className="min-h-10 text-[0.8rem] font-semibold md:min-h-0 md:text-[0.75rem] text-warm-grey hover:text-red-600 disabled:opacity-50"
                           >
                             {cancellingId === booking.id ? "Cancelling…" : "Cancel"}
                           </button>
@@ -161,6 +195,7 @@ export function BookingsTable({ bookings, members }: BookingsTableProps) {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </div>
 

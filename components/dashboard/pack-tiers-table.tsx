@@ -74,7 +74,7 @@ export function PackTiersTable({ tiers, classes }: PackTiersTableProps) {
   return (
     <>
       <div className="overflow-hidden rounded-2xl border border-sand bg-white">
-        <div className="flex items-center justify-between border-b border-sand px-5 py-4">
+        <div className="flex items-center justify-between gap-3 border-b border-sand px-4 py-4 md:px-5">
           <h3 className="font-heading text-[1.15rem] font-semibold text-cocoa">
             Pack tiers
           </h3>
@@ -96,7 +96,36 @@ export function PackTiersTable({ tiers, classes }: PackTiersTableProps) {
             }
           />
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          {/* Phones: one card per pack. */}
+          <ul className="divide-y divide-sand/60 md:hidden">
+            {tiers.map((tier) => (
+              <li key={tier.id} className="px-4 py-3.5">
+                <div className="flex items-start justify-between gap-3">
+                  <strong className="text-[0.92rem] text-cocoa">{tier.name}</strong>
+                  <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[0.65rem] font-semibold uppercase ${tier.is_active ? "bg-success-bg text-success" : "bg-warm-grey/10 text-warm-grey"}`}>
+                    {tier.is_active ? "Active" : "Archived"}
+                  </span>
+                </div>
+                <div className="mt-1 text-[0.8rem] text-slate">
+                  &pound;{formatPence(tier.price_pence)} · {tier.credits} classes · {tier.validity_days} days
+                  {tier.max_per_week !== null && ` · max ${tier.max_per_week}/week`}
+                </div>
+                {tier.excluded_class_ids.length > 0 && (
+                  <div className="mt-0.5 text-[0.76rem] text-warm-grey">
+                    Not for: {tier.excluded_class_ids.map((id) => classNameById.get(id) ?? "Unknown").join(", ")}
+                  </div>
+                )}
+                <div className="mt-2.5 grid grid-cols-2 gap-2">
+                  <button onClick={() => openEdit(tier)} className="min-h-10 rounded-lg border border-sand text-[0.8rem] font-semibold text-cocoa">Edit</button>
+                  {tier.is_active && (
+                    <button onClick={() => openDelete(tier)} className="min-h-10 rounded-lg border border-sand text-[0.8rem] font-semibold text-warm-grey">Archive</button>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full border-collapse">
               <thead>
                 <tr>
@@ -161,14 +190,14 @@ export function PackTiersTable({ tiers, classes }: PackTiersTableProps) {
                       <div className="flex items-center gap-3">
                         <button
                           onClick={() => openEdit(tier)}
-                          className="text-[0.75rem] font-semibold text-gold hover:text-ember"
+                          className="min-h-10 text-[0.8rem] font-semibold md:min-h-0 md:text-[0.75rem] text-gold hover:text-ember"
                         >
                           Edit
                         </button>
                         {tier.is_active && (
                           <button
                             onClick={() => openDelete(tier)}
-                            className="text-[0.75rem] font-semibold text-warm-grey hover:text-red-600"
+                            className="min-h-10 text-[0.8rem] font-semibold md:min-h-0 md:text-[0.75rem] text-warm-grey hover:text-red-600"
                           >
                             Archive
                           </button>
@@ -180,6 +209,7 @@ export function PackTiersTable({ tiers, classes }: PackTiersTableProps) {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </div>
 
